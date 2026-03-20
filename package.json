@@ -1,0 +1,16 @@
+{
+  "name": "cjl-new",
+  "private": true,
+  "workspaces": [
+    "app/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @cjl/contracts && npm run build --workspace @cjl/api && npm run build --workspace @cjl/admin-web && npm run build --workspace @cjl/public-web",
+    "build:contracts": "npm run build --workspace @cjl/contracts",
+    "build:api": "npm run build --workspace @cjl/api",
+    "build:admin": "npm run build --workspace @cjl/admin-web",
+    "build:public": "npm run build --workspace @cjl/public-web",
+    "dev:api": "npm run dev --workspace @cjl/api"
+  }
+}

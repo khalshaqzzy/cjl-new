@@ -1,0 +1,120 @@
+"use client"
+
+import type {
+  AdminDashboardResponse,
+  ConfirmOrderInput,
+  CustomerSearchResult,
+  NotificationRecord,
+  OrderHistoryItem,
+  OrderPreviewResponse,
+  SettingsResponse
+} from "@cjl/contracts"
+
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"
+
+const apiFetch = async <T>(path: string, init?: RequestInit) => {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {})
+    }
+  })
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null
+    throw new Error(payload?.message ?? "Request gagal")
+  }
+
+  if (response.headers.get("content-type")?.includes("text/plain")) {
+    return (await response.text()) as T
+  }
+
+  return (await response.json()) as T
+}
+
+export const adminApi = {
+  getSession: () => apiFetch<{ authenticated: boolean }>("/v1/admin/auth/session"),
+  login: (username: string, password: string) =>
+    apiFetch<{ ok: true }>("/v1/admin/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password })
+    }),
+  logout: () => apiFetch<{ ok: true }>("/v1/admin/auth/logout", { method: "POST" }),
+  getDashboard: (window: "daily" | "weekly" | "monthly") =>
+    apiFetch<AdminDashboardResponse>(`/v1/admin/dashboard?window=${window}`),
+  listCustomers: (search = "") =>
+    apiFetch<CustomerSearchResult[]>(`/v1/admin/customers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  createCustomer: (name: string, phone: string) =>
+    apiFetch<{ customer: CustomerSearchResult; duplicate: boolean }>("/v1/admin/customers", {
+      method: "POST",
+      body: JSON.stringify({ name, phone })
+    }),
+  getCustomerDetail: (customerId: string) =>
+    apiFetch<{
+      profile: import("@cjl/contracts").CustomerProfile
+      pointLedger: import("@cjl/contracts").PointLedgerItem[]
+      orderHistory: OrderHistoryItem[]
+    }>(`/v1/admin/customers/${customerId}`),
+  updateCustomer: (customerId: string, name: string, phone: string) =>
+    apiFetch<{
+      profile: import("@cjl/contracts").CustomerProfile
+      pointLedger: import("@cjl/contracts").PointLedgerItem[]
+      orderHistory: OrderHistoryItem[]
+    }>(`/v1/admin/customers/${customerId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name, phone })
+    }),
+  addCustomerPoints: (customerId: string, points: number, reason: string) =>
+    apiFetch<{
+      profile: import("@cjl/contracts").CustomerProfile
+      pointLedger: import("@cjl/contracts").PointLedgerItem[]
+      orderHistory: OrderHistoryItem[]
+    }>(`/v1/admin/customers/${customerId}/points`, {
+      method: "POST",
+      body: JSON.stringify({ points, reason })
+    }),
+  previewOrder: (payload: ConfirmOrderInput) =>
+    apiFetch<OrderPreviewResponse>("/v1/admin/orders/preview", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  confirmOrder: (payload: ConfirmOrderInput) =>
+    apiFetch<{ order: OrderHistoryItem; directToken: string }>("/v1/admin/orders", {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify(payload)
+    }),
+  listActiveOrders: () => apiFetch<import("@cjl/contracts").ActiveOrderCard[]>("/v1/admin/orders/active"),
+  markOrderDone: (orderId: string) =>
+    apiFetch(`/v1/admin/orders/${orderId}/done`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({})
+    }),
+  voidOrder: (orderId: string, reason: string, notifyCustomer: boolean) =>
+    apiFetch(`/v1/admin/orders/${orderId}/void`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ reason, notifyCustomer })
+    }),
+  listNotifications: () => apiFetch<NotificationRecord[]>("/v1/admin/notifications"),
+  resendNotification: (notificationId: string) =>
+    apiFetch(`/v1/admin/notifications/${notificationId}/resend`, { method: "POST" }),
+  manualResolveNotification: (notificationId: string, note: string) =>
+    apiFetch(`/v1/admin/notifications/${notificationId}/manual-resolve`, {
+      method: "POST",
+      body: JSON.stringify({ note })
+    }),
+  getNotificationReceipt: (notificationId: string) =>
+    apiFetch<string>(`/v1/admin/notifications/${notificationId}/receipt`),
+  getNotificationMessage: (notificationId: string) =>
+    apiFetch<{ message: string }>(`/v1/admin/notifications/${notificationId}/message`),
+  getSettings: () => apiFetch<SettingsResponse>("/v1/admin/settings"),
+  updateSettings: (payload: SettingsResponse) =>
+    apiFetch<SettingsResponse>("/v1/admin/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    })
+}
