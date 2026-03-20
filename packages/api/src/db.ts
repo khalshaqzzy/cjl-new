@@ -13,5 +13,12 @@ export const connectDatabase = async () => {
   return client.db()
 }
 
+export const disconnectDatabase = async () => {
+  if (connected) {
+    await client.close()
+    connected = false
+  }
+}
+
 export const getDatabase = () => client.db()
 export const mongoClient = client

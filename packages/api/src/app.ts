@@ -127,7 +127,7 @@ export const createApp = () => {
       cookie: {
         httpOnly: true,
         sameSite: "lax",
-        secure: false,
+        secure: env.SESSION_COOKIE_SECURE,
         maxAge: 1000 * 60 * 60 * 24 * 7
       },
       store: MongoStore.create({

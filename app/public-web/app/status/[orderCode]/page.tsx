@@ -101,10 +101,10 @@ export default function DirectOrderStatusPage({ params }: Props) {
                 <Package className="w-8 h-8 text-pink-hot" />
               )}
             </div>
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold mb-3 bg-pink-cloud text-pink-hot">
+            <div data-testid="direct-status-badge" className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold mb-3 bg-pink-cloud text-pink-hot">
               {order.status}
             </div>
-            <p className="font-display text-xl font-bold text-text-strong mb-2">{order.orderCode}</p>
+            <p data-testid="direct-status-order-code" className="font-display text-xl font-bold text-text-strong mb-2">{order.orderCode}</p>
           </div>
 
           <div className="bg-white rounded-2xl border border-line-soft overflow-hidden mb-4">

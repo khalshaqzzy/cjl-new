@@ -1,0 +1,79 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: cjl
+      MONGO_INITDB_ROOT_PASSWORD: cjl-password
+      MONGO_INITDB_DATABASE: cjlaundry
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "mongodb://cjl:cjl-password@127.0.0.1:27017/admin", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - mongo-data:/data/db
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      MONGODB_URI: mongodb://cjl:cjl-password@mongo:27017/cjlaundry?authSource=admin
+      SESSION_SECRET: cjlaundry-compose-secret
+      SESSION_COOKIE_SECURE: "false"
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+      APP_TIMEZONE: Asia/Jakarta
+      ADMIN_ORIGIN: http://localhost:3001
+      PUBLIC_ORIGIN: http://localhost:3000
+      API_ORIGIN: http://localhost:4000
+      WA_FAIL_MODE: never
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  admin-web:
+    build:
+      context: .
+      dockerfile: app/admin-web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3001:3001"
+
+  public-web:
+    build:
+      context: .
+      dockerfile: app/public-web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3000:3000"
+
+volumes:
+  mongo-data:

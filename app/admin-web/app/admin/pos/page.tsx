@@ -131,6 +131,7 @@ function CustomerRow({ customer, onSelect }: { customer: CustomerSearchResultVM;
     <button
       type="button"
       onClick={onSelect}
+      data-testid={`customer-result-${customer.customerId}`}
       className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-line-base bg-bg-surface hover:bg-rose-50 hover:border-rose-200 transition-all group"
     >
       <div className="flex items-center gap-3 min-w-0">
@@ -272,7 +273,14 @@ function StepCustomer({
           <div className="space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted pointer-events-none" />
-              <Input autoFocus placeholder="Cari nama atau nomor HP..." value={query} onChange={(event) => setQuery(event.target.value)} className="h-11 pl-9 rounded-lg border-line-base bg-bg-subtle text-sm placeholder:text-text-placeholder" />
+              <Input
+                autoFocus
+                data-testid="pos-customer-search"
+                placeholder="Cari nama atau nomor HP..."
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="h-11 pl-9 rounded-lg border-line-base bg-bg-subtle text-sm placeholder:text-text-placeholder"
+              />
               {query && (
                 <button type="button" onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2">
                   <X className="h-4 w-4 text-text-muted" />
@@ -304,7 +312,7 @@ function StepCustomer({
                   <User className="h-5 w-5 text-text-muted" />
                 </div>
                 <p className="text-sm text-text-muted">Pelanggan tidak ditemukan</p>
-                <Button variant="outline" size="sm" className="rounded-lg" onClick={() => setShowNew(true)}>
+                <Button variant="outline" size="sm" className="rounded-lg" data-testid="pos-open-create-customer-from-empty" onClick={() => setShowNew(true)}>
                   <UserPlus className="h-4 w-4 mr-2" />
                   Daftarkan Pelanggan Baru
                 </Button>
@@ -312,7 +320,12 @@ function StepCustomer({
             )}
 
             {!query && (
-              <button type="button" onClick={() => setShowNew(true)} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-dashed border-line-strong hover:border-rose-300 hover:bg-rose-50 transition-all group">
+              <button
+                type="button"
+                data-testid="pos-open-create-customer"
+                onClick={() => setShowNew(true)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-dashed border-line-strong hover:border-rose-300 hover:bg-rose-50 transition-all group"
+              >
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-bg-subtle group-hover:bg-rose-100 transition-colors flex-shrink-0">
                   <UserPlus className="h-4 w-4 text-text-muted group-hover:text-rose-600 transition-colors" />
                 </div>
@@ -327,7 +340,12 @@ function StepCustomer({
       </div>
 
       <div className="px-4 pb-5 pt-3 border-t border-line-base">
-        <Button className="w-full h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" disabled={!selectedCustomer} onClick={onNext}>
+        <Button
+          className="w-full h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold"
+          data-testid="pos-next-to-services"
+          disabled={!selectedCustomer}
+          onClick={onNext}
+        >
           Lanjut ke Pilih Layanan
           <ArrowRight className="h-4 w-4 ml-2" />
         </Button>
@@ -341,15 +359,15 @@ function StepCustomer({
           <div className="py-5 space-y-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-text-body">Nama Lengkap</label>
-              <Input placeholder="Masukkan nama lengkap" value={newName} onChange={(event) => setNewName(event.target.value)} className="h-11 rounded-lg border-line-base" />
+              <Input data-testid="pos-create-customer-name" placeholder="Masukkan nama lengkap" value={newName} onChange={(event) => setNewName(event.target.value)} className="h-11 rounded-lg border-line-base" />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-text-body">Nomor HP (WhatsApp)</label>
-              <Input type="tel" placeholder="08xx-xxxx-xxxx" value={newPhone} onChange={(event) => setNewPhone(event.target.value)} className="h-11 rounded-lg border-line-base" />
+              <Input data-testid="pos-create-customer-phone" type="tel" placeholder="08xx-xxxx-xxxx" value={newPhone} onChange={(event) => setNewPhone(event.target.value)} className="h-11 rounded-lg border-line-base" />
             </div>
           </div>
           <SheetFooter>
-            <Button className="w-full h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" onClick={handleCreate} disabled={!newName || !newPhone || isCreating}>
+            <Button data-testid="pos-create-customer-submit" className="w-full h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" onClick={handleCreate} disabled={!newName || !newPhone || isCreating}>
               {isCreating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Mendaftarkan...</> : <><UserPlus className="h-4 w-4 mr-2" />Daftarkan &amp; Pilih</>}
             </Button>
           </SheetFooter>
@@ -375,7 +393,7 @@ function ServiceToggleRow({
   const lineTotal = isPerKg ? service.pricePerUnit * weightKg : service.pricePerUnit * service.quantity
 
   return (
-    <div className={cn("flex items-center gap-3 px-4 py-3 rounded-xl border transition-all", service.selected ? "border-rose-200 bg-rose-50" : "border-line-base bg-bg-surface hover:border-line-strong", service.disabled && "opacity-50")}>
+    <div data-testid={`service-row-${service.serviceCode}`} className={cn("flex items-center gap-3 px-4 py-3 rounded-xl border transition-all", service.selected ? "border-rose-200 bg-rose-50" : "border-line-base bg-bg-surface hover:border-line-strong", service.disabled && "opacity-50")}>
       <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0 transition-colors", service.selected ? "bg-rose-100" : "bg-bg-subtle")}>
         <Icon className={cn("h-4 w-4 transition-colors", service.selected ? "text-rose-600" : "text-text-muted")} />
       </div>
@@ -385,16 +403,16 @@ function ServiceToggleRow({
       </div>
       {service.selected && <span className="text-sm font-semibold text-rose-600 tabular-nums flex-shrink-0">Rp {lineTotal.toLocaleString("id-ID")}</span>}
       {isPerKg ? (
-        <button type="button" onClick={onToggle} disabled={service.disabled} className={cn("flex h-6 w-6 items-center justify-center rounded-md border-2 transition-all flex-shrink-0", service.selected ? "border-rose-600 bg-rose-600" : "border-line-strong")}>
+        <button type="button" data-testid={`service-toggle-${service.serviceCode}`} onClick={onToggle} disabled={service.disabled} className={cn("flex h-6 w-6 items-center justify-center rounded-md border-2 transition-all flex-shrink-0", service.selected ? "border-rose-600 bg-rose-600" : "border-line-strong")}>
           {service.selected && <CheckCircle2 className="h-3.5 w-3.5 text-white" />}
         </button>
       ) : (
         <div className="flex items-center gap-1 flex-shrink-0">
-          <button type="button" onClick={() => onQuantityChange(-1)} disabled={service.quantity === 0 || service.disabled} className={cn("flex h-7 w-7 items-center justify-center rounded-lg border transition-colors", service.quantity === 0 || service.disabled ? "border-line-base text-text-placeholder cursor-not-allowed" : "border-line-base hover:bg-bg-subtle text-text-body")}>
+          <button type="button" data-testid={`service-minus-${service.serviceCode}`} onClick={() => onQuantityChange(-1)} disabled={service.quantity === 0 || service.disabled} className={cn("flex h-7 w-7 items-center justify-center rounded-lg border transition-colors", service.quantity === 0 || service.disabled ? "border-line-base text-text-placeholder cursor-not-allowed" : "border-line-base hover:bg-bg-subtle text-text-body")}>
             <Minus className="h-3 w-3" />
           </button>
-          <span className={cn("w-7 text-center text-sm font-semibold tabular-nums", service.selected ? "text-text-strong" : "text-text-muted")}>{service.quantity}</span>
-          <button type="button" onClick={() => onQuantityChange(1)} disabled={service.disabled} className="flex h-7 w-7 items-center justify-center rounded-lg border border-line-base hover:bg-bg-subtle text-text-body transition-colors disabled:cursor-not-allowed disabled:text-text-placeholder">
+          <span data-testid={`service-quantity-${service.serviceCode}`} className={cn("w-7 text-center text-sm font-semibold tabular-nums", service.selected ? "text-text-strong" : "text-text-muted")}>{service.quantity}</span>
+          <button type="button" data-testid={`service-plus-${service.serviceCode}`} onClick={() => onQuantityChange(1)} disabled={service.disabled} className="flex h-7 w-7 items-center justify-center rounded-lg border border-line-base hover:bg-bg-subtle text-text-body transition-colors disabled:cursor-not-allowed disabled:text-text-placeholder">
             <Plus className="h-3 w-3" />
           </button>
         </div>
@@ -460,7 +478,7 @@ function StepServices({
           </div>
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
-              <Input type="number" step="0.1" min="0" placeholder="0.0" value={weightKg} onChange={(event) => setWeightKg(event.target.value)} className="h-12 text-xl font-bold text-center rounded-lg border-line-base bg-bg-subtle pr-12 tabular-nums" />
+              <Input data-testid="pos-weight-input" type="number" step="0.1" min="0" placeholder="0.0" value={weightKg} onChange={(event) => setWeightKg(event.target.value)} className="h-12 text-xl font-bold text-center rounded-lg border-line-base bg-bg-subtle pr-12 tabular-nums" />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-text-muted">kg</span>
             </div>
             <div className="flex gap-1.5">
@@ -494,11 +512,11 @@ function StepServices({
                     <p className="text-xs text-text-muted">10 poin = 1 Washer gratis</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setRedeemCount(Math.max(0, redeemCount - 1))} disabled={redeemCount === 0} className={cn("flex h-8 w-8 items-center justify-center rounded-lg border transition-colors", redeemCount === 0 ? "border-line-base text-text-placeholder cursor-not-allowed" : "border-line-base hover:bg-bg-subtle text-text-body")}>
+                    <button type="button" data-testid="pos-redeem-minus" onClick={() => setRedeemCount(Math.max(0, redeemCount - 1))} disabled={redeemCount === 0} className={cn("flex h-8 w-8 items-center justify-center rounded-lg border transition-colors", redeemCount === 0 ? "border-line-base text-text-placeholder cursor-not-allowed" : "border-line-base hover:bg-bg-subtle text-text-body")}>
                       <Minus className="h-3 w-3" />
                     </button>
-                    <span className="w-8 text-center text-sm font-bold text-text-strong tabular-nums">{redeemCount}</span>
-                    <button type="button" onClick={() => setRedeemCount(Math.min(maxRedeem, redeemCount + 1))} disabled={redeemCount >= maxRedeem} className={cn("flex h-8 w-8 items-center justify-center rounded-lg border transition-colors", redeemCount >= maxRedeem ? "border-line-base text-text-placeholder cursor-not-allowed" : "border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600")}>
+                    <span data-testid="pos-redeem-count" className="w-8 text-center text-sm font-bold text-text-strong tabular-nums">{redeemCount}</span>
+                    <button type="button" data-testid="pos-redeem-plus" onClick={() => setRedeemCount(Math.min(maxRedeem, redeemCount + 1))} disabled={redeemCount >= maxRedeem} className={cn("flex h-8 w-8 items-center justify-center rounded-lg border transition-colors", redeemCount >= maxRedeem ? "border-line-base text-text-placeholder cursor-not-allowed" : "border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600")}>
                       <Plus className="h-3 w-3" />
                     </button>
                   </div>
@@ -552,7 +570,7 @@ function StepServices({
           <Button variant="outline" className="rounded-lg h-11 px-4" onClick={onBack}>
             Kembali
           </Button>
-          <Button className="flex-1 h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" disabled={selectedServices.length === 0 || isConfirming || isPreviewLoading || !preview} onClick={onNext}>
+          <Button data-testid="pos-open-summary" className="flex-1 h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" disabled={selectedServices.length === 0 || isConfirming || isPreviewLoading || !preview} onClick={onNext}>
             {isConfirming ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Memproses...</> : <><ReceiptText className="h-4 w-4 mr-2" />Lihat Ringkasan</>}
           </Button>
         </div>
@@ -607,7 +625,7 @@ function OrderSummarySheet({ open, onOpenChange, customer, preview, onConfirm, i
           </div>
         </div>
         <SheetFooter className="pt-4 border-t border-line-base flex-shrink-0">
-          <Button className="w-full h-12 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" onClick={onConfirm} disabled={isConfirming || !preview}>
+          <Button data-testid="pos-confirm-order" className="w-full h-12 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" onClick={onConfirm} disabled={isConfirming || !preview}>
             {isConfirming ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" />Memproses Order...</> : <><CheckCircle2 className="h-5 w-5 mr-2" />Konfirmasi &amp; Buat Order</>}
           </Button>
         </SheetFooter>
@@ -627,7 +645,7 @@ function SuccessScreen({ customerName, orderCode, onNewOrder }: { customerName: 
         <h2 className="text-xl font-bold text-text-strong">Order Berhasil Dibuat!</h2>
         <p className="text-sm text-text-muted">Order untuk <span className="font-semibold text-text-body">{customerName}</span> telah dikonfirmasi</p>
       </div>
-      <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-bg-subtle border border-line-base"><ReceiptText className="h-4 w-4 text-text-muted" /><span className="font-mono text-sm font-semibold text-rose-600">{orderCode}</span></div>
+      <div data-testid="pos-success-order-code" className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-bg-subtle border border-line-base"><ReceiptText className="h-4 w-4 text-text-muted" /><span className="font-mono text-sm font-semibold text-rose-600">{orderCode}</span></div>
       <div className="flex gap-3 w-full max-w-xs">
         <Button variant="outline" className="flex-1 rounded-lg" onClick={() => (window.location.href = "/admin/laundry-aktif")}>Laundry Aktif</Button>
         <Button className="flex-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" onClick={onNewOrder}>Order Baru</Button>

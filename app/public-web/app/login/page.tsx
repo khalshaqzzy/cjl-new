@@ -140,6 +140,7 @@ export default function LoginPage() {
                   <Phone className="absolute left-4 w-4 h-4 text-pink-hot/50 pointer-events-none" />
                   <input
                     type="tel"
+                    data-testid="public-login-phone"
                     placeholder="08xxxxxxxxxx"
                     value={phone}
                     onChange={e => setPhone(e.target.value)}
@@ -162,6 +163,7 @@ export default function LoginPage() {
                   <User className="absolute left-4 w-4 h-4 text-pink-hot/50 pointer-events-none" />
                   <input
                     type="text"
+                    data-testid="public-login-name"
                     placeholder="Nama sesuai pendaftaran"
                     value={name}
                     onChange={e => setName(e.target.value)}
@@ -183,6 +185,7 @@ export default function LoginPage() {
               {/* Submit */}
               <button
                 type="submit"
+                data-testid="public-login-submit"
                 disabled={isLoading}
                 className="relative w-full py-3.5 rounded-xl font-display font-semibold text-white overflow-hidden group transition-all duration-200 hover:shadow-[0_8px_24px_rgba(240,78,148,0.35)] disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-primary mt-2"
               >

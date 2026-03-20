@@ -3,10 +3,25 @@ import { z } from "zod"
 
 dotenv.config()
 
+const booleanLikeSchema = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase()
+    if (["true", "1", "yes", "on"].includes(normalized)) {
+      return true
+    }
+    if (["false", "0", "no", "off", ""].includes(normalized)) {
+      return false
+    }
+  }
+
+  return value
+}, z.boolean())
+
 const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   MONGODB_URI: z.string().default("mongodb://127.0.0.1:27017/cjlaundry"),
   SESSION_SECRET: z.string().default("cjlaundry-dev-secret"),
+  SESSION_COOKIE_SECURE: booleanLikeSchema.default(false),
   ADMIN_USERNAME: z.string().default("admin"),
   ADMIN_PASSWORD: z.string().default("admin123"),
   APP_TIMEZONE: z.string().default("Asia/Jakarta"),

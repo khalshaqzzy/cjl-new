@@ -1,14 +1,16 @@
+import path from "node:path"
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
     externalDir: true,
   },
+  turbopack: {
+    root: path.join(process.cwd(), "../.."),
+  },
   transpilePackages: ["@cjl/contracts"],
   typescript: {
     ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
   },
   images: {
     unoptimized: true,

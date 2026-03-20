@@ -130,6 +130,7 @@ function OrderHistoryRow({
           type="button"
           variant="outline"
           size="sm"
+          data-testid={`void-order-${order.orderId}`}
           className="rounded-lg h-8 text-xs"
           onClick={onVoid}
         >
@@ -215,7 +216,7 @@ export default function CustomerDetailPage() {
   }, [])
 
   const activeOrders = orderHistory.filter((o) => o.status === "Active")
-  const doneOrders = orderHistory.filter((o) => o.status === "Done")
+  const historicalOrders = orderHistory.filter((o) => o.status !== "Active")
 
   const handleEditIdentity = async () => {
     setIsEditing(true)
@@ -441,10 +442,10 @@ export default function CustomerDetailPage() {
             <Card className="rounded-xl border-line-base bg-bg-surface shadow-card">
               <CardContent className="p-4 pb-1">
                 <p className="text-[10px] font-bold text-text-muted uppercase tracking-wide mb-1">
-                  Riwayat Selesai ({doneOrders.length})
+                  Riwayat Sebelumnya ({historicalOrders.length})
                 </p>
-                {doneOrders.length > 0 ? (
-                  doneOrders.map((o) => (
+                {historicalOrders.length > 0 ? (
+                  historicalOrders.map((o) => (
                     <OrderHistoryRow
                       key={o.orderId}
                       order={o}
@@ -673,6 +674,7 @@ export default function CustomerDetailPage() {
                 Alasan Void <span className="text-danger">*</span>
               </label>
               <Textarea
+                data-testid="void-reason-input"
                 rows={3}
                 value={voidReason}
                 onChange={(event) => setVoidReason(event.target.value)}
@@ -686,7 +688,7 @@ export default function CustomerDetailPage() {
                 <p className="text-sm font-medium text-text-body">Kirim notifikasi ke pelanggan</p>
                 <p className="text-xs text-text-muted mt-0.5">Aktifkan jika pembatalan perlu diinformasikan via WhatsApp.</p>
               </div>
-              <Switch checked={notifyCustomerOnVoid} onCheckedChange={setNotifyCustomerOnVoid} />
+              <Switch data-testid="void-notify-toggle" checked={notifyCustomerOnVoid} onCheckedChange={setNotifyCustomerOnVoid} />
             </div>
           </div>
           <SheetFooter className="gap-2">
@@ -694,6 +696,7 @@ export default function CustomerDetailPage() {
               <Button variant="outline" className="flex-1 rounded-lg">Batal</Button>
             </SheetClose>
             <Button
+              data-testid="void-submit"
               className="flex-1 rounded-lg bg-danger hover:bg-danger/90 text-white font-semibold"
               onClick={handleVoidOrder}
               disabled={!voidReason.trim() || isVoiding}

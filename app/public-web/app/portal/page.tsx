@@ -171,11 +171,13 @@ export default function PortalDashboard() {
           </div>
 
           <div className="relative px-4 md:px-6 mt-4">
-            <StampHeroCard
+            <div data-testid="portal-stamp-hero">
+              <StampHeroCard
               currentPoints={stampBalance.currentPoints}
               eligibleFreeWashers={stampBalance.eligibleFreeWashers}
               lifetimeEarnedStamps={stampBalance.lifetimeEarnedStamps}
-            />
+              />
+            </div>
           </div>
         </div>
 
@@ -215,6 +217,7 @@ export default function PortalDashboard() {
                   <Link
                     key={order.orderId}
                     href={`/portal/riwayat/${order.orderId}`}
+                    data-testid={`portal-active-order-${order.orderId}`}
                     className={`block bg-white rounded-2xl p-4 border border-line-soft transition-all duration-500 hover:shadow-lg hover:border-pink-soft hover:-translate-y-0.5 group ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
                     style={{ transitionDelay: `${(summaryCards.length + index) * 80}ms` }}
                   >

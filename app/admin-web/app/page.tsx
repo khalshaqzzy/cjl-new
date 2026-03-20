@@ -110,6 +110,7 @@ export default function LoginPage() {
               <Input
                 id="username"
                 type="text"
+                data-testid="admin-login-username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Masukkan username"
@@ -130,6 +131,7 @@ export default function LoginPage() {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
+                  data-testid="admin-login-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Masukkan password"
@@ -153,6 +155,7 @@ export default function LoginPage() {
 
             <Button
               type="submit"
+              data-testid="admin-login-submit"
               disabled={isLoading}
               className="w-full h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors"
             >
