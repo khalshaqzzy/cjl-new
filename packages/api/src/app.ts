@@ -55,6 +55,7 @@ import {
   loginCustomer,
   getCustomerOrderDetail
 } from "./services/public.js"
+import type { AdminDocument, SettingsDocument } from "./types.js"
 
 declare module "express-session" {
   interface SessionData {
@@ -109,6 +110,7 @@ const withIdempotency = async <T>(
 
 export const createApp = () => {
   const app = express()
+  app.set("trust proxy", env.TRUST_PROXY)
 
   app.use(morgan("dev"))
   app.use(express.json({ limit: "1mb" }))
@@ -142,6 +144,48 @@ export const createApp = () => {
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true })
+  })
+
+  app.get("/ready", async (_req, res) => {
+    try {
+      await mongoClient.db().command({ ping: 1 })
+      const [settings, admin] = await Promise.all([
+        mongoClient.db().collection<SettingsDocument>("settings").findOne({ _id: "app-settings" }),
+        mongoClient.db().collection<AdminDocument>("admins").findOne({ username: env.ADMIN_USERNAME })
+      ])
+
+      if (!settings || !admin) {
+        res.status(503).json({
+          ok: false,
+          checks: {
+            mongo: true,
+            settingsSeeded: Boolean(settings),
+            adminSeeded: Boolean(admin)
+          }
+        })
+        return
+      }
+
+      res.json({
+        ok: true,
+        appEnv: env.APP_ENV,
+        checks: {
+          mongo: true,
+          settingsSeeded: true,
+          adminSeeded: true
+        }
+      })
+    } catch (error) {
+      res.status(503).json({
+        ok: false,
+        appEnv: env.APP_ENV,
+        checks: {
+          mongo: false,
+          settingsSeeded: false,
+          adminSeeded: false
+        }
+      })
+    }
   })
 
   app.post("/v1/admin/auth/login", adminLimiter, async (req, res) => {

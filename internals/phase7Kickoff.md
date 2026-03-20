@@ -4,15 +4,7 @@ Document status: Active
 Created: 2026-03-21  
 Purpose: focused next-session start after local dockerization and automated test coverage
 
-## Starting Context
-
-The repo now has:
-
-- backend and both frontend surfaces integrated
-- root build passing
-- backend integration suite passing
-- frontend end-to-end suite passing
-- local Dockerfiles and Compose topology committed
+This kickoff is now completed in repo terms. Keep it as historical reference for the release and workflow hardening work that led into hosted environment validation.
 
 ## Read Order
 
@@ -26,10 +18,8 @@ The repo now has:
 
 ## Recommended First Tasks
 
-1. Add CI workflow that runs build and test automatically.
-2. Decide whether to keep current `next start` image approach or move frontends to standalone runtime output.
-3. Expand automated coverage to notification failure handling, settings changes, and dashboard/reporting paths.
-4. If live deployment becomes in scope, define VM secret model, reverse proxy assumptions, and rollback approach before touching pipelines.
+1. Use this only as historical context for why CI, deploy workflows, and remote build strategy were added.
+2. Continue with `phase8Kickoff.md` for the next recommended session start.
 
 ## Guardrails
 

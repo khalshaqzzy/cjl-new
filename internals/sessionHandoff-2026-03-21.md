@@ -1,29 +1,34 @@
 # Session Handoff 2026-03-21
 
 Document status: Active  
-Purpose: repo snapshot after backend/frontend integration, local dockerization, and automated test session
+Purpose: repo snapshot after deployment workflow and runbook implementation session
 
 ## What This Session Completed
 
-- added reusable API bootstrap in `packages/api/src/server.ts` for local runtime and test orchestration
-- added local Docker artifacts:
-  - root `docker-compose.yml`
-  - `packages/api/Dockerfile`
-  - `app/admin-web/Dockerfile`
-  - `app/public-web/Dockerfile`
-  - root `.dockerignore` and `.env.example`
-- added backend integration coverage in `packages/api/test/integration.test.ts`
-- added browser end-to-end coverage in `tests/e2e/full-stack.spec.ts`
-- added root test/runtime scripts in `package.json`:
-  - `npm test`
-  - `npm run test:backend`
-  - `npm run test:e2e`
-  - Docker Compose helper scripts
-- fixed session cookie env parsing bug:
-  - previous `SESSION_COOKIE_SECURE=\"false\"` was coerced to `true`
-  - browser login flows now persist sessions correctly over local HTTP test/runtime
-- fixed admin customer detail history rendering so cancelled orders remain visible in admin UI after void flow
-- removed deprecated public Next.js `eslint` config and set explicit monorepo Turbopack roots for both frontend apps
+- added hosted deploy assets:
+  - `deploy/api/docker-compose.remote.yml`
+  - `deploy/api/Caddyfile`
+  - `deploy/env/runtime.staging.env.example`
+  - `deploy/env/runtime.production.env.example`
+  - `deploy/scripts/remote-deploy.sh`
+  - `deploy/scripts/remote-rollback.sh`
+  - `deploy/scripts/smoke-check.sh`
+- added GitHub workflows:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/deploy-staging.yml`
+  - `.github/workflows/deploy-production.yml`
+- added local env example files for API, admin web, and public web
+- added `/ready` endpoint for deployment smoke and dependency validation
+- added proxy-aware API env support:
+  - `APP_ENV`
+  - `TRUST_PROXY`
+  - `ADMIN_PASSWORD_HASH`
+- changed bootstrap admin seeding so hosted environments can seed from a bcrypt hash instead of a plaintext password
+- documented the full hosted deployment path in:
+  - `internals/deploymentGuide.md`
+  - `internals/environmentMatrix.md`
+  - `internals/manualProvisioningChecklist.md`
+- added ADR for SSH-orchestrated VM-local builds instead of GitHub-built images
 
 ## Verification Run
 
@@ -37,23 +42,22 @@ All passed at session end.
 
 ## Important Repo Facts
 
-- `docker-compose.yml` is intended for local/runtime containerization, not yet a finished live VM rollout contract
-- current e2e harness uses `mongodb-memory-server` inside the API test bootstrap rather than Docker, because it is faster and daemon-independent for automated local verification
-- live deployment remains out of scope in this session
-- frontend session behavior depends on `SESSION_COOKIE_SECURE=false` in local HTTP contexts
-- tests currently cover:
-  - admin auth
-  - customer create + duplicate detection
-  - manual points
-  - order preview/confirm
-  - mark done
-  - public login/dashboard/order access
-  - direct status page
-  - archived leaderboard rebuild on void
-  - admin/public UI flow through browser automation
+- hosted deploy model is now:
+  - CI on GitHub
+  - release archive streamed over SSH to the VM
+  - Docker images built on the VM
+  - Caddy routes all three domains on the same environment VM
+- current workflows assume:
+  - branch `staging` auto-deploys staging after CI success
+  - branch `main` auto-deploys production after CI success
+- current e2e harness still uses `mongodb-memory-server` for speed and daemon independence
+- first real cloud rollout has not been executed yet in this session
+- frontend session behavior depends on:
+  - `SESSION_COOKIE_SECURE=false` for local HTTP
+  - `SESSION_COOKIE_SECURE=true` and `TRUST_PROXY=1` for hosted HTTPS behind Caddy
 
 ## Recommended Next Start
 
-1. add CI workflow that runs build + test automatically
-2. decide final production image strategy from the current Dockerfiles
-3. widen test coverage to notification failure handling, settings mutation, and dashboard/reporting views
+1. provision the real staging VM and staging DNS
+2. add staging GitHub environment secrets and run the first staging rollout
+3. validate the deployment guide against real hosted behavior and update any gaps immediately

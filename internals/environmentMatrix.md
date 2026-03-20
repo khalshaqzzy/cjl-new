@@ -2,7 +2,13 @@
 
 Document status: Active  
 Created: 2026-03-21  
-Purpose: runtime and verification topology snapshot for local and future hosted environments
+Purpose: runtime and verification topology snapshot for local, staging, and production
+
+| Environment | Public web | Admin web | API | Runtime target | Build location | Data store |
+| --- | --- | --- | --- | --- | --- | --- |
+| `local` | `http://localhost:3000` | `http://localhost:3001` | `http://localhost:4000` | local machine | local machine | local MongoDB |
+| `staging` | `https://staging.cjlaundry.site` | `https://admin-staging.cjlaundry.site` | `https://api-staging.cjlaundry.site` | one GCP VM | built on staging VM | MongoDB container on staging VM |
+| `production` | `https://cjlaundry.site` | `https://admin.cjlaundry.site` | `https://api.cjlaundry.site` | one GCP VM | built on production VM | MongoDB container on production VM |
 
 ## Local Workspace Runtime
 
@@ -23,9 +29,8 @@ Purpose: runtime and verification topology snapshot for local and future hosted 
 - intended use:
   - local full-stack boot
   - container build sanity
-  - future base for VM runtime packaging
 
-## Local Automated Test Runtime
+## Automated Verification Runtime
 
 - backend integration tests:
   - command: `npm run test:backend`
@@ -37,9 +42,19 @@ Purpose: runtime and verification topology snapshot for local and future hosted 
   - API test server started from `scripts/testing/start-api.ts`
   - database: `mongodb-memory-server`
 
-## Future Hosted Environments
+## Hosted Runtime
 
-- staging: not implemented in repo runtime yet
-- production: not implemented in repo runtime yet
+- staging and production each use:
+  - one Ubuntu VM
+  - Docker Engine + Compose plugin
+  - Caddy reverse proxy with host-based routing
+  - MongoDB container on the internal Docker network
+  - API, admin, and public services built locally on the VM
 
-Live deployment topology remains deferred even though local Docker artifacts now exist.
+## Deployment Orchestration
+
+- CI runs on GitHub Actions
+- deploy workflows run on GitHub Actions
+- GitHub does not build deploy images for hosted environments
+- GitHub streams a release archive over SSH to the target VM
+- the target VM runs `docker compose up -d --build`

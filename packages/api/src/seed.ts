@@ -16,7 +16,7 @@ export const ensureSeedData = async () => {
 
   const admin = await adminCollection.findOne({ username: env.ADMIN_USERNAME })
   if (!admin) {
-    const passwordHash = await bcrypt.hash(env.ADMIN_PASSWORD, 10)
+    const passwordHash = env.ADMIN_PASSWORD_HASH ?? (await bcrypt.hash(env.ADMIN_PASSWORD, 10))
     await adminCollection.insertOne({
       _id: "admin-primary",
       username: env.ADMIN_USERNAME,

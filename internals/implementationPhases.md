@@ -14,6 +14,8 @@ The repo now has:
 - primary admin and public product flows wired to backend APIs
 - root-level Docker Compose topology for local full-stack runtime
 - backend integration coverage and frontend end-to-end coverage that pass from root test commands
+- branch-based CI and hosted deploy workflows committed in repo
+- remote deploy assets for Caddy, Compose, release shipping, smoke checks, and rollback
 
 ## Phase Snapshot
 
@@ -69,17 +71,26 @@ Status: complete in repo terms
 
 ### Phase 7: Release and CI Hardening
 
+Status: complete in repo terms
+
+- CI workflow now validates test, build, and compose config
+- staging and production deploy workflows now exist with branch-based auto-deploy triggers
+- remote deploy assets now exist for Caddy, Compose, runtime env contracts, smoke checks, and rollback
+- hosted deployment model is now fixed as SSH-orchestrated VM-local builds
+
+### Phase 8: Hosted Environment Validation and Operations Hardening
+
 Status: next recommended phase
 
 Focus:
 
-- wire current tests into CI so regressions block merges automatically
-- decide production/staging image build and VM runtime conventions using the new Docker artifacts
-- expand scenario coverage beyond the current happy-path plus correction-path flows
-- document secrets, reverse proxy, and backup/restore expectations before live deployment work resumes
+- run the first real staging rollout on GCP and validate the runbook against reality
+- verify Caddy TLS issuance, DNS, and VM sizing under real deployment conditions
+- add operational hardening for backups, log access, and WhatsApp session persistence when implemented
+- widen test and smoke coverage for hosted-environment failure paths
 
 ## Important Notes
 
-- live deployment remains out of scope in repo terms even though local Docker runtime files now exist
+- live deployment implementation is now prepared in repo terms, but still requires real cloud provisioning and first rollout validation
 - automated testing is now in scope for local repo verification and is implemented
 - multiple lockfiles still exist in the monorepo, but explicit Turbopack root removed the earlier workspace-root warning blocker

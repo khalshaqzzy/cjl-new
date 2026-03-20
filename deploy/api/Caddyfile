@@ -1,0 +1,18 @@
+{
+	email {$CADDY_EMAIL}
+}
+
+{$ADMIN_DOMAIN} {
+	encode gzip zstd
+	reverse_proxy admin-web:3001
+}
+
+{$PUBLIC_DOMAIN} {
+	encode gzip zstd
+	reverse_proxy public-web:3000
+}
+
+{$API_DOMAIN} {
+	encode gzip zstd
+	reverse_proxy api:4000
+}

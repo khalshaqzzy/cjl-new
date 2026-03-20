@@ -67,7 +67,9 @@ Use these to resume work efficiently:
 - `phase6Kickoff.md`
   - completed reference for phase 6
 - `phase7Kickoff.md`
-  - active next-session kickoff for phase 7
+  - historical reference for phase 7
+- `phase8Kickoff.md`
+  - active next-session kickoff for hosted rollout validation
 
 Kickoff files are phase-specific session starters. Handoff files are broad session summaries.
 
@@ -108,7 +110,7 @@ If a session changes an existing accepted architecture decision, update the affe
 For most implementation sessions, read in this order:
 
 1. `internals/rules.md`
-2. `internals/sessionHandoff-2026-03-19.md` or the newest handoff file
+2. `internals/sessionHandoff-2026-03-21.md` or the newest handoff file
 3. `internals/implementationPhases.md`
 4. the active kickoff file for the next target phase
 5. `internals/deploymentGuide.md` if the session touches environments, secrets, deploys, VMs, Vercel, or Firebase

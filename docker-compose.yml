@@ -25,10 +25,12 @@ services:
       mongo:
         condition: service_healthy
     environment:
+      APP_ENV: local
       PORT: 4000
       MONGODB_URI: mongodb://cjl:cjl-password@mongo:27017/cjlaundry?authSource=admin
       SESSION_SECRET: cjlaundry-compose-secret
       SESSION_COOKIE_SECURE: "false"
+      TRUST_PROXY: "false"
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: admin123
       APP_TIMEZONE: Asia/Jakarta

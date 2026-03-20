@@ -28,7 +28,7 @@ This kickoff is now completed in repo terms. Keep it as historical reference for
 ## Recommended First Tasks
 
 1. Use this document only to understand why session, POS, void, leaderboard, and direct-status flows were the first stabilization targets.
-2. Continue with `phase7Kickoff.md` for the next recommended session start.
+2. Continue with `phase8Kickoff.md` for the next recommended session start.
 
 ## Known Non-Blocking Warnings
 

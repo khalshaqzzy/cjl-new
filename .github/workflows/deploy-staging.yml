@@ -1,0 +1,108 @@
+name: Deploy Staging
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: Git ref to deploy to staging
+        required: true
+        default: staging
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'staging')
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      APP_ENV: staging
+      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.event.workflow_run.head_sha }}
+      REMOTE_BASE_DIR: /opt/cjl/staging
+      REMOTE_RUNTIME_ENV: /opt/cjl/staging/shared/runtime.env
+      REMOTE_HOST: ${{ secrets.STAGING_VM_HOST }}
+      REMOTE_USER: ${{ secrets.STAGING_VM_USER }}
+      REMOTE_PORT: ${{ secrets.STAGING_VM_SSH_PORT != '' && secrets.STAGING_VM_SSH_PORT || '22' }}
+      ADMIN_DOMAIN: admin-staging.cjlaundry.site
+      PUBLIC_DOMAIN: staging.cjlaundry.site
+      API_DOMAIN: api-staging.cjlaundry.site
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+
+      - name: Resolve release SHA
+        run: echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_VM_SSH_PRIVATE_KEY }}
+
+      - name: Configure known hosts
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.STAGING_VM_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Prepare remote directories
+        run: |
+          ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "mkdir -p '$REMOTE_BASE_DIR/releases/$RELEASE_SHA' '$REMOTE_BASE_DIR/shared'"
+
+      - name: Upload release archive over SSH
+        run: |
+          git archive --format=tar "$RELEASE_SHA" \
+            | ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+              "tar -xf - -C '$REMOTE_BASE_DIR/releases/$RELEASE_SHA'"
+
+      - name: Render runtime env
+        run: |
+          cat > runtime.env <<EOF
+          APP_ENV=staging
+          COMPOSE_PROJECT_NAME=cjl-staging
+          SHARED_DIR=/opt/cjl/staging/shared
+          ADMIN_DOMAIN=$ADMIN_DOMAIN
+          PUBLIC_DOMAIN=$PUBLIC_DOMAIN
+          API_DOMAIN=$API_DOMAIN
+          CADDY_EMAIL=${{ secrets.STAGING_CADDY_EMAIL }}
+          APP_TIMEZONE=Asia/Jakarta
+          MONGO_ROOT_USERNAME=${{ secrets.STAGING_MONGO_ROOT_USERNAME }}
+          MONGO_ROOT_PASSWORD=${{ secrets.STAGING_MONGO_ROOT_PASSWORD }}
+          MONGO_DATABASE=${{ secrets.STAGING_MONGO_DATABASE }}
+          SESSION_SECRET=${{ secrets.STAGING_SESSION_SECRET }}
+          ADMIN_BOOTSTRAP_USERNAME=${{ secrets.STAGING_ADMIN_BOOTSTRAP_USERNAME }}
+          ADMIN_BOOTSTRAP_PASSWORD_HASH=${{ secrets.STAGING_ADMIN_BOOTSTRAP_PASSWORD_HASH }}
+          WA_FAIL_MODE=never
+          EOF
+
+      - name: Upload runtime env
+        run: |
+          cat runtime.env | ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "cat > '$REMOTE_RUNTIME_ENV'"
+
+      - name: Deploy on VM
+        run: |
+          ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "bash '$REMOTE_BASE_DIR/releases/$RELEASE_SHA/deploy/scripts/remote-deploy.sh' \
+             '$APP_ENV' '$RELEASE_SHA' '$REMOTE_BASE_DIR' '$REMOTE_RUNTIME_ENV'"
+
+      - name: Smoke-check staging
+        run: |
+          bash deploy/scripts/smoke-check.sh \
+            "https://$API_DOMAIN/health" \
+            "https://$API_DOMAIN/ready" \
+            "https://$ADMIN_DOMAIN" \
+            "https://$PUBLIC_DOMAIN"

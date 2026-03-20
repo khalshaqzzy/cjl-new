@@ -1,0 +1,111 @@
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      admin-web:
+        condition: service_healthy
+      public-web:
+        condition: service_healthy
+    environment:
+      CADDY_EMAIL: ${CADDY_EMAIL}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/api/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${SHARED_DIR}/caddy-data:/data
+      - ${SHARED_DIR}/caddy-config:/config
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@127.0.0.1:27017/admin", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - ${SHARED_DIR}/mongo-data:/data/db
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV}
+      PORT: 4000
+      MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DATABASE}?authSource=admin
+      SESSION_SECRET: ${SESSION_SECRET}
+      SESSION_COOKIE_SECURE: "true"
+      TRUST_PROXY: "1"
+      ADMIN_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME}
+      ADMIN_PASSWORD_HASH: ${ADMIN_BOOTSTRAP_PASSWORD_HASH}
+      APP_TIMEZONE: ${APP_TIMEZONE}
+      ADMIN_ORIGIN: https://${ADMIN_DOMAIN}
+      PUBLIC_ORIGIN: https://${PUBLIC_DOMAIN}
+      API_ORIGIN: https://${API_DOMAIN}
+      WA_FAIL_MODE: ${WA_FAIL_MODE}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  admin-web:
+    build:
+      context: .
+      dockerfile: app/admin-web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  public-web:
+    build:
+      context: .
+      dockerfile: app/public-web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
