@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import type { PublicDashboardResponse } from '@cjl/contracts'
 import { PortalShell } from '@/components/public/portal-shell'
-import { getStatusColor, getStatusLabel } from '@/lib/mock-data'
 import { publicApi } from '@/lib/api'
+import { getStatusColor, getStatusLabel } from '@/lib/presenters'
 import {
   ArrowRight,
   CheckCircle2,
@@ -125,6 +125,7 @@ function StampHeroCard({
 export default function PortalDashboard() {
   const [mounted, setMounted] = useState(false)
   const [dashboard, setDashboard] = useState<PublicDashboardResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
   useEffect(() => {
@@ -139,6 +140,7 @@ export default function PortalDashboard() {
         setLoadError("")
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat portal"))
+      .finally(() => setIsLoading(false))
   }, [])
 
   const session = dashboard?.session ?? null
@@ -192,7 +194,14 @@ export default function PortalDashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          {isLoading && (
+            <div className="rounded-2xl border border-line-soft bg-white px-4 py-5 text-sm text-text-muted">
+              Memuat portal pelanggan...
+            </div>
+          )}
+
+          {!isLoading && summaryCards.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
             {summaryCards.map((card, index) => {
               const Icon = iconMap[card.icon]
               return (
@@ -209,9 +218,10 @@ export default function PortalDashboard() {
                 </div>
               )
             })}
-          </div>
+            </div>
+          )}
 
-          {activeOrders.length > 0 && (
+          {!isLoading && activeOrders.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-display text-base font-bold text-text-strong flex items-center gap-2">
@@ -251,6 +261,13 @@ export default function PortalDashboard() {
             </div>
           )}
 
+          {!isLoading && activeOrders.length === 0 && (
+            <div className="rounded-2xl border border-line-soft bg-white px-5 py-6">
+              <h2 className="font-display text-base font-bold text-text-strong">Order Aktif</h2>
+              <p className="mt-1 text-sm text-text-muted">Saat ini belum ada order aktif yang perlu dipantau.</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             {[
               { href: '/portal/stamp', icon: Star, label: 'Stamp & Reward', sub: `${stampBalance.eligibleFreeWashers}x gratis tersedia`, primary: true },
@@ -272,7 +289,7 @@ export default function PortalDashboard() {
             ))}
           </div>
 
-          {monthlySummary && (
+          {!isLoading && monthlySummary && (
             <div className="bg-white rounded-2xl p-5 border border-line-soft">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-display text-base font-bold text-text-strong">Ringkasan Bulan Ini</h2>
@@ -308,6 +325,13 @@ export default function PortalDashboard() {
                   <p className="mt-1 text-xl font-bold text-text-strong">{monthlySummary.freeWasherUnitsUsed}</p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {!isLoading && !monthlySummary && (
+            <div className="bg-white rounded-2xl p-5 border border-line-soft">
+              <h2 className="font-display text-base font-bold text-text-strong">Ringkasan Bulan Ini</h2>
+              <p className="mt-1 text-sm text-text-muted">Ringkasan bulan ini belum tersedia.</p>
             </div>
           )}
         </div>

@@ -12,8 +12,9 @@ Purpose: condensed next-work inventory after deployment workflow implementation
 ## Lower Priority Follow-Ups
 
 1. Add a real WhatsApp adapter on top of the existing outbox flow, including persisted session handling and operational reconnect visibility.
-2. Review whether archived leaderboard snapshot lifecycle needs additional operator visibility in admin UI.
+2. Review whether archived leaderboard snapshot lifecycle needs additional operator visibility in admin UI beyond the current top-customer/reporting improvements.
 3. Decide whether frontend images should stay `next start` based or move to standalone output for leaner hosted runtime images.
+4. Decide whether the frozen landing page should later be brought into stricter PRD wording parity or remain a deliberate marketing exception.
 
 ## Explicitly Out Of Scope From This Session
 

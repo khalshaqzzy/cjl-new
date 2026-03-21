@@ -88,6 +88,7 @@ function ServicePriceCard({
 export default function SettingsPage() {
   const [laundryName, setLaundryName] = useState("")
   const [laundryPhone, setLaundryPhone] = useState("")
+  const [publicContactPhone, setPublicContactPhone] = useState("")
   const [laundryAddress, setLaundryAddress] = useState("")
   const [services, setServices] = useState<ServiceSetting[]>([])
   const [publicWhatsapp, setPublicWhatsapp] = useState("")
@@ -102,6 +103,7 @@ export default function SettingsPage() {
   const [initialState, setInitialState] = useState<{
     laundryName: string
     laundryPhone: string
+    publicContactPhone: string
     laundryAddress: string
     publicWhatsapp: string
     operatingHours: string
@@ -112,12 +114,15 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
+  const [saveError, setSaveError] = useState("")
+  const [saveSuccess, setSaveSuccess] = useState("")
 
   useEffect(() => {
     adminApi.getSettings()
       .then((payload) => {
         setLaundryName(payload.business.laundryName)
         setLaundryPhone(payload.business.laundryPhone)
+        setPublicContactPhone(payload.business.publicContactPhone)
         setLaundryAddress(payload.business.address)
         setPublicWhatsapp(payload.business.publicWhatsapp)
         setOperatingHours(payload.business.operatingHours)
@@ -126,6 +131,7 @@ export default function SettingsPage() {
         setInitialState({
           laundryName: payload.business.laundryName,
           laundryPhone: payload.business.laundryPhone,
+          publicContactPhone: payload.business.publicContactPhone,
           laundryAddress: payload.business.address,
           publicWhatsapp: payload.business.publicWhatsapp,
           operatingHours: payload.business.operatingHours,
@@ -149,30 +155,45 @@ export default function SettingsPage() {
   }
 
   const handleSave = async () => {
+    if (!laundryName.trim() || !laundryPhone.trim() || !publicContactPhone.trim() || !publicWhatsapp.trim() || !operatingHours.trim() || !laundryAddress.trim()) {
+      setSaveError("Lengkapi seluruh profil bisnis sebelum menyimpan.")
+      setSaveSuccess("")
+      return
+    }
+
     setIsSaving(true)
-    await adminApi.updateSettings({
-      business: {
+    setSaveError("")
+    setSaveSuccess("")
+    try {
+      await adminApi.updateSettings({
+        business: {
+          laundryName,
+          laundryPhone,
+          publicContactPhone,
+          publicWhatsapp,
+          address: laundryAddress,
+          operatingHours,
+        },
+        services,
+        messageTemplates,
+      })
+      setInitialState({
         laundryName,
         laundryPhone,
-        publicContactPhone: laundryPhone,
+        publicContactPhone,
+        laundryAddress,
         publicWhatsapp,
-        address: laundryAddress,
         operatingHours,
-      },
-      services,
-      messageTemplates,
-    })
-    setInitialState({
-      laundryName,
-      laundryPhone,
-      laundryAddress,
-      publicWhatsapp,
-      operatingHours,
-      services,
-      messageTemplates,
-    })
-    setIsSaving(false)
-    setHasChanges(false)
+        services,
+        messageTemplates,
+      })
+      setHasChanges(false)
+      setSaveSuccess("Pengaturan berhasil disimpan.")
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Gagal menyimpan pengaturan")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -191,6 +212,18 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {saveError && (
+          <div className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+            {saveError}
+          </div>
+        )}
+
+        {saveSuccess && (
+          <div className="rounded-xl border border-success/20 bg-success-bg px-4 py-3 text-sm text-success">
+            {saveSuccess}
+          </div>
+        )}
+
         {/* Business Profile */}
         <section className="space-y-4">
           <div className="flex items-center gap-2 pb-1 border-b border-line-base">
@@ -206,7 +239,8 @@ export default function SettingsPage() {
             <CardContent className="p-5 space-y-4">
               {[
                 { label: "Nama Laundry", value: laundryName, setter: setLaundryName, type: "text", placeholder: "Nama laundry" },
-                { label: "Nomor Telepon", value: laundryPhone, setter: setLaundryPhone, type: "tel", placeholder: "+62 xxx" },
+                { label: "Nomor Telepon Laundry", value: laundryPhone, setter: setLaundryPhone, type: "tel", placeholder: "+62 xxx" },
+                { label: "Kontak Publik", value: publicContactPhone, setter: setPublicContactPhone, type: "tel", placeholder: "+62 xxx" },
                 { label: "Alamat", value: laundryAddress, setter: setLaundryAddress, type: "text", placeholder: "Alamat lengkap" },
                 { label: "WhatsApp Publik", value: publicWhatsapp, setter: setPublicWhatsapp, type: "text", placeholder: "628xxxx" },
                 { label: "Jam Operasional", value: operatingHours, setter: setOperatingHours, type: "text", placeholder: "Senin - Minggu, 07:00 - 22:00" },
@@ -351,10 +385,13 @@ export default function SettingsPage() {
                   setServices(initialState.services)
                   setLaundryName(initialState.laundryName)
                   setLaundryPhone(initialState.laundryPhone)
+                  setPublicContactPhone(initialState.publicContactPhone)
                   setLaundryAddress(initialState.laundryAddress)
                   setPublicWhatsapp(initialState.publicWhatsapp)
                   setOperatingHours(initialState.operatingHours)
                   setMessageTemplates(initialState.messageTemplates)
+                  setSaveError("")
+                  setSaveSuccess("")
                   setHasChanges(false)
                 }}
               >

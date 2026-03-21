@@ -135,7 +135,13 @@ export function AdminShell({
   }, [router])
 
   if (!isSessionChecked) {
-    return null
+    return (
+      <div className="min-h-screen bg-bg-canvas flex items-center justify-center px-6">
+        <div className="rounded-xl border border-line-base bg-bg-surface px-5 py-4 text-sm text-text-muted shadow-card">
+          Memeriksa sesi admin...
+        </div>
+      </div>
+    )
   }
 
   const handleLogout = async () => {
@@ -182,10 +188,11 @@ export function AdminShell({
           <button
             type="button"
             onClick={handleLogout}
+            disabled={isLoggingOut}
             className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-muted hover:bg-danger-bg hover:text-danger transition-all"
           >
             {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-            <span>Keluar</span>
+            <span>{isLoggingOut ? "Keluar..." : "Keluar"}</span>
           </button>
         </div>
       </aside>
@@ -233,10 +240,11 @@ export function AdminShell({
                   <button
                     type="button"
                     onClick={handleLogout}
+                    disabled={isLoggingOut}
                     className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-muted hover:bg-danger-bg hover:text-danger transition-all"
                   >
                     {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-                    <span>Keluar</span>
+                    <span>{isLoggingOut ? "Keluar..." : "Keluar"}</span>
                   </button>
                 </nav>
               </SheetContent>

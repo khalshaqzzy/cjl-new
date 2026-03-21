@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Shirt, Eye, EyeOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isCheckingSession, setIsCheckingSession] = useState(true)
   const [error, setError] = useState("")
+
+  useEffect(() => {
+    adminApi
+      .getSession()
+      .then((payload) => {
+        if (payload.authenticated) {
+          router.replace("/admin")
+          return
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setIsCheckingSession(false))
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -114,6 +128,7 @@ export default function LoginPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Masukkan username"
+                disabled={isLoading || isCheckingSession}
                 className={cn(
                   "h-11 rounded-lg border-line-base bg-bg-subtle",
                   "placeholder:text-text-placeholder",
@@ -135,6 +150,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Masukkan password"
+                  disabled={isLoading || isCheckingSession}
                   className={cn(
                     "h-11 rounded-lg border-line-base bg-bg-subtle pr-11",
                     "placeholder:text-text-placeholder",
@@ -156,13 +172,13 @@ export default function LoginPage() {
             <Button
               type="submit"
               data-testid="admin-login-submit"
-              disabled={isLoading}
+              disabled={isLoading || isCheckingSession}
               className="w-full h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors"
             >
-              {isLoading ? (
+              {isLoading || isCheckingSession ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Memproses...
+                  {isCheckingSession ? "Memeriksa sesi..." : "Memproses..."}
                 </>
               ) : (
                 "Masuk"

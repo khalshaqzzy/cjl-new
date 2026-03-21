@@ -95,60 +95,79 @@ export default function PelangganPage() {
   const [customers, setCustomers] = useState<CustomerSearchResult[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
+  const [createMessage, setCreateMessage] = useState("")
   const createCustomerKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    adminApi.listCustomers()
-      .then((payload) => {
-        setCustomers(payload)
-        setLoadError("")
-      })
-      .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat pelanggan"))
-      .finally(() => setIsLoading(false))
-  }, [])
+    let active = true
+    setIsLoading(true)
+
+    const timer = window.setTimeout(() => {
+      adminApi.listCustomers(searchQuery.trim())
+        .then((payload) => {
+          if (!active) {
+            return
+          }
+
+          setCustomers(payload)
+          setLoadError("")
+        })
+        .catch((error) => {
+          if (!active) {
+            return
+          }
+
+          setLoadError(error instanceof Error ? error.message : "Gagal memuat pelanggan")
+        })
+        .finally(() => {
+          if (active) {
+            setIsLoading(false)
+          }
+        })
+    }, searchQuery.trim() ? 250 : 0)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [searchQuery])
 
   const filteredCustomers = useMemo(() => {
     let result = customers
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      result = result.filter(
-        (c) =>
-          c.name.toLowerCase().includes(query) || c.phone.includes(query)
-      )
-    }
-
-    // Apply category filter
     switch (filter) {
       case "recent":
-        result = result.filter((c) =>
-          c.recentActivityAt?.includes("jam") ||
-          c.recentActivityAt?.includes("menit") ||
-          c.recentActivityAt === "Kemarin"
-        )
+        result = [...result].sort((left, right) => right.createdAtIso.localeCompare(left.createdAtIso))
         break
       case "high_points":
-        result = result.filter((c) => c.currentPoints >= 50)
+        result = result.filter((c) => c.currentPoints >= 10).sort((left, right) => right.currentPoints - left.currentPoints)
         break
       case "active_orders":
-        result = result.filter((c) => c.activeOrderCount > 0)
+        result = result
+          .filter((c) => c.activeOrderCount > 0)
+          .sort((left, right) => right.activeOrderCount - left.activeOrderCount || (right.lastActivityAtIso ?? "").localeCompare(left.lastActivityAtIso ?? ""))
         break
+      default:
+        result = [...result].sort((left, right) => (right.lastActivityAtIso ?? right.createdAtIso).localeCompare(left.lastActivityAtIso ?? left.createdAtIso))
     }
 
     return result
-  }, [customers, searchQuery, filter])
+  }, [customers, filter])
 
   const handleCreateCustomer = async () => {
     setIsCreating(true)
     createCustomerKeyRef.current ||= crypto.randomUUID()
-    const result = await adminApi.createCustomer(newCustomerName, newCustomerPhone, createCustomerKeyRef.current)
-    setCustomers((prev) => [result.customer, ...prev.filter((item) => item.customerId !== result.customer.customerId)])
-    setIsCreating(false)
-    setShowNewCustomer(false)
-    setNewCustomerName("")
-    setNewCustomerPhone("")
-    createCustomerKeyRef.current = null
+    try {
+      const result = await adminApi.createCustomer(newCustomerName, newCustomerPhone, createCustomerKeyRef.current)
+      setCustomers((prev) => [result.customer, ...prev.filter((item) => item.customerId !== result.customer.customerId)])
+      setCreateMessage(result.duplicate ? "Nomor HP sudah terdaftar. Pelanggan yang ada dipilih kembali." : "Pelanggan baru berhasil didaftarkan.")
+      setShowNewCustomer(false)
+      setNewCustomerName("")
+      setNewCustomerPhone("")
+      createCustomerKeyRef.current = null
+    } finally {
+      setIsCreating(false)
+    }
   }
 
   return (
@@ -167,6 +186,12 @@ export default function PelangganPage() {
       }
     >
       <div className="px-4 py-6 lg:px-6 space-y-6">
+        {createMessage && (
+          <div className="rounded-xl border border-success/20 bg-success-bg px-4 py-3 text-sm text-success">
+            {createMessage}
+          </div>
+        )}
+
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-muted" />

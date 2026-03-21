@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isCheckingSession, setIsCheckingSession] = useState(true)
   const [error, setError] = useState('')
   const [focusedField, setFocusedField] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
@@ -26,6 +27,19 @@ export default function LoginPage() {
     const t = setTimeout(() => setMounted(true), 80)
     return () => clearTimeout(t)
   }, [])
+
+  useEffect(() => {
+    publicApi
+      .getSession()
+      .then((payload) => {
+        if (payload.authenticated && payload.session) {
+          router.replace('/portal')
+          return
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setIsCheckingSession(false))
+  }, [router])
 
   // Card tilt on mouse move
   useEffect(() => {
@@ -144,6 +158,7 @@ export default function LoginPage() {
                     placeholder="08xxxxxxxxxx"
                     value={phone}
                     onChange={e => setPhone(e.target.value)}
+                    disabled={isLoading || isCheckingSession}
                     onFocus={() => setFocusedField('phone')}
                     onBlur={() => setFocusedField(null)}
                     className="w-full bg-transparent pl-11 pr-4 py-3.5 text-text-strong placeholder-text-muted/50 text-sm outline-none"
@@ -167,6 +182,7 @@ export default function LoginPage() {
                     placeholder="Nama sesuai pendaftaran"
                     value={name}
                     onChange={e => setName(e.target.value)}
+                    disabled={isLoading || isCheckingSession}
                     onFocus={() => setFocusedField('name')}
                     onBlur={() => setFocusedField(null)}
                     className="w-full bg-transparent pl-11 pr-4 py-3.5 text-text-strong placeholder-text-muted/50 text-sm outline-none"
@@ -186,17 +202,17 @@ export default function LoginPage() {
               <button
                 type="submit"
                 data-testid="public-login-submit"
-                disabled={isLoading}
+                disabled={isLoading || isCheckingSession}
                 className="relative w-full py-3.5 rounded-xl font-display font-semibold text-white overflow-hidden group transition-all duration-200 hover:shadow-[0_8px_24px_rgba(240,78,148,0.35)] disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-primary mt-2"
               >
                 <span className="absolute inset-0 overflow-hidden pointer-events-none">
                   <span className="absolute top-0 bottom-0 w-12 bg-white/15 blur-sm -translate-x-full group-hover:translate-x-[500%] transition-transform duration-700 skew-x-[-15deg]" />
                 </span>
                 <span className="relative flex items-center justify-center gap-2">
-                  {isLoading ? (
+                  {isLoading || isCheckingSession ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Memproses...
+                      {isCheckingSession ? 'Memeriksa sesi...' : 'Memproses...'}
                     </>
                   ) : (
                     <>

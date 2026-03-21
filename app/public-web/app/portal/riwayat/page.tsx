@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { OrderHistoryItem } from '@cjl/contracts'
 import { PortalShell } from '@/components/public/portal-shell'
-import { getStatusColor, getStatusLabel } from '@/lib/mock-data'
 import { publicApi } from '@/lib/api'
+import { getStatusColor, getStatusLabel } from '@/lib/presenters'
 import { ArrowRight, CheckCircle2, Clock, Package, RotateCcw, Star, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +29,8 @@ export default function RiwayatPage() {
   const [mounted, setMounted] = useState(false)
   const [orders, setOrders] = useState<OrderHistoryItem[]>([])
   const [session, setSession] = useState<{ customerId: string; name: string; phone: string } | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 60)
@@ -36,8 +38,19 @@ export default function RiwayatPage() {
   }, [])
 
   useEffect(() => {
-    publicApi.listOrders().then(setOrders).catch(() => undefined)
-    publicApi.getSession().then((payload) => setSession(payload.session)).catch(() => undefined)
+    Promise.all([
+      publicApi.listOrders(),
+      publicApi.getSession(),
+    ])
+      .then(([nextOrders, payload]) => {
+        setOrders(nextOrders)
+        setSession(payload.session)
+        setLoadError('')
+      })
+      .catch((error) => {
+        setLoadError(error instanceof Error ? error.message : 'Gagal memuat riwayat order')
+      })
+      .finally(() => setIsLoading(false))
   }, [])
 
   const filteredOrders = orders.filter((order) => activeFilter === 'Semua' || order.status === activeFilter)
@@ -99,7 +112,30 @@ export default function RiwayatPage() {
         </div>
 
         <div className="px-4 md:px-6 max-w-4xl mx-auto pt-4 pb-8">
-          {filteredOrders.length === 0 ? (
+          {isLoading ? (
+            <div className={`text-center py-16 bg-white rounded-2xl border border-line-soft mt-2 transition-all duration-500 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <div className="w-16 h-16 rounded-2xl bg-pink-cloud flex items-center justify-center mx-auto mb-4">
+                <Clock className="w-8 h-8 text-pink-hot animate-pulse" />
+              </div>
+              <h3 className="font-display font-bold text-text-strong mb-1">Memuat riwayat</h3>
+              <p className="text-sm text-text-muted">Menyiapkan daftar order Anda.</p>
+            </div>
+          ) : loadError ? (
+            <div className={`text-center py-16 bg-white rounded-2xl border border-danger/20 mt-2 transition-all duration-500 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+              <div className="w-16 h-16 rounded-2xl bg-danger/10 flex items-center justify-center mx-auto mb-4">
+                <XCircle className="w-8 h-8 text-danger" />
+              </div>
+              <h3 className="font-display font-bold text-text-strong mb-1">Riwayat belum tersedia</h3>
+              <p className="text-sm text-text-muted mb-4">{loadError}</p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center justify-center rounded-full bg-gradient-primary px-4 py-2 text-sm font-semibold text-white"
+              >
+                Coba Lagi
+              </button>
+            </div>
+          ) : filteredOrders.length === 0 ? (
             <div className={`text-center py-16 bg-white rounded-2xl border border-line-soft mt-2 transition-all duration-500 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <div className="w-16 h-16 rounded-2xl bg-pink-cloud flex items-center justify-center mx-auto mb-4">
                 <Package className="w-8 h-8 text-pink-hot" />

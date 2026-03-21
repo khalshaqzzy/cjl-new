@@ -32,6 +32,7 @@ export function PortalShell({ children, title, showBack, backHref = '/portal', s
   const router = useRouter()
   const [resolvedSession, setResolvedSession] = useState(session)
   const [isSessionChecked, setIsSessionChecked] = useState(Boolean(session))
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   useEffect(() => {
     if (session) {
@@ -57,6 +58,7 @@ export function PortalShell({ children, title, showBack, backHref = '/portal', s
   }, [router, session])
 
   const handleLogout = async () => {
+    setIsLoggingOut(true)
     try {
       await publicApi.logout()
     } finally {
@@ -65,7 +67,13 @@ export function PortalShell({ children, title, showBack, backHref = '/portal', s
   }
 
   if (!isSessionChecked) {
-    return null
+    return (
+      <div className="min-h-screen bg-bg-soft flex items-center justify-center px-6">
+        <div className="rounded-3xl border border-line-soft bg-white px-6 py-5 text-sm text-text-muted shadow-sm">
+          Memeriksa sesi pelanggan...
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -121,7 +129,7 @@ export function PortalShell({ children, title, showBack, backHref = '/portal', s
         <div className="p-2 lg:p-4 border-t border-line-soft">
           <div className="flex items-center gap-3 px-3 py-2 mb-1">
             <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center flex-shrink-0 shadow-md shadow-pink-hot/20">
-              <span className="font-bold text-white text-xs">{session?.name?.charAt(0) ?? 'C'}</span>
+              <span className="font-bold text-white text-xs">{resolvedSession?.name?.charAt(0) ?? 'C'}</span>
             </div>
             <div className="hidden lg:block flex-1 min-w-0">
               <p className="font-semibold text-xs text-text-strong truncate">{resolvedSession?.name ?? 'Customer'}</p>
@@ -131,10 +139,11 @@ export function PortalShell({ children, title, showBack, backHref = '/portal', s
           <button
             type="button"
             onClick={handleLogout}
+            disabled={isLoggingOut}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-text-muted hover:text-danger hover:bg-danger/8 transition-all duration-200"
           >
             <LogOut className="w-4 h-4 flex-shrink-0" />
-            <span className="hidden lg:block font-medium text-xs">Keluar</span>
+            <span className="hidden lg:block font-medium text-xs">{isLoggingOut ? 'Keluar...' : 'Keluar'}</span>
           </button>
         </div>
       </aside>

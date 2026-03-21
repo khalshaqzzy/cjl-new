@@ -18,7 +18,7 @@ import { env } from "../env.js"
 import { calculateOrderPreview } from "../lib/calculator.js"
 import { formatCurrency } from "../lib/formatters.js"
 import { createId, createOpaqueToken, createOrderCode } from "../lib/ids.js"
-import { rebuildArchivedLeaderboard } from "../lib/leaderboard.js"
+import { buildMaskedAlias, rebuildArchivedLeaderboard } from "../lib/leaderboard.js"
 import { normalizeName, normalizePhone } from "../lib/normalization.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel, monthKeyFromIso, nowJakarta } from "../lib/time.js"
 import type {
@@ -180,6 +180,7 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
   const activeOrders = orders.filter((order) => order.status === "Active")
   const newCustomers = customers.filter((customer) => isWithinWindow(customer.createdAt, window)).length
   const manualPointEntries = pointLedger.filter((entry) => entry.tone === "adjustment" && isWithinWindow(entry.createdAt, window))
+  const customerPointBalanceMap = new Map(customers.map((customer) => [customer._id, customer.currentPoints]))
 
   const topServiceUsageMap = new Map<
     AdminDashboardResponse["summary"]["topServiceUsage"][number]["serviceCode"],
@@ -195,6 +196,25 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
       current.usageCount += item.quantity
       topServiceUsageMap.set(item.serviceCode, current)
     }
+  }
+
+  const topCustomerMap = new Map<
+    string,
+    AdminDashboardResponse["topCustomers"][number]
+  >()
+
+  for (const order of confirmedOrders) {
+    const current = topCustomerMap.get(order.customerId) ?? {
+      customerId: order.customerId,
+      maskedName: buildMaskedAlias(order.customerName),
+      confirmedOrders: 0,
+      earnedStamps: 0,
+      currentPoints: customerPointBalanceMap.get(order.customerId)
+    }
+
+    current.confirmedOrders += 1
+    current.earnedStamps += order.earnedStamps
+    topCustomerMap.set(order.customerId, current)
   }
 
   const summary: AdminDashboardResponse["summary"] = {
@@ -220,6 +240,13 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
   return {
     metrics: buildDashboardMetrics(summary),
     summary,
+    topCustomers: [...topCustomerMap.values()]
+      .sort((left, right) =>
+        right.confirmedOrders - left.confirmedOrders ||
+        right.earnedStamps - left.earnedStamps ||
+        left.maskedName.localeCompare(right.maskedName)
+      )
+      .slice(0, 5),
     activeOrders: activeOrders
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .slice(0, 8)
@@ -229,6 +256,7 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
         customerName: order.customerName,
         phone: order.customerPhone,
         createdAtLabel: formatRelativeLabel(order.createdAt),
+        createdAtIso: order.createdAt,
         weightKgLabel: formatWeightLabel(order.weightKg),
         serviceSummary: order.items.map((item) => `${item.quantity} ${item.serviceLabel}`).join(", "),
         earnedStamps: order.earnedStamps,
@@ -642,6 +670,7 @@ export const listActiveOrders = async () => {
     customerName: order.customerName,
     phone: order.customerPhone,
     createdAtLabel: formatRelativeLabel(order.createdAt),
+    createdAtIso: order.createdAt,
     weightKgLabel: formatWeightLabel(order.weightKg),
     serviceSummary: order.items.map((item) => `${item.quantity} ${item.serviceLabel}`).join(", "),
     earnedStamps: order.earnedStamps,

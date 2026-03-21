@@ -11,19 +11,30 @@ export default function PortalLeaderboardPage() {
   const [months, setMonths] = useState<Array<{ key: string; label: string; isCurrent: boolean }>>([])
   const [selectedMonth, setSelectedMonth] = useState('')
   const [session, setSession] = useState<{ customerId: string; name: string; phone: string } | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
-    publicApi.getLeaderboard(selectedMonth || undefined).then((payload) => {
-      setRows(payload.rows)
-      setMonths(payload.availableMonths)
-      if (!selectedMonth) {
-        setSelectedMonth(payload.availableMonths.find((month) => month.isCurrent)?.key ?? payload.availableMonths[0]?.key ?? '')
-      }
-    }).catch(() => undefined)
-    publicApi.getSession().then((payload) => setSession(payload.session)).catch(() => undefined)
+    setIsLoading(true)
+    Promise.all([
+      publicApi.getLeaderboard(selectedMonth || undefined),
+      publicApi.getSession(),
+    ])
+      .then(([payload, sessionPayload]) => {
+        setRows(payload.rows)
+        setMonths(payload.availableMonths)
+        setSession(sessionPayload.session)
+        if (!selectedMonth) {
+          setSelectedMonth(payload.availableMonths.find((month) => month.isCurrent)?.key ?? payload.availableMonths[0]?.key ?? '')
+        }
+        setLoadError('')
+      })
+      .catch((error) => setLoadError(error instanceof Error ? error.message : 'Gagal memuat leaderboard'))
+      .finally(() => setIsLoading(false))
   }, [selectedMonth])
 
   const top3 = rows.slice(0, 3)
+  const selectedMonthMeta = months.find((month) => month.key === selectedMonth)
 
   return (
     <PortalShell title="Leaderboard" session={session}>
@@ -32,6 +43,18 @@ export default function PortalLeaderboardPage() {
           <h1 className="font-display text-3xl font-bold text-text-strong">Leaderboard</h1>
           <p className="text-sm text-text-muted mt-1">Peringkat pelanggan paling aktif bulan ini.</p>
         </div>
+
+        {loadError && (
+          <div className="rounded-2xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+            {loadError}
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="rounded-2xl border border-line-soft bg-white px-4 py-5 text-sm text-text-muted">
+            Memuat leaderboard...
+          </div>
+        )}
 
         <div className="flex gap-2 flex-wrap">
           {months.map((month) => (
@@ -57,8 +80,17 @@ export default function PortalLeaderboardPage() {
           ))}
         </div>
 
+        {!isLoading && selectedMonthMeta && (
+          <div className="rounded-2xl border border-line-soft bg-white px-4 py-3 text-sm text-text-muted">
+            {selectedMonthMeta.isCurrent ? 'Bulan berjalan menampilkan Top 50 pelanggan.' : 'Bulan arsip menampilkan Top 20 pelanggan terbaik.'}
+          </div>
+        )}
+
         <div className="bg-white rounded-3xl border border-line-soft overflow-hidden">
           <div className="divide-y divide-line-soft">
+            {!isLoading && rows.length === 0 && (
+              <div className="p-5 text-sm text-text-muted">Belum ada data leaderboard untuk bulan ini.</div>
+            )}
             {rows.slice(3).map((row) => (
               <div key={`${row.rank}-${row.monthKey}`} className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-4">

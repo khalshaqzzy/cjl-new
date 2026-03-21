@@ -13,15 +13,19 @@ export default function PublicLeaderboardPage() {
   const [months, setMonths] = useState<Array<{ key: string; label: string; isCurrent: boolean }>>([])
   const [selectedMonth, setSelectedMonth] = useState('')
   const [laundryInfo, setLaundryInfo] = useState({ name: 'CJ Laundry', phone: '', whatsapp: '', address: '', operatingHours: '' })
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
+    setIsLoading(true)
     publicApi.getLeaderboard(selectedMonth || undefined).then((payload) => {
       setRows(payload.rows)
       setMonths(payload.availableMonths)
       if (!selectedMonth) {
         setSelectedMonth(payload.availableMonths.find((month) => month.isCurrent)?.key ?? payload.availableMonths[0]?.key ?? '')
       }
-    }).catch(() => undefined)
+      setLoadError('')
+    }).catch((error) => setLoadError(error instanceof Error ? error.message : 'Gagal memuat leaderboard')).finally(() => setIsLoading(false))
   }, [selectedMonth])
 
   useEffect(() => {
@@ -60,6 +64,18 @@ export default function PublicLeaderboardPage() {
             ))}
           </div>
 
+          {loadError && (
+            <div className="max-w-2xl mx-auto mb-8 rounded-2xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+              {loadError}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="max-w-2xl mx-auto mb-8 rounded-2xl border border-line-soft bg-white px-4 py-5 text-sm text-text-muted">
+              Memuat leaderboard...
+            </div>
+          )}
+
           <div className="max-w-3xl mx-auto mb-12 grid grid-cols-3 gap-4">
             {[Crown, Medal, Award].map((Icon, index) => (
               <div key={index} className={`rounded-3xl p-6 text-center ${index === 0 ? 'bg-text-strong text-white' : 'bg-white border border-line-soft'} ${index === 0 ? '' : 'mt-8'}`}>
@@ -72,12 +88,21 @@ export default function PublicLeaderboardPage() {
             ))}
           </div>
 
+          {!isLoading && currentMonth && (
+            <div className="max-w-2xl mx-auto mb-6 rounded-2xl border border-line-soft bg-white px-4 py-3 text-sm text-text-muted">
+              {currentMonth.isCurrent ? 'Bulan berjalan menampilkan Top 50 pelanggan.' : 'Bulan arsip menampilkan Top 20 pelanggan terbaik.'}
+            </div>
+          )}
+
           <div className="max-w-2xl mx-auto">
             <div className="bg-white rounded-3xl border border-line-soft overflow-hidden">
               <div className="p-5 border-b border-line-soft">
                 <h3 className="font-display text-lg font-semibold text-text-strong">{currentMonth?.label ?? selectedMonth}</h3>
               </div>
               <div className="divide-y divide-line-soft">
+                {!isLoading && rows.length === 0 && (
+                  <div className="p-5 text-sm text-text-muted">Belum ada data leaderboard untuk bulan ini.</div>
+                )}
                 {rest.map((row) => (
                   <div key={`${row.rank}-${row.monthKey}`} className="flex items-center justify-between p-4 hover:bg-bg-soft transition-colors">
                     <div className="flex items-center gap-4">

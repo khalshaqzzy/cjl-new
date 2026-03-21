@@ -66,6 +66,7 @@ export const mapNotification = (notification: NotificationDocument): Notificatio
   customerName: notification.customerName,
   destinationPhone: notification.destinationPhone,
   orderCode: notification.orderCode,
+  createdAtLabel: formatDateTime(notification.createdAt),
   renderStatus: notification.renderStatus,
   deliveryStatus: notification.deliveryStatus,
   latestFailureReason: notification.latestFailureReason,
@@ -381,7 +382,9 @@ export const mapCustomerSearch = (
   phone: customer.phone,
   currentPoints: customer.currentPoints,
   activeOrderCount,
-  recentActivityAt: latestOrderAt ? formatRelativeLabel(latestOrderAt) : undefined
+  recentActivityAt: latestOrderAt ? formatRelativeLabel(latestOrderAt) : undefined,
+  createdAtIso: customer.createdAt,
+  lastActivityAtIso: latestOrderAt
 })
 
 export const filterCustomersByQuery = <T extends { name: string; phone: string }>(

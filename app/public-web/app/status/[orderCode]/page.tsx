@@ -6,6 +6,7 @@ import type { DirectOrderStatus, LandingResponse } from '@cjl/contracts'
 import { FloatingHeader } from '@/components/public/floating-header'
 import { Footer } from '@/components/public/footer'
 import { publicApi } from '@/lib/api'
+import { getStatusLabel } from '@/lib/presenters'
 import { AlertCircle, ArrowLeft, Calendar, CheckCircle2, MessageCircle, Package, RotateCcw, Scale, Star, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -24,14 +25,17 @@ export default function DirectOrderStatusPage({ params }: Props) {
     operatingHours: '',
   })
   const [notFound, setNotFound] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    setIsLoading(true)
     publicApi.getDirectStatus(orderCode)
       .then((payload) => {
         setOrder(payload)
         setNotFound(false)
       })
       .catch(() => setNotFound(true))
+      .finally(() => setIsLoading(false))
   }, [orderCode])
 
   useEffect(() => {
@@ -59,6 +63,26 @@ export default function DirectOrderStatusPage({ params }: Props) {
                   Hubungi Kami
                 </a>
               </Button>
+            </div>
+          </div>
+        </main>
+        <Footer laundryInfo={laundryInfo} />
+      </div>
+    )
+  }
+
+  if (isLoading && !order && !notFound) {
+    return (
+      <div className="min-h-screen bg-bg-soft">
+        <FloatingHeader />
+        <main className="pt-24 pb-16">
+          <div className="container mx-auto px-4 max-w-lg">
+            <div className="bg-white rounded-3xl p-8 border border-line-soft text-center shadow-lg shadow-pink-hot/5">
+              <div className="w-20 h-20 rounded-full bg-pink-cloud flex items-center justify-center mx-auto mb-6">
+                <Package className="w-10 h-10 text-pink-hot animate-pulse" />
+              </div>
+              <h1 className="font-display text-2xl font-bold text-text-strong mb-3">Memuat Status Order</h1>
+              <p className="text-text-muted">Mohon tunggu sebentar.</p>
             </div>
           </div>
         </main>
@@ -102,7 +126,7 @@ export default function DirectOrderStatusPage({ params }: Props) {
               )}
             </div>
             <div data-testid="direct-status-badge" className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold mb-3 bg-pink-cloud text-pink-hot">
-              {order.status}
+              {getStatusLabel(order.status)}
             </div>
             <p data-testid="direct-status-order-code" className="font-display text-xl font-bold text-text-strong mb-2">{order.orderCode}</p>
           </div>
@@ -130,6 +154,17 @@ export default function DirectOrderStatusPage({ params }: Props) {
                     <span className="text-sm text-text-body">Selesai</span>
                   </div>
                   <span className="text-sm font-medium text-text-strong">{order.completedAtLabel}</span>
+                </div>
+              )}
+              {order.cancelledAtLabel && (
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-danger/10 flex items-center justify-center">
+                      <XCircle className="w-4 h-4 text-danger" />
+                    </div>
+                    <span className="text-sm text-text-body">Dibatalkan</span>
+                  </div>
+                  <span className="text-sm font-medium text-text-strong">{order.cancelledAtLabel}</span>
                 </div>
               )}
               <div className="flex items-center justify-between px-5 py-4">
@@ -178,6 +213,17 @@ export default function DirectOrderStatusPage({ params }: Props) {
               </div>
             </div>
           </div>
+
+          {order.cancellationSummary && (
+            <div className="bg-white rounded-2xl border border-danger/20 overflow-hidden mb-6">
+              <div className="px-5 py-4 border-b border-danger/10">
+                <h2 className="font-semibold text-text-strong">Alasan Pembatalan</h2>
+              </div>
+              <div className="px-5 py-4 text-sm text-text-body">
+                {order.cancellationSummary}
+              </div>
+            </div>
+          )}
 
           <div className="bg-gradient-primary rounded-2xl p-5 relative overflow-hidden">
             <div className="relative flex items-center justify-between gap-4">

@@ -175,6 +175,7 @@ export default function CustomerDetailPage() {
   const [activeTab, setActiveTab] = useState("orders")
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
+  const [feedback, setFeedback] = useState<{ tone: "success" | "danger"; message: string } | null>(null)
 
   const [showEditSheet, setShowEditSheet] = useState(false)
   const [editName, setEditName] = useState("")
@@ -218,29 +219,41 @@ export default function CustomerDetailPage() {
 
   const handleEditIdentity = async () => {
     setIsEditing(true)
-    if (customerId) {
-      const payload = await adminApi.updateCustomer(customerId, editName, editPhone)
-      setCustomer(payload.profile)
-      setPointLedger(payload.pointLedger)
-      setOrderHistory(payload.orderHistory)
+    try {
+      if (customerId) {
+        const payload = await adminApi.updateCustomer(customerId, editName, editPhone)
+        setCustomer(payload.profile)
+        setPointLedger(payload.pointLedger)
+        setOrderHistory(payload.orderHistory)
+        setFeedback({ tone: "success", message: "Identitas pelanggan berhasil diperbarui." })
+      }
+    } catch (error) {
+      setFeedback({ tone: "danger", message: error instanceof Error ? error.message : "Gagal memperbarui identitas pelanggan" })
+    } finally {
+      setIsEditing(false)
+      setShowEditSheet(false)
     }
-    setIsEditing(false)
-    setShowEditSheet(false)
   }
 
   const handleAddPoints = async () => {
     if (!addPointsAmount || !addPointsNote) return
     setIsAddingPoints(true)
-    if (customerId) {
-      const payload = await adminApi.addCustomerPoints(customerId, parseInt(addPointsAmount), addPointsNote)
-      setCustomer(payload.profile)
-      setPointLedger(payload.pointLedger)
-      setOrderHistory(payload.orderHistory)
+    try {
+      if (customerId) {
+        const payload = await adminApi.addCustomerPoints(customerId, parseInt(addPointsAmount), addPointsNote)
+        setCustomer(payload.profile)
+        setPointLedger(payload.pointLedger)
+        setOrderHistory(payload.orderHistory)
+        setFeedback({ tone: "success", message: "Poin manual berhasil ditambahkan." })
+      }
+    } catch (error) {
+      setFeedback({ tone: "danger", message: error instanceof Error ? error.message : "Gagal menambahkan poin manual" })
+    } finally {
+      setIsAddingPoints(false)
+      setShowAddPointsSheet(false)
+      setAddPointsAmount("")
+      setAddPointsNote("")
     }
-    setIsAddingPoints(false)
-    setShowAddPointsSheet(false)
-    setAddPointsAmount("")
-    setAddPointsNote("")
   }
 
   const handleVoidOrder = async () => {
@@ -249,13 +262,19 @@ export default function CustomerDetailPage() {
     }
 
     setIsVoiding(true)
-    await adminApi.voidOrder(selectedOrderForVoid.orderId, voidReason.trim(), notifyCustomerOnVoid)
-    await loadCustomerDetail()
-    setIsVoiding(false)
-    setShowVoidSheet(false)
-    setSelectedOrderForVoid(null)
-    setVoidReason("")
-    setNotifyCustomerOnVoid(true)
+    try {
+      await adminApi.voidOrder(selectedOrderForVoid.orderId, voidReason.trim(), notifyCustomerOnVoid)
+      await loadCustomerDetail()
+      setFeedback({ tone: "success", message: "Order berhasil dibatalkan." })
+    } catch (error) {
+      setFeedback({ tone: "danger", message: error instanceof Error ? error.message : "Gagal membatalkan order" })
+    } finally {
+      setIsVoiding(false)
+      setShowVoidSheet(false)
+      setSelectedOrderForVoid(null)
+      setVoidReason("")
+      setNotifyCustomerOnVoid(true)
+    }
   }
 
   const newPointsBalance = addPointsAmount && customer
@@ -303,6 +322,16 @@ export default function CustomerDetailPage() {
       }
     >
       <div className="px-4 py-5 lg:px-6 space-y-4 pb-24">
+        {feedback && (
+          <div className={cn(
+            "rounded-xl px-4 py-3 text-sm",
+            feedback.tone === "success"
+              ? "border border-success/20 bg-success-bg text-success"
+              : "border border-danger/20 bg-danger-bg text-danger"
+          )}>
+            {feedback.message}
+          </div>
+        )}
 
         {/* Profile Hero */}
         <Card className="rounded-xl border-line-base shadow-card bg-bg-surface overflow-hidden">

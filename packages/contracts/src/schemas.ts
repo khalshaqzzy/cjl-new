@@ -78,6 +78,8 @@ export const customerSearchResultSchema = z.object({
   currentPoints: z.number().int(),
   activeOrderCount: z.number().int(),
   recentActivityAt: z.string().optional(),
+  createdAtIso: z.string(),
+  lastActivityAtIso: z.string().optional(),
 })
 
 export const customerProfileSchema = z.object({
@@ -123,6 +125,7 @@ export const activeOrderCardSchema = z.object({
   customerName: z.string(),
   phone: z.string(),
   createdAtLabel: z.string(),
+  createdAtIso: z.string(),
   weightKgLabel: z.string(),
   serviceSummary: z.string(),
   earnedStamps: z.number().int(),
@@ -161,6 +164,7 @@ export const notificationRecordSchema = z.object({
   customerName: z.string(),
   destinationPhone: z.string(),
   orderCode: z.string().optional(),
+  createdAtLabel: z.string(),
   renderStatus: notificationRenderStatusSchema.optional(),
   deliveryStatus: notificationDeliveryStatusSchema,
   latestFailureReason: z.string().optional(),
@@ -294,6 +298,15 @@ export const adminDashboardResponseSchema = z.object({
       }),
     ),
   }),
+  topCustomers: z.array(
+    z.object({
+      customerId: z.string(),
+      maskedName: z.string(),
+      confirmedOrders: z.number().int(),
+      earnedStamps: z.number().int(),
+      currentPoints: z.number().int().optional(),
+    }),
+  ),
   activeOrders: z.array(activeOrderCardSchema),
   notifications: z.array(notificationRecordSchema),
 })

@@ -13,7 +13,7 @@ type LeaderboardRowInternal = {
 
 const db = () => getDatabase()
 
-const buildMaskedAlias = (name: string) => {
+export const buildMaskedAlias = (name: string) => {
   const primaryName = name.trim().split(/\s+/)[0] ?? "Pelanggan"
   if (primaryName.length <= 2) {
     return `${primaryName[0] ?? "P"}***`

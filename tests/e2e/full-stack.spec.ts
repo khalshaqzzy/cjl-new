@@ -57,11 +57,22 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await page.getByTestId("pos-confirm-order").click()
 
   await expect(page.getByText("Order Berhasil Dibuat!")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Detail Pelanggan" })).toBeVisible()
 
   const orderCode = (await page.getByTestId("pos-success-order-code").innerText()).trim()
   const { order, customer } = await waitForOrderRecord(orderCode)
 
   expect(customer?._id).toBeTruthy()
+
+  await page.getByRole("button", { name: "Order Baru" }).click()
+  await page.getByTestId("pos-open-create-customer").click()
+  await page.getByTestId("pos-create-customer-name").fill(customerName)
+  await page.getByTestId("pos-create-customer-phone").fill(customerPhone)
+  await page.getByTestId("pos-create-customer-submit").click()
+  await expect(page.getByTestId("pos-create-customer-feedback")).toContainText("Nomor HP sudah terdaftar")
+
+  await page.goto("http://127.0.0.1:3101/admin")
+  await expect(page.getByText("Pelanggan Teratas")).toBeVisible()
 
   const publicPage = await browser.newPage()
   await publicPage.goto("http://127.0.0.1:3100/login")
@@ -76,7 +87,7 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(publicPage.getByText(orderCode)).toBeVisible()
   await publicPage.getByText(orderCode).click()
   await expect(publicPage.getByRole("heading", { name: "Detail Order" }).first()).toBeVisible()
-  await expect(publicPage.getByText("Active")).toBeVisible()
+  await expect(publicPage.getByText("Aktif")).toBeVisible()
 
   await publicPage.goto("http://127.0.0.1:3100/portal")
   await expect(publicPage.getByRole("heading", { name: "Ringkasan Bulan Ini" })).toBeVisible()
@@ -86,7 +97,7 @@ test("admin and public frontends stay fully integrated through the backend", asy
   const directStatusPage = await browser.newPage()
   await directStatusPage.goto(`http://127.0.0.1:3100/status/${order.directToken}`)
   await expect(directStatusPage.getByTestId("direct-status-order-code")).toContainText(orderCode)
-  await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Active")
+  await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Aktif")
 
   await page.goto(`http://127.0.0.1:3101/admin/pelanggan/${customer?._id}`)
   await page.getByTestId(`void-order-${order._id}`).click()
@@ -99,10 +110,13 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await publicPage.goto("http://127.0.0.1:3100/portal/riwayat")
   await expect(publicPage.getByText(orderCode)).toBeVisible()
   await publicPage.getByText(orderCode).click()
-  await expect(publicPage.getByText("Cancelled")).toBeVisible()
+  await expect(publicPage.getByText("Dibatalkan", { exact: true }).last()).toBeVisible()
+  await expect(publicPage.getByText("Tanggal Dibatalkan")).toBeVisible()
+  await expect(publicPage.getByText("Pelanggan membatalkan order pada skenario e2e")).toBeVisible()
 
   await directStatusPage.reload()
-  await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Cancelled")
+  await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Dibatalkan")
+  await expect(directStatusPage.getByText("Alasan Pembatalan")).toBeVisible()
 
   await page.getByRole("button", { name: "Keluar" }).click()
   await expect(page).toHaveURL("http://127.0.0.1:3101/")

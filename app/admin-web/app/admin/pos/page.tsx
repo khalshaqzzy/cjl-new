@@ -187,6 +187,7 @@ function StepCustomer({
   const [newName, setNewName] = useState("")
   const [newPhone, setNewPhone] = useState("")
   const [isCreating, setIsCreating] = useState(false)
+  const [createMessage, setCreateMessage] = useState("")
   const createCustomerKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -228,6 +229,7 @@ function StepCustomer({
       createCustomerKeyRef.current ||= crypto.randomUUID()
       const response = await adminApi.createCustomer(newName, newPhone, createCustomerKeyRef.current)
       onSelect(response.customer)
+      setCreateMessage(response.duplicate ? "Nomor HP sudah terdaftar. Pelanggan yang ada dipilih kembali." : "Pelanggan baru berhasil didaftarkan dan dipilih.")
       setShowNew(false)
       setNewName("")
       setNewPhone("")
@@ -242,6 +244,11 @@ function StepCustomer({
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 px-4 py-5 space-y-4">
+        {createMessage && (
+          <div data-testid="pos-create-customer-feedback" className="rounded-lg border border-success/20 bg-success-bg px-3 py-2 text-xs text-success">
+            {createMessage}
+          </div>
+        )}
         {selectedCustomer ? (
           <div className="space-y-4">
             <div className="flex items-center gap-3 p-4 rounded-xl bg-rose-50 border border-rose-200">
@@ -444,6 +451,7 @@ function StepServices({
   setRedeemCount,
   preview,
   isPreviewLoading,
+  previewError,
   onBack,
   onNext,
   isConfirming,
@@ -457,6 +465,7 @@ function StepServices({
   setRedeemCount: (value: number) => void
   preview: OrderPreviewResponse | null
   isPreviewLoading: boolean
+  previewError: string
   onBack: () => void
   onNext: () => void
   isConfirming: boolean
@@ -464,6 +473,8 @@ function StepServices({
   const weight = Number(weightKg) || 0
   const selectedServices = services.filter((service) => service.selected)
   const maxRedeem = preview?.maxRedeemableWashers ?? Math.floor(customer.currentPoints / 10)
+  const hasWeightError = weightKg.trim().length > 0 && weight <= 0
+  const hasServiceError = selectedServices.length === 0
 
   const handleQuantityChange = (serviceCode: string, delta: number) => {
     setServices((current) => current.map((service) => {
@@ -502,6 +513,9 @@ function StepServices({
               ))}
             </div>
           </div>
+          {hasWeightError && (
+            <p className="mt-2 text-xs text-danger">Berat cucian harus lebih dari 0 kg.</p>
+          )}
         </div>
 
         <div className="px-4 pt-4 pb-3 space-y-2">
@@ -509,6 +523,9 @@ function StepServices({
           {services.map((service) => (
             <ServiceToggleRow key={service.serviceCode} service={service} weightKg={weight} onQuantityChange={(delta) => handleQuantityChange(service.serviceCode, delta)} onToggle={() => handleToggle(service.serviceCode)} />
           ))}
+          {hasServiceError && (
+            <p className="pt-1 text-xs text-danger">Pilih minimal satu layanan sebelum lanjut ke ringkasan.</p>
+          )}
         </div>
 
         {customer.currentPoints >= 10 && (
@@ -559,6 +576,11 @@ function StepServices({
             Menghitung ringkasan order...
           </div>
         )}
+        {previewError && (
+          <div className="px-4 pt-3 text-xs text-danger">
+            {previewError}
+          </div>
+        )}
         {selectedServices.length > 0 && (
           <div className="px-4 py-3 space-y-1">
             {(preview?.discount ?? 0) > 0 && (
@@ -583,7 +605,7 @@ function StepServices({
           <Button variant="outline" className="rounded-lg h-11 px-4" onClick={onBack}>
             Kembali
           </Button>
-          <Button data-testid="pos-open-summary" className="flex-1 h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" disabled={selectedServices.length === 0 || isConfirming || isPreviewLoading || !preview} onClick={onNext}>
+          <Button data-testid="pos-open-summary" className="flex-1 h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" disabled={selectedServices.length === 0 || weight <= 0 || isConfirming || isPreviewLoading || !preview} onClick={onNext}>
             {isConfirming ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Memproses...</> : <><ReceiptText className="h-4 w-4 mr-2" />Lihat Ringkasan</>}
           </Button>
         </div>
@@ -647,7 +669,7 @@ function OrderSummarySheet({ open, onOpenChange, customer, preview, onConfirm, i
   )
 }
 
-function SuccessScreen({ customerName, orderCode, onNewOrder }: { customerName: string; orderCode: string; onNewOrder: () => void }) {
+function SuccessScreen({ customerId, customerName, orderCode, onNewOrder }: { customerId: string; customerName: string; orderCode: string; onNewOrder: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[65vh] px-6 text-center gap-5">
       <div className="relative">
@@ -659,8 +681,9 @@ function SuccessScreen({ customerName, orderCode, onNewOrder }: { customerName: 
         <p className="text-sm text-text-muted">Order untuk <span className="font-semibold text-text-body">{customerName}</span> telah dikonfirmasi</p>
       </div>
       <div data-testid="pos-success-order-code" className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-bg-subtle border border-line-base"><ReceiptText className="h-4 w-4 text-text-muted" /><span className="font-mono text-sm font-semibold text-rose-600">{orderCode}</span></div>
-      <div className="flex gap-3 w-full max-w-xs">
+      <div className="flex gap-3 w-full max-w-md">
         <Button variant="outline" className="flex-1 rounded-lg" onClick={() => (window.location.href = "/admin/laundry-aktif")}>Laundry Aktif</Button>
+        <Button variant="outline" className="flex-1 rounded-lg" onClick={() => (window.location.href = `/admin/pelanggan/${customerId}`)}>Detail Pelanggan</Button>
         <Button className="flex-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" onClick={onNewOrder}>Order Baru</Button>
       </div>
     </div>
@@ -676,6 +699,7 @@ export default function POSPage() {
   const [redeemCount, setRedeemCount] = useState(0)
   const [preview, setPreview] = useState<OrderPreviewResponse | null>(null)
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState("")
   const [isConfirming, setIsConfirming] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
   const [createdOrderCode, setCreatedOrderCode] = useState("")
@@ -697,6 +721,7 @@ export default function POSPage() {
   useEffect(() => {
     if (!payload) {
       setPreview(null)
+      setPreviewError("")
       return
     }
 
@@ -706,10 +731,14 @@ export default function POSPage() {
       .then((response) => {
         if (!active) return
         setPreview(response)
+        setPreviewError("")
         if (redeemCount > response.maxRedeemableWashers) setRedeemCount(response.maxRedeemableWashers)
       })
-      .catch(() => {
-        if (active) setPreview(null)
+      .catch((error) => {
+        if (active) {
+          setPreview(null)
+          setPreviewError(error instanceof Error ? error.message : "Gagal menghitung preview order")
+        }
       })
       .finally(() => {
         if (active) setIsPreviewLoading(false)
@@ -741,6 +770,7 @@ export default function POSPage() {
     setServices(baseServices.map((service) => ({ ...service })))
     setRedeemCount(0)
     setPreview(null)
+    setPreviewError("")
     setCreatedOrderCode("")
     setShowSuccess(false)
     setShowSummary(false)
@@ -750,7 +780,7 @@ export default function POSPage() {
   if (showSuccess && selectedCustomer) {
     return (
       <AdminShell title="POS" subtitle="Buat Order Baru">
-        <SuccessScreen customerName={selectedCustomer.name} orderCode={createdOrderCode} onNewOrder={handleReset} />
+        <SuccessScreen customerId={selectedCustomer.customerId} customerName={selectedCustomer.name} orderCode={createdOrderCode} onNewOrder={handleReset} />
       </AdminShell>
     )
   }
@@ -763,7 +793,7 @@ export default function POSPage() {
           {step === 1 && <StepCustomer selectedCustomer={selectedCustomer} onSelect={setSelectedCustomer} onClear={() => setSelectedCustomer(null)} onNext={() => setStep(2)} />}
           {step === 2 && selectedCustomer && (
             <>
-              <StepServices customer={selectedCustomer} services={services} setServices={setServices} weightKg={weightKg} setWeightKg={setWeightKg} redeemCount={redeemCount} setRedeemCount={setRedeemCount} preview={preview} isPreviewLoading={isPreviewLoading} onBack={() => setStep(1)} onNext={() => setShowSummary(true)} isConfirming={isConfirming} />
+              <StepServices customer={selectedCustomer} services={services} setServices={setServices} weightKg={weightKg} setWeightKg={setWeightKg} redeemCount={redeemCount} setRedeemCount={setRedeemCount} preview={preview} isPreviewLoading={isPreviewLoading} previewError={previewError} onBack={() => setStep(1)} onNext={() => setShowSummary(true)} isConfirming={isConfirming} />
               <OrderSummarySheet open={showSummary} onOpenChange={setShowSummary} customer={selectedCustomer} preview={preview} onConfirm={handleConfirm} isConfirming={isConfirming} />
             </>
           )}

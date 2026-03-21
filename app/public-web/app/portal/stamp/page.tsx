@@ -22,6 +22,8 @@ export default function StampPage() {
   const [dashboardPoints, setDashboardPoints] = useState({ currentPoints: 0, eligibleFreeWashers: 0, lifetimeEarnedStamps: 0 })
   const [pointLedger, setPointLedger] = useState<Array<{ entryId: string; label: string; delta: number; createdAtLabel: string; relatedOrderCode?: string; tone: 'earned' | 'redeemed' | 'adjustment' | 'reversal' }>>([])
   const [redemptions, setRedemptions] = useState<Array<{ entryId: string; redeemedPoints: number; freeWasherUnits: number; createdAtLabel: string; relatedOrderCode?: string }>>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 60)
@@ -29,12 +31,20 @@ export default function StampPage() {
   }, [])
 
   useEffect(() => {
-    publicApi.getDashboard().then((payload) => {
-      setDashboardPoints(payload.stampBalance)
-      setSession(payload.session)
-    }).catch(() => undefined)
-    publicApi.listPoints().then(setPointLedger).catch(() => undefined)
-    publicApi.listRedemptions().then(setRedemptions).catch(() => undefined)
+    Promise.all([
+      publicApi.getDashboard(),
+      publicApi.listPoints(),
+      publicApi.listRedemptions(),
+    ])
+      .then(([dashboard, ledger, redemptionHistory]) => {
+        setDashboardPoints(dashboard.stampBalance)
+        setSession(dashboard.session)
+        setPointLedger(ledger)
+        setRedemptions(redemptionHistory)
+        setLoadError('')
+      })
+      .catch((error) => setLoadError(error instanceof Error ? error.message : 'Gagal memuat stamp dan reward'))
+      .finally(() => setIsLoading(false))
   }, [])
 
   const filledCount = dashboardPoints.currentPoints % 10 || (dashboardPoints.currentPoints > 0 ? 10 : 0)
@@ -111,6 +121,18 @@ export default function StampPage() {
         </div>
 
         <div className="px-4 md:px-6 max-w-4xl mx-auto -mt-4 relative z-10 pb-8">
+          {loadError && (
+            <div className="mb-4 rounded-2xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+              {loadError}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="mb-4 rounded-2xl border border-line-soft bg-white px-4 py-5 text-sm text-text-muted">
+              Memuat stamp dan riwayat reward...
+            </div>
+          )}
+
           <div className="flex gap-2 mb-4 p-1 rounded-2xl bg-white shadow-sm border border-line-soft">
             {(['earned', 'redeemed'] as TabType[]).map((tab) => (
               <button
@@ -128,6 +150,12 @@ export default function StampPage() {
 
           {activeTab === 'earned' && (
             <div className="space-y-2.5">
+              {!isLoading && pointLedger.length === 0 && (
+                <div className="rounded-2xl border border-line-soft bg-white px-5 py-6 text-sm text-text-muted">
+                  Belum ada riwayat stamp untuk ditampilkan.
+                </div>
+              )}
+
               {pointLedger.map((entry, index) => {
                 const config = toneConfig[entry.tone] ?? toneConfig.earned
                 const Icon = config.Icon
@@ -159,6 +187,12 @@ export default function StampPage() {
 
           {activeTab === 'redeemed' && (
             <div className="space-y-2.5">
+              {!isLoading && redemptions.length === 0 && (
+                <div className="rounded-2xl border border-line-soft bg-white px-5 py-6 text-sm text-text-muted">
+                  Belum ada penukaran reward pada akun ini.
+                </div>
+              )}
+
               {redemptions.map((entry, index) => (
                 <div
                   key={entry.entryId}

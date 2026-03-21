@@ -51,6 +51,15 @@ Purpose: repo snapshot after deployment/workflow work plus PRD-gap closure for b
   - archived leaderboard month availability after correction
   - admin logout and extended portal summary e2e coverage
 - added ADR for transactional Mongo runtime plus in-process outbox worker
+- closed the remaining non-landing frontend PRD gaps for admin/public surfaces:
+  - full admin dashboard metric presentation plus top-customer block
+  - explicit `publicContactPhone` management in admin settings
+  - backend-driven customer list querying and stable sort metadata
+  - duplicate-phone selection feedback in POS
+  - visible loading/error/empty states across protected non-landing pages
+  - notification preview UI plus richer outbox metadata
+  - localized cancelled-state detail in portal order detail and direct status pages
+  - public non-landing pages no longer import presenter helpers from `mock-data`
 
 ## Verification Run
 
@@ -81,6 +90,7 @@ All passed at session end.
   - `SESSION_COOKIE_SECURE=false` for local HTTP
   - `SESSION_COOKIE_SECURE=true` and `TRUST_PROXY=1` for hosted HTTPS behind Caddy
 - notification delivery is still simulated via the outbox worker; a real WhatsApp adapter is still deferred
+- landing page was intentionally left untouched in this pass even though some of its marketing copy still diverges from the PRD
 
 ## Recommended Next Start
 

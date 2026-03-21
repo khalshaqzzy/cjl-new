@@ -4,6 +4,7 @@ import { use, useEffect, useState } from 'react'
 import type { OrderHistoryItem } from '@cjl/contracts'
 import { PortalShell } from '@/components/public/portal-shell'
 import { publicApi } from '@/lib/api'
+import { getStatusLabel } from '@/lib/presenters'
 import {
   AlertCircle,
   Calendar,
@@ -23,11 +24,41 @@ export default function OrderDetailPage({ params }: Props) {
   const resolvedParams = use(params)
   const [order, setOrder] = useState<OrderHistoryItem | null>(null)
   const [session, setSession] = useState<{ customerId: string; name: string; phone: string } | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
-    publicApi.getOrderDetail(resolvedParams.id).then(setOrder).catch(() => undefined)
-    publicApi.getSession().then((payload) => setSession(payload.session)).catch(() => undefined)
+    setIsLoading(true)
+    Promise.all([
+      publicApi.getOrderDetail(resolvedParams.id),
+      publicApi.getSession(),
+    ])
+      .then(([nextOrder, payload]) => {
+        setOrder(nextOrder)
+        setSession(payload.session)
+        setLoadError('')
+      })
+      .catch((error) => {
+        setLoadError(error instanceof Error ? error.message : 'Order yang Anda cari tidak tersedia.')
+      })
+      .finally(() => setIsLoading(false))
   }, [resolvedParams.id])
+
+  if (isLoading) {
+    return (
+      <PortalShell title="Detail Order" showBack backHref="/portal/riwayat" session={session}>
+        <div className="min-h-screen bg-bg-soft flex items-center justify-center p-6">
+          <div className="text-center bg-white rounded-3xl border border-line-soft p-12 max-w-sm w-full">
+            <div className="w-16 h-16 rounded-2xl bg-pink-cloud flex items-center justify-center mx-auto mb-4">
+              <Package className="w-8 h-8 text-pink-hot animate-pulse" />
+            </div>
+            <h3 className="font-display font-bold text-text-strong mb-2">Memuat detail order</h3>
+            <p className="text-text-muted text-sm">Menyiapkan informasi order Anda.</p>
+          </div>
+        </div>
+      </PortalShell>
+    )
+  }
 
   if (!order) {
     return (
@@ -38,7 +69,7 @@ export default function OrderDetailPage({ params }: Props) {
               <AlertCircle className="w-8 h-8 text-pink-hot" />
             </div>
             <h3 className="font-display font-bold text-text-strong mb-2">Order tidak ditemukan</h3>
-            <p className="text-text-muted text-sm">Order yang Anda cari tidak tersedia.</p>
+            <p className="text-text-muted text-sm">{loadError || 'Order yang Anda cari tidak tersedia.'}</p>
           </div>
         </div>
       </PortalShell>
@@ -67,7 +98,7 @@ export default function OrderDetailPage({ params }: Props) {
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-text-muted">Status</p>
-                <p className="font-display text-lg font-bold text-text-strong">{order.status}</p>
+                <p className="font-display text-lg font-bold text-text-strong">{getStatusLabel(order.status)}</p>
               </div>
             </div>
           </div>
@@ -100,6 +131,17 @@ export default function OrderDetailPage({ params }: Props) {
                   <span className="font-semibold text-text-strong text-sm">{order.completedAtLabel}</span>
                 </div>
               )}
+              {order.cancelledAtLabel && (
+                <div className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-danger/10 flex items-center justify-center">
+                      <XCircle className="w-4.5 h-4.5 text-danger" />
+                    </div>
+                    <span className="text-text-body text-sm">Tanggal Dibatalkan</span>
+                  </div>
+                  <span className="font-semibold text-text-strong text-sm">{order.cancelledAtLabel}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-pink-cloud flex items-center justify-center">
@@ -120,6 +162,18 @@ export default function OrderDetailPage({ params }: Props) {
               </div>
             </div>
           </div>
+
+          {order.cancellationSummary && (
+            <div className="bg-white rounded-2xl border border-danger/20 overflow-hidden shadow-sm">
+              <div className="px-4 py-3 border-b border-danger/10 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-danger" />
+                <h3 className="font-display font-semibold text-text-strong text-sm">Alasan Pembatalan</h3>
+              </div>
+              <div className="p-4 text-sm text-text-body">
+                {order.cancellationSummary}
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-2xl border border-line-soft overflow-hidden shadow-sm">
             <div className="px-4 py-3 border-b border-line-soft flex items-center gap-2">

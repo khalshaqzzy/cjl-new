@@ -77,13 +77,17 @@ function NotificationCard({
   onResend,
   onDownload,
   onCopy,
+  onPreview,
   onManualResolve,
+  busyAction,
 }: {
   notification: NotificationRecord
   onResend: () => void
   onDownload: () => void
   onCopy: () => void
+  onPreview: () => void
   onManualResolve: () => void
+  busyAction: "resend" | "download" | "copy" | "preview" | "manual" | null
 }) {
   const status = statusConfig[notification.deliveryStatus]
   const StatusIcon = status.icon
@@ -170,10 +174,16 @@ function NotificationCard({
         )}
 
         {/* Attempt Info */}
-        <div className="flex items-center justify-between text-xs text-text-muted mb-4">
-          <span>Percobaan: {notification.attemptCount}x</span>
+        <div className="mb-4 space-y-1 text-xs text-text-muted">
+          <div className="flex items-center justify-between">
+            <span>Dibuat: {notification.createdAtLabel}</span>
+            <span>Percobaan: {notification.attemptCount}x</span>
+          </div>
           {notification.lastAttemptAt && (
-            <span>Terakhir: {notification.lastAttemptAt}</span>
+            <div>Terakhir dicoba: {notification.lastAttemptAt}</div>
+          )}
+          {notification.manualResolvedAt && (
+            <div>Diselesaikan manual: {notification.manualResolvedAt}</div>
           )}
         </div>
 
@@ -185,9 +195,10 @@ function NotificationCard({
               size="sm"
               className="rounded-xl flex-1"
               onClick={onResend}
+              disabled={busyAction !== null}
             >
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Kirim Ulang
+              {busyAction === "resend" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+              {busyAction === "resend" ? "Memproses..." : "Kirim Ulang"}
             </Button>
             {notification.renderStatus === "ready" && (
               <Button
@@ -195,26 +206,38 @@ function NotificationCard({
                 size="sm"
                 className="rounded-xl"
                 onClick={onDownload}
+                disabled={busyAction !== null}
               >
-                <Download className="h-4 w-4" />
+                {busyAction === "download" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               </Button>
             )}
             <Button
               variant="outline"
               size="sm"
               className="rounded-xl"
-              onClick={onCopy}
+              onClick={onPreview}
+              disabled={busyAction !== null}
             >
-              <Copy className="h-4 w-4" />
+              {busyAction === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={onCopy}
+              disabled={busyAction !== null}
+            >
+              {busyAction === "copy" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
             </Button>
             <Button
               variant="outline"
               size="sm"
               className="rounded-xl flex-1"
               onClick={onManualResolve}
+              disabled={busyAction !== null}
             >
-              <CheckCircle2 className="h-4 w-4 mr-1" />
-              Manual
+              {busyAction === "manual" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+              {busyAction === "manual" ? "Memproses..." : "Manual"}
             </Button>
           </div>
         )}
@@ -226,9 +249,10 @@ function NotificationCard({
               size="sm"
               className="rounded-xl flex-1"
               onClick={onResend}
+              disabled={busyAction !== null}
             >
-              <Send className="h-4 w-4 mr-1" />
-              Kirim Sekarang
+              {busyAction === "resend" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+              {busyAction === "resend" ? "Memproses..." : "Kirim Sekarang"}
             </Button>
           </div>
         )}
@@ -288,8 +312,14 @@ export default function NotifikasiPage() {
   const [activeTab, setActiveTab] = useState("all")
   const [selectedNotification, setSelectedNotification] = useState<NotificationRecord | null>(null)
   const [showManualResolveSheet, setShowManualResolveSheet] = useState(false)
+  const [showMessagePreviewSheet, setShowMessagePreviewSheet] = useState(false)
   const [manualNote, setManualNote] = useState("")
+  const [messagePreview, setMessagePreview] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
+  const [activeAction, setActiveAction] = useState<{
+    notificationId: string
+    action: "resend" | "download" | "copy" | "preview" | "manual"
+  } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
@@ -317,44 +347,70 @@ export default function NotifikasiPage() {
   }
 
   const handleResend = async (notification: NotificationRecord) => {
-    setIsProcessing(true)
-    const updated = await adminApi.resendNotification(notification.notificationId)
-    setNotifications((prev) =>
-      prev.map((n) => (n.notificationId === notification.notificationId ? (updated as NotificationRecord) : n))
-    )
-    setIsProcessing(false)
+    setActiveAction({ notificationId: notification.notificationId, action: "resend" })
+    try {
+      const updated = await adminApi.resendNotification(notification.notificationId)
+      setNotifications((prev) =>
+        prev.map((n) => (n.notificationId === notification.notificationId ? (updated as NotificationRecord) : n))
+      )
+    } finally {
+      setActiveAction(null)
+    }
   }
 
   const handleManualResolve = async () => {
     if (!selectedNotification || !manualNote) return
     setIsProcessing(true)
-    const updated = await adminApi.manualResolveNotification(selectedNotification.notificationId, manualNote)
-    setNotifications((prev) =>
-      prev.map((n) => (n.notificationId === selectedNotification.notificationId ? (updated as NotificationRecord) : n))
-    )
-    setIsProcessing(false)
-    setShowManualResolveSheet(false)
-    setManualNote("")
-    setSelectedNotification(null)
+    setActiveAction({ notificationId: selectedNotification.notificationId, action: "manual" })
+    try {
+      const updated = await adminApi.manualResolveNotification(selectedNotification.notificationId, manualNote)
+      setNotifications((prev) =>
+        prev.map((n) => (n.notificationId === selectedNotification.notificationId ? (updated as NotificationRecord) : n))
+      )
+      setShowManualResolveSheet(false)
+      setManualNote("")
+      setSelectedNotification(null)
+    } finally {
+      setIsProcessing(false)
+      setActiveAction(null)
+    }
   }
 
-  const handleCopy = (notification: NotificationRecord) => {
-    adminApi.getNotificationMessage(notification.notificationId)
-      .then((payload) => navigator.clipboard.writeText(payload.message))
-      .catch(() => undefined)
+  const handlePreviewMessage = async (notification: NotificationRecord) => {
+    setActiveAction({ notificationId: notification.notificationId, action: "preview" })
+    try {
+      const payload = await adminApi.getNotificationMessage(notification.notificationId)
+      setSelectedNotification(notification)
+      setMessagePreview(payload.message)
+      setShowMessagePreviewSheet(true)
+    } finally {
+      setActiveAction(null)
+    }
   }
 
-  const handleDownload = (notification: NotificationRecord) => {
-    adminApi.getNotificationReceipt(notification.notificationId)
-      .then(({ blob, filename }) => {
-        const url = URL.createObjectURL(blob)
-        const anchor = document.createElement("a")
-        anchor.href = url
-        anchor.download = filename
-        anchor.click()
-        URL.revokeObjectURL(url)
-      })
-      .catch(() => undefined)
+  const handleCopy = async (notification: NotificationRecord) => {
+    setActiveAction({ notificationId: notification.notificationId, action: "copy" })
+    try {
+      const payload = await adminApi.getNotificationMessage(notification.notificationId)
+      await navigator.clipboard.writeText(payload.message)
+    } finally {
+      setActiveAction(null)
+    }
+  }
+
+  const handleDownload = async (notification: NotificationRecord) => {
+    setActiveAction({ notificationId: notification.notificationId, action: "download" })
+    try {
+      const { blob, filename } = await adminApi.getNotificationReceipt(notification.notificationId)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = filename
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setActiveAction(null)
+    }
   }
 
   return (
@@ -427,10 +483,12 @@ export default function NotifikasiPage() {
                     onResend={() => handleResend(notification)}
                     onDownload={() => handleDownload(notification)}
                     onCopy={() => handleCopy(notification)}
+                    onPreview={() => handlePreviewMessage(notification)}
                     onManualResolve={() => {
                       setSelectedNotification(notification)
                       setShowManualResolveSheet(true)
                     }}
+                    busyAction={activeAction?.notificationId === notification.notificationId ? activeAction.action : null}
                   />
                 ))}
               </div>
@@ -526,6 +584,52 @@ export default function NotifikasiPage() {
                   Tandai Selesai
                 </>
               )}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={showMessagePreviewSheet} onOpenChange={setShowMessagePreviewSheet}>
+        <SheetContent side="bottom" className="rounded-t-2xl" aria-describedby={undefined}>
+          <SheetHeader className="pb-4 border-b border-line-base">
+            <SheetTitle className="text-base font-semibold text-text-strong">
+              Preview Pesan WhatsApp
+            </SheetTitle>
+          </SheetHeader>
+          <div className="py-6 space-y-4">
+            {selectedNotification && (
+              <Card className="rounded-xl border-line-base bg-bg-subtle">
+                <CardContent className="p-4 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-text-muted">Tujuan</span>
+                    <span className="font-medium text-text-strong">{selectedNotification.customerName}</span>
+                  </div>
+                  <div className="mt-2 flex justify-between gap-3">
+                    <span className="text-text-muted">Nomor HP</span>
+                    <span className="text-text-body">{selectedNotification.destinationPhone}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-text-body">Isi Pesan</label>
+              <Textarea value={messagePreview} readOnly className="min-h-40 rounded-xl border-line-soft resize-none bg-bg-subtle" />
+            </div>
+          </div>
+          <SheetFooter className="gap-2">
+            <SheetClose asChild>
+              <Button variant="outline" className="flex-1 rounded-xl">
+                Tutup
+              </Button>
+            </SheetClose>
+            <Button
+              className="flex-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold"
+              onClick={() => {
+                void navigator.clipboard.writeText(messagePreview)
+              }}
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Salin Pesan
             </Button>
           </SheetFooter>
         </SheetContent>

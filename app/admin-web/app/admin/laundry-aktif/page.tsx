@@ -164,7 +164,7 @@ export default function LaundryAktifPage() {
   const [loadError, setLoadError] = useState("")
   const doneKeyRef = useRef<string | null>(null)
 
-  useEffect(() => {
+  const loadOrders = () =>
     adminApi.listActiveOrders()
       .then((payload) => {
         setOrders(payload)
@@ -172,6 +172,9 @@ export default function LaundryAktifPage() {
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat order aktif"))
       .finally(() => setIsLoading(false))
+  
+  useEffect(() => {
+    loadOrders()
   }, [])
 
   const filteredOrders = useMemo(() => {
@@ -185,7 +188,11 @@ export default function LaundryAktifPage() {
           o.orderCode.toLowerCase().includes(q)
         )
       })
-      .sort((a, b) => (sortBy === "newest" ? -1 : 1))
+      .sort((a, b) =>
+        sortBy === "newest"
+          ? b.createdAtIso.localeCompare(a.createdAtIso)
+          : a.createdAtIso.localeCompare(b.createdAtIso)
+      )
   }, [orders, searchQuery, sortBy])
 
   const handleMarkDone = async () => {
@@ -264,7 +271,12 @@ export default function LaundryAktifPage() {
           </div>
         ) : loadError ? (
           <div className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
-            {loadError}
+            <div className="flex items-center justify-between gap-3">
+              <span>{loadError}</span>
+              <Button variant="outline" size="sm" className="rounded-lg" onClick={loadOrders}>
+                Coba Lagi
+              </Button>
+            </div>
           </div>
         ) : filteredOrders.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

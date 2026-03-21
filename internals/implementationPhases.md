@@ -48,6 +48,9 @@ Status: complete for current scope
 - settings now manage business profile, service prices, and message template blocks
 - admin logout now invalidates backend session instead of only navigating client-side
 - notification outbox UI now follows canonical backend fields and receipt download flow
+- admin dashboard now exposes the full PRD metric set plus top-customer visibility
+- customer list/search now relies on backend querying and machine-sort fields instead of brittle client-only filtering
+- POS now surfaces duplicate-phone selection feedback, preview failures, and post-confirmation shortcuts
 
 ### Phase 4: Public Surface Integration
 
@@ -56,6 +59,9 @@ Status: complete for current scope
 - landing, login, portal, order history, stamp view, leaderboard, and direct order status pages consume backend APIs
 - portal shell validates backend customer session before rendering protected pages
 - monthly summary UI now surfaces the full non-monetary PRD fields returned by backend
+- public non-landing pages no longer rely on `mock-data` presenter helpers for runtime status rendering
+- portal and direct-status order detail flows now surface cancellation timestamp and cancellation reason when relevant
+- public login now redirects authenticated customers directly to the portal and protected shells render a visible session-check state
 
 ### Phase 5: Post-Integration Stabilization
 

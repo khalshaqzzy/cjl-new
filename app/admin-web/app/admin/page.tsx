@@ -150,6 +150,23 @@ function AttentionCard({
   )
 }
 
+function SummaryStatCard({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <Card className="rounded-xl border-line-base shadow-card bg-bg-surface">
+      <CardContent className="p-4">
+        <p className="text-xs text-text-muted">{label}</p>
+        <p className="mt-1 text-lg font-bold text-text-strong">{value}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function DashboardPage() {
   const [timeFilter, setTimeFilter] = useState("daily")
   const [dashboard, setDashboard] = useState<Awaited<ReturnType<typeof adminApi.getDashboard>> | null>(null)
@@ -170,6 +187,7 @@ export default function DashboardPage() {
   const notifications = dashboard?.notifications ?? []
   const metrics = dashboard?.metrics
   const summary = dashboard?.summary
+  const topCustomers = dashboard?.topCustomers ?? []
   const failedNotifications = notifications.filter(
     (n) => n.deliveryStatus === "failed"
   ).length
@@ -261,38 +279,75 @@ export default function DashboardPage() {
         {summary && (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
+              { label: "Penjualan Kotor", value: `Rp ${summary.grossSales.toLocaleString("id-ID")}` },
+              { label: "Penjualan Bersih", value: `Rp ${summary.netSales.toLocaleString("id-ID")}` },
+              { label: "Total Diskon", value: `Rp ${summary.discountTotal.toLocaleString("id-ID")}` },
               { label: "Order Terkonfirmasi", value: String(summary.confirmedOrders) },
+              { label: "Order Aktif", value: String(summary.activeOrders) },
+              { label: "Order Selesai", value: String(summary.completedOrders) },
               { label: "Berat Diproses", value: `${summary.totalWeightKg.toFixed(1)} kg` },
               { label: "Rata-rata Order", value: `Rp ${summary.averageOrderValue.toLocaleString("id-ID")}` },
+              { label: "Customer Baru", value: String(summary.newCustomers) },
+              { label: "Poin Diberikan", value: String(summary.pointsEarned) },
+              { label: "Poin Ditukar", value: String(summary.pointsRedeemed) },
               { label: "Poin Manual", value: String(summary.manualPointsAdded) },
             ].map((item) => (
-              <Card key={item.label} className="rounded-xl border-line-base shadow-card bg-bg-surface">
-                <CardContent className="p-4">
-                  <p className="text-xs text-text-muted">{item.label}</p>
-                  <p className="mt-1 text-lg font-bold text-text-strong">{item.value}</p>
-                </CardContent>
-              </Card>
+              <SummaryStatCard key={item.label} label={item.label} value={item.value} />
             ))}
           </div>
         )}
 
-        {summary && summary.topServiceUsage.length > 0 && (
-          <Card className="rounded-xl border-line-base shadow-card bg-bg-surface">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-text-strong">Layanan Teratas</h3>
-                <span className="text-xs text-text-muted">Periode {timeFilters.find((filter) => filter.key === timeFilter)?.label}</span>
-              </div>
-              <div className="space-y-2">
-                {summary.topServiceUsage.map((service) => (
-                  <div key={service.serviceCode} className="flex items-center justify-between rounded-lg bg-bg-subtle px-3 py-2">
-                    <span className="text-sm text-text-body">{service.label}</span>
-                    <span className="text-sm font-semibold text-text-strong">{service.usageCount}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        {summary && (
+          <div className="grid gap-3 xl:grid-cols-2">
+            <Card className="rounded-xl border-line-base shadow-card bg-bg-surface">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-text-strong">Layanan Teratas</h3>
+                  <span className="text-xs text-text-muted">Periode {timeFilters.find((filter) => filter.key === timeFilter)?.label}</span>
+                </div>
+                <div className="space-y-2">
+                  {summary.topServiceUsage.length > 0 ? (
+                    summary.topServiceUsage.map((service) => (
+                      <div key={service.serviceCode} className="flex items-center justify-between rounded-lg bg-bg-subtle px-3 py-2">
+                        <span className="text-sm text-text-body">{service.label}</span>
+                        <span className="text-sm font-semibold text-text-strong">{service.usageCount}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-lg bg-bg-subtle px-3 py-4 text-sm text-text-muted">
+                      Belum ada data penggunaan layanan pada periode ini.
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-xl border-line-base shadow-card bg-bg-surface">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-text-strong">Pelanggan Teratas</h3>
+                  <span className="text-xs text-text-muted">Berdasarkan order terkonfirmasi</span>
+                </div>
+                <div className="space-y-2">
+                  {topCustomers.length > 0 ? (
+                    topCustomers.map((customer, index) => (
+                      <div key={customer.customerId} className="flex items-center justify-between rounded-lg bg-bg-subtle px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium text-text-body">{index + 1}. {customer.maskedName}</p>
+                          <p className="text-xs text-text-muted">{customer.confirmedOrders} order · {customer.earnedStamps} poin</p>
+                        </div>
+                        <span className="text-sm font-semibold text-text-strong">{customer.currentPoints ?? 0}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-lg bg-bg-subtle px-3 py-4 text-sm text-text-muted">
+                      Belum ada data pelanggan teratas pada periode ini.
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* Attention */}
