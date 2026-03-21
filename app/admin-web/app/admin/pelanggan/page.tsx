@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
+import type { CustomerSearchResult } from "@cjl/contracts"
 import { AdminShell } from "@/components/admin/admin-shell"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,9 +26,7 @@ import {
   ChevronRight,
   UserPlus,
   Loader2,
-  Filter,
 } from "lucide-react"
-import { type CustomerSearchResultVM } from "@/lib/mock-data"
 import { adminApi } from "@/lib/api"
 
 type FilterOption = "all" | "recent" | "high_points" | "active_orders"
@@ -39,7 +38,7 @@ const filterOptions = [
   { key: "active_orders", label: "Order Aktif" },
 ]
 
-function CustomerCard({ customer }: { customer: CustomerSearchResultVM }) {
+function CustomerCard({ customer }: { customer: CustomerSearchResult }) {
   return (
     <Link href={`/admin/pelanggan/${customer.customerId}`}>
       <Card className="rounded-xl border-line-base shadow-card hover:shadow-elevated hover:border-rose-100 transition-all cursor-pointer bg-bg-surface">
@@ -93,12 +92,19 @@ export default function PelangganPage() {
   const [newCustomerName, setNewCustomerName] = useState("")
   const [newCustomerPhone, setNewCustomerPhone] = useState("")
   const [isCreating, setIsCreating] = useState(false)
-  const [customers, setCustomers] = useState<CustomerSearchResultVM[]>([])
+  const [customers, setCustomers] = useState<CustomerSearchResult[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+  const createCustomerKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     adminApi.listCustomers()
-      .then((payload) => setCustomers(payload as CustomerSearchResultVM[]))
-      .catch(() => undefined)
+      .then((payload) => {
+        setCustomers(payload)
+        setLoadError("")
+      })
+      .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat pelanggan"))
+      .finally(() => setIsLoading(false))
   }, [])
 
   const filteredCustomers = useMemo(() => {
@@ -135,12 +141,14 @@ export default function PelangganPage() {
 
   const handleCreateCustomer = async () => {
     setIsCreating(true)
-    const result = await adminApi.createCustomer(newCustomerName, newCustomerPhone)
-    setCustomers((prev) => [result.customer as CustomerSearchResultVM, ...prev.filter((item) => item.customerId !== result.customer.customerId)])
+    createCustomerKeyRef.current ||= crypto.randomUUID()
+    const result = await adminApi.createCustomer(newCustomerName, newCustomerPhone, createCustomerKeyRef.current)
+    setCustomers((prev) => [result.customer, ...prev.filter((item) => item.customerId !== result.customer.customerId)])
     setIsCreating(false)
     setShowNewCustomer(false)
     setNewCustomerName("")
     setNewCustomerPhone("")
+    createCustomerKeyRef.current = null
   }
 
   return (
@@ -191,7 +199,16 @@ export default function PelangganPage() {
         </div>
 
         {/* Customer List */}
-        {filteredCustomers.length > 0 ? (
+        {isLoading ? (
+          <div className="flex items-center gap-2 rounded-xl border border-line-base bg-bg-surface px-4 py-3 text-sm text-text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Memuat pelanggan...
+          </div>
+        ) : loadError ? (
+          <div className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+            {loadError}
+          </div>
+        ) : filteredCustomers.length > 0 ? (
           <div className="space-y-3">
             {filteredCustomers.map((customer) => (
               <CustomerCard key={customer.customerId} customer={customer} />

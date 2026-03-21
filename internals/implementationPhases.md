@@ -12,6 +12,9 @@ The repo now has:
 - buildable admin Next.js app in `app/admin-web`
 - buildable public Next.js app in `app/public-web`
 - primary admin and public product flows wired to backend APIs
+- transaction-backed core admin mutations for customer create, order confirm, order done, and void flows
+- in-process outbox worker with separate receipt render vs delivery state for confirmation notifications
+- expanded admin dashboard reporting payload and UI
 - root-level Docker Compose topology for local full-stack runtime
 - backend integration coverage and frontend end-to-end coverage that pass from root test commands
 - branch-based CI and hosted deploy workflows committed in repo
@@ -33,6 +36,7 @@ Status: complete for current scope
 
 - Express app routes implemented for admin and public surfaces
 - Mongo-backed services for customers, orders, notifications, settings, and sessions implemented
+- Mongo runtime is now expected to run in replica-set mode so transactions are available
 - leaderboard module added and backend build blockers removed
 
 ### Phase 3: Admin Surface Integration
@@ -42,6 +46,8 @@ Status: complete for current scope
 - dashboard, customers, customer detail, active laundry, notifications, settings, and POS are connected to backend
 - customer detail now supports void/cancel flow from UI
 - settings now manage business profile, service prices, and message template blocks
+- admin logout now invalidates backend session instead of only navigating client-side
+- notification outbox UI now follows canonical backend fields and receipt download flow
 
 ### Phase 4: Public Surface Integration
 
@@ -49,6 +55,7 @@ Status: complete for current scope
 
 - landing, login, portal, order history, stamp view, leaderboard, and direct order status pages consume backend APIs
 - portal shell validates backend customer session before rendering protected pages
+- monthly summary UI now surfaces the full non-monetary PRD fields returned by backend
 
 ### Phase 5: Post-Integration Stabilization
 
@@ -58,12 +65,14 @@ Status: complete in repo terms
 - customer detail admin UI now keeps cancelled orders visible in history instead of silently hiding them
 - non-blocking Next.js config warning for deprecated `eslint` key was removed
 - Turbopack workspace root is now explicit for both frontend apps
+- runtime mock initialization has been removed from key admin/settings/customer detail flows
 
 ### Phase 6: Local Containerization and Test Automation
 
 Status: complete in repo terms
 
 - `docker-compose.yml` now defines local `mongo`, `api`, `admin-web`, and `public-web` services
+- local and hosted Mongo Compose topologies now initialize a single-node replica set for transaction support
 - per-service Dockerfiles added for API and both frontend apps
 - backend integration suite added in `packages/api/test/integration.test.ts`
 - frontend end-to-end suite added in `tests/e2e/full-stack.spec.ts`
@@ -86,8 +95,8 @@ Focus:
 
 - run the first real staging rollout on GCP and validate the runbook against reality
 - verify Caddy TLS issuance, DNS, and VM sizing under real deployment conditions
-- add operational hardening for backups, log access, and WhatsApp session persistence when implemented
-- widen test and smoke coverage for hosted-environment failure paths
+- add operational hardening for backups, log access, and WhatsApp session persistence when the real adapter is implemented
+- decide whether the in-process outbox should remain monolith-local or evolve into a separate queue when hosted scale/operability requires it
 
 ## Important Notes
 

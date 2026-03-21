@@ -10,6 +10,7 @@ import { formatDateTime, formatWeightLabel, monthKeyFromIso, monthLabel, nowJaka
 import type {
   CustomerDocument,
   DirectOrderTokenDocument,
+  LeaderboardSnapshotDocument,
   OrderDocument,
   PointLedgerDocument
 } from "../types.js"
@@ -20,7 +21,9 @@ const db = () => getDatabase()
 const calculateMonthlySummary = async (customerId: string) => {
   const monthKey = nowJakarta().toFormat("yyyy-MM")
   const orders = await db().collection<OrderDocument>("orders").find({ customerId }).toArray()
-  const monthOrders = orders.filter((order) => monthKeyFromIso(order.createdAt) === monthKey)
+  const monthOrders = orders.filter(
+    (order) => monthKeyFromIso(order.createdAt) === monthKey && order.status !== "Voided"
+  )
   return {
     monthKey,
     totalOrdersCreated: monthOrders.length,
@@ -190,8 +193,16 @@ export const getLeaderboardByMonth = async (monthKey: string): Promise<Leaderboa
   }))
 
 export const getAvailableLeaderboardMonths = async () => {
-  const orders = await db().collection<OrderDocument>("orders").find({ status: { $ne: "Voided" } }).toArray()
-  const monthKeys = [...new Set(orders.map((order) => monthKeyFromIso(order.createdAt)))].sort().reverse()
+  const [orders, snapshots] = await Promise.all([
+    db().collection<OrderDocument>("orders").find({ status: { $ne: "Voided" } }).toArray(),
+    db().collection<LeaderboardSnapshotDocument>("leaderboard_snapshots").find({}).toArray()
+  ])
+
+  const monthKeys = [...new Set([
+    ...orders.map((order) => monthKeyFromIso(order.createdAt)),
+    ...snapshots.map((snapshot) => snapshot.monthKey)
+  ])].sort().reverse()
+
   return monthKeys.map((key) => ({
     key,
     label: monthLabel(key),

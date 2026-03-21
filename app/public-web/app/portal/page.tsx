@@ -125,6 +125,7 @@ function StampHeroCard({
 export default function PortalDashboard() {
   const [mounted, setMounted] = useState(false)
   const [dashboard, setDashboard] = useState<PublicDashboardResponse | null>(null)
+  const [loadError, setLoadError] = useState("")
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 60)
@@ -133,8 +134,11 @@ export default function PortalDashboard() {
 
   useEffect(() => {
     publicApi.getDashboard()
-      .then(setDashboard)
-      .catch(() => undefined)
+      .then((payload) => {
+        setDashboard(payload)
+        setLoadError("")
+      })
+      .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat portal"))
   }, [])
 
   const session = dashboard?.session ?? null
@@ -182,6 +186,12 @@ export default function PortalDashboard() {
         </div>
 
         <div className="px-4 md:px-6 lg:px-8 max-w-4xl mx-auto -mt-4 relative z-10 pb-8 space-y-6">
+          {loadError && (
+            <div className="rounded-2xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+              {loadError}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             {summaryCards.map((card, index) => {
               const Icon = iconMap[card.icon]
@@ -278,8 +288,20 @@ export default function PortalDashboard() {
                   <p className="mt-1 text-xl font-bold text-text-strong">{monthlySummary.totalCompletedOrders}</p>
                 </div>
                 <div className="rounded-xl bg-bg-soft p-3">
+                  <p className="text-xs text-text-muted">Order masih aktif</p>
+                  <p className="mt-1 text-xl font-bold text-text-strong">{monthlySummary.activeOrdersOpen}</p>
+                </div>
+                <div className="rounded-xl bg-bg-soft p-3">
                   <p className="text-xs text-text-muted">Berat diproses</p>
                   <p className="mt-1 text-xl font-bold text-text-strong">{monthlySummary.totalWeightProcessedLabel}</p>
+                </div>
+                <div className="rounded-xl bg-bg-soft p-3">
+                  <p className="text-xs text-text-muted">Stamp diperoleh</p>
+                  <p className="mt-1 text-xl font-bold text-text-strong">{monthlySummary.totalEarnedStamps}</p>
+                </div>
+                <div className="rounded-xl bg-bg-soft p-3">
+                  <p className="text-xs text-text-muted">Poin ditukar</p>
+                  <p className="mt-1 text-xl font-bold text-text-strong">{monthlySummary.totalRedeemedPoints}</p>
                 </div>
                 <div className="rounded-xl bg-bg-soft p-3">
                   <p className="text-xs text-text-muted">Washer gratis dipakai</p>

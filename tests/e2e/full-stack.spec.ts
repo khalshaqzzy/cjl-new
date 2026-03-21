@@ -78,6 +78,11 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(publicPage.getByRole("heading", { name: "Detail Order" }).first()).toBeVisible()
   await expect(publicPage.getByText("Active")).toBeVisible()
 
+  await publicPage.goto("http://127.0.0.1:3100/portal")
+  await expect(publicPage.getByRole("heading", { name: "Ringkasan Bulan Ini" })).toBeVisible()
+  await expect(publicPage.getByText("Stamp diperoleh", { exact: true }).last()).toBeVisible()
+  await expect(publicPage.getByText("Poin ditukar", { exact: true })).toBeVisible()
+
   const directStatusPage = await browser.newPage()
   await directStatusPage.goto(`http://127.0.0.1:3100/status/${order.directToken}`)
   await expect(directStatusPage.getByTestId("direct-status-order-code")).toContainText(orderCode)
@@ -98,4 +103,9 @@ test("admin and public frontends stay fully integrated through the backend", asy
 
   await directStatusPage.reload()
   await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Cancelled")
+
+  await page.getByRole("button", { name: "Keluar" }).click()
+  await expect(page).toHaveURL("http://127.0.0.1:3101/")
+  await page.goto("http://127.0.0.1:3101/admin")
+  await expect(page).toHaveURL("http://127.0.0.1:3101/")
 })

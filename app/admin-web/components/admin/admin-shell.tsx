@@ -14,6 +14,7 @@ import {
   LogOut,
   Menu,
   ChevronRight,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -115,6 +116,7 @@ export function AdminShell({
   const router = useRouter()
   const [moreOpen, setMoreOpen] = useState(false)
   const [isSessionChecked, setIsSessionChecked] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   useEffect(() => {
     adminApi
@@ -134,6 +136,15 @@ export function AdminShell({
 
   if (!isSessionChecked) {
     return null
+  }
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      await adminApi.logout()
+    } finally {
+      router.replace("/")
+    }
   }
 
   return (
@@ -168,13 +179,14 @@ export function AdminShell({
 
         {/* Footer */}
         <div className="p-3 border-t border-line-base">
-          <Link
-            href="/"
+          <button
+            type="button"
+            onClick={handleLogout}
             className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-muted hover:bg-danger-bg hover:text-danger transition-all"
           >
-            <LogOut className="h-4 w-4" />
+            {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
             <span>Keluar</span>
-          </Link>
+          </button>
         </div>
       </aside>
 
@@ -218,13 +230,14 @@ export function AdminShell({
                     />
                   ))}
                   <div className="my-3 h-px bg-line-base" />
-                  <Link
-                    href="/"
+                  <button
+                    type="button"
+                    onClick={handleLogout}
                     className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-muted hover:bg-danger-bg hover:text-danger transition-all"
                   >
-                    <LogOut className="h-4 w-4" />
+                    {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
                     <span>Keluar</span>
-                  </Link>
+                  </button>
                 </nav>
               </SheetContent>
             </Sheet>

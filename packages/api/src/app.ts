@@ -17,15 +17,19 @@ import {
 } from "@cjl/contracts"
 import { env } from "./env.js"
 import { mongoClient } from "./db.js"
+import { normalizePhone } from "./lib/normalization.js"
 import { nowJakarta } from "./lib/time.js"
 import {
   addManualPoints,
+  beginIdempotencyRequest,
+  completeIdempotencyRequest,
   confirmOrder,
+  createRequestFingerprint,
   createCustomer,
+  failIdempotencyRequest,
   findAdminByUsername,
   getAdminDashboard,
   getCustomerDetail,
-  getIdempotentResponse,
   getNotificationPreparedMessage,
   getOrderById,
   getOrderPreview,
@@ -36,10 +40,10 @@ import {
   markNotificationManualResolved,
   markOrderDone,
   resendNotification,
-  saveIdempotentResponse,
   updateCustomerIdentity,
   updateSettings,
   verifyAdminPassword,
+  waitForCompletedIdempotencyRequest,
   voidOrder,
   downloadNotificationReceipt
 } from "./services/admin.js"
@@ -88,9 +92,16 @@ const requireCustomer = (req: express.Request, res: express.Response, next: expr
 const getParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value ?? ""
 
+const asyncRoute = (
+  handler: (req: express.Request, res: express.Response, next: express.NextFunction) => Promise<void>
+) => (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  void Promise.resolve(handler(req, res, next)).catch(next)
+}
+
 const withIdempotency = async <T>(
   req: express.Request,
   scope: string,
+  payload: unknown,
   work: () => Promise<T>
 ) => {
   const key = req.header("Idempotency-Key")
@@ -98,19 +109,50 @@ const withIdempotency = async <T>(
     return work()
   }
 
-  const existing = await getIdempotentResponse(scope, key)
-  if (existing) {
-    return existing.response as T
+  const fingerprint = createRequestFingerprint(payload)
+  const claim = await beginIdempotencyRequest(scope, key, fingerprint)
+
+  if (claim.kind === "existing") {
+    if (claim.record.fingerprint !== fingerprint) {
+      throw new Error("Idempotency-Key sudah digunakan untuk payload yang berbeda")
+    }
+
+    if (claim.record.status === "completed") {
+      return claim.record.response as T
+    }
+
+    const completed = await waitForCompletedIdempotencyRequest(scope, key)
+    if (completed?.response) {
+      return completed.response as T
+    }
+
+    throw new Error("Permintaan sedang diproses, silakan ulangi beberapa saat lagi")
   }
 
-  const response = await work()
-  await saveIdempotentResponse(scope, key, response)
-  return response
+  try {
+    const response = await work()
+    await completeIdempotencyRequest(scope, key, response)
+    return response
+  } catch (error) {
+    await failIdempotencyRequest(scope, key)
+    throw error
+  }
 }
 
 export const createApp = () => {
   const app = express()
   app.set("trust proxy", env.TRUST_PROXY)
+  const sessionStore =
+    env.APP_ENV === "test"
+      ? null
+      : MongoStore.create({
+          client: mongoClient,
+          collectionName: "sessions"
+        })
+
+  if (sessionStore) {
+    app.locals.sessionStore = sessionStore
+  }
 
   app.use(morgan("dev"))
   app.use(express.json({ limit: "1mb" }))
@@ -132,21 +174,40 @@ export const createApp = () => {
         secure: env.SESSION_COOKIE_SECURE,
         maxAge: 1000 * 60 * 60 * 24 * 7
       },
-      store: MongoStore.create({
-        client: mongoClient,
-        collectionName: "sessions"
-      })
+      ...(sessionStore ? { store: sessionStore } : {})
     })
   )
 
-  const adminLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 20 })
-  const customerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 30 })
+  const buildLimiter = (
+    limit: number,
+    message: string,
+    keyGenerator?: (req: express.Request, res: express.Response) => string,
+    skipSuccessfulRequests = false
+  ) =>
+    rateLimit({
+      windowMs: 10 * 60 * 1000,
+      limit,
+      keyGenerator,
+      skipSuccessfulRequests,
+      handler: (_req, res) => {
+        res.status(429).json({ message })
+      }
+    })
+
+  const adminLimiter = buildLimiter(20, "Terlalu banyak percobaan login admin")
+  const customerLimiter = buildLimiter(30, "Terlalu banyak percobaan login pelanggan", undefined, true)
+  const customerPhoneLimiter = buildLimiter(
+    10,
+    "Terlalu banyak percobaan login untuk nomor ini",
+    (req) => `customer-login:${normalizePhone(typeof req.body?.phone === "string" ? req.body.phone : "") || "unknown"}`,
+    true
+  )
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true })
   })
 
-  app.get("/ready", async (_req, res) => {
+  app.get("/ready", asyncRoute(async (_req, res) => {
     try {
       await mongoClient.db().command({ ping: 1 })
       const [settings, admin] = await Promise.all([
@@ -186,9 +247,9 @@ export const createApp = () => {
         }
       })
     }
-  })
+  }))
 
-  app.post("/v1/admin/auth/login", adminLimiter, async (req, res) => {
+  app.post("/v1/admin/auth/login", adminLimiter, asyncRoute(async (req, res) => {
     const body = adminLoginInputSchema.parse(req.body)
     const admin = await findAdminByUsername(body.username)
     if (!admin || !(await verifyAdminPassword(admin, body.password))) {
@@ -199,108 +260,111 @@ export const createApp = () => {
     req.session.customerUserId = undefined
     req.session.customerProfile = undefined
     res.json({ ok: true })
-  })
+  }))
 
-  app.post("/v1/admin/auth/logout", requireAdmin, async (req, res) => {
+  app.post("/v1/admin/auth/logout", requireAdmin, asyncRoute(async (req, res) => {
     req.session.destroy(() => res.json({ ok: true }))
-  })
+  }))
 
   app.get("/v1/admin/auth/session", (req, res) => {
     res.json({ authenticated: Boolean(req.session.adminUserId) })
   })
 
-  app.get("/v1/admin/dashboard", requireAdmin, async (req, res) => {
+  app.get("/v1/admin/dashboard", requireAdmin, asyncRoute(async (req, res) => {
     const window = dashboardWindowSchema.parse(req.query.window ?? "daily")
     res.json(await getAdminDashboard(window))
-  })
+  }))
 
-  app.get("/v1/admin/customers", requireAdmin, async (req, res) => {
+  app.get("/v1/admin/customers", requireAdmin, asyncRoute(async (req, res) => {
     const search = typeof req.query.search === "string" ? req.query.search : undefined
     res.json(await listCustomers(search))
-  })
+  }))
 
-  app.post("/v1/admin/customers", requireAdmin, async (req, res) => {
+  app.post("/v1/admin/customers", requireAdmin, asyncRoute(async (req, res) => {
     const body = createCustomerInputSchema.parse(req.body)
-    res.json(await withIdempotency(req, "create-customer", () => createCustomer(body)))
-  })
+    res.json(await withIdempotency(req, "create-customer", body, () => createCustomer(body)))
+  }))
 
-  app.get("/v1/admin/customers/:id", requireAdmin, async (req, res) => {
+  app.get("/v1/admin/customers/:id", requireAdmin, asyncRoute(async (req, res) => {
     res.json(await getCustomerDetail(getParam(req.params.id)))
-  })
+  }))
 
-  app.patch("/v1/admin/customers/:id", requireAdmin, async (req, res) => {
+  app.patch("/v1/admin/customers/:id", requireAdmin, asyncRoute(async (req, res) => {
     const body = updateCustomerInputSchema.parse(req.body)
     res.json(await updateCustomerIdentity(getParam(req.params.id), body))
-  })
+  }))
 
-  app.post("/v1/admin/customers/:id/points", requireAdmin, async (req, res) => {
+  app.post("/v1/admin/customers/:id/points", requireAdmin, asyncRoute(async (req, res) => {
     const body = manualPointAdjustmentInputSchema.parse(req.body)
     res.json(await addManualPoints(getParam(req.params.id), body.points, body.reason))
-  })
+  }))
 
-  app.post("/v1/admin/orders/preview", requireAdmin, async (req, res) => {
+  app.post("/v1/admin/orders/preview", requireAdmin, asyncRoute(async (req, res) => {
     const body = confirmOrderInputSchema.parse(req.body)
     res.json(await getOrderPreview(body))
-  })
+  }))
 
-  app.post("/v1/admin/orders", requireAdmin, async (req, res) => {
+  app.post("/v1/admin/orders", requireAdmin, asyncRoute(async (req, res) => {
     const body = confirmOrderInputSchema.parse(req.body)
-    res.json(await withIdempotency(req, "confirm-order", () => confirmOrder(body)))
-  })
+    res.json(await withIdempotency(req, "confirm-order", body, () => confirmOrder(body)))
+  }))
 
-  app.get("/v1/admin/orders/active", requireAdmin, async (_req, res) => {
+  app.get("/v1/admin/orders/active", requireAdmin, asyncRoute(async (_req, res) => {
     res.json(await listActiveOrders())
-  })
+  }))
 
-  app.get("/v1/admin/orders/:id", requireAdmin, async (req, res) => {
+  app.get("/v1/admin/orders/:id", requireAdmin, asyncRoute(async (req, res) => {
     res.json(await getOrderById(getParam(req.params.id)))
-  })
+  }))
 
-  app.post("/v1/admin/orders/:id/done", requireAdmin, async (req, res) => {
-    res.json(await withIdempotency(req, "mark-done", () => markOrderDone(getParam(req.params.id))))
-  })
+  app.post("/v1/admin/orders/:id/done", requireAdmin, asyncRoute(async (req, res) => {
+    const orderId = getParam(req.params.id)
+    res.json(await withIdempotency(req, "mark-done", { orderId }, () => markOrderDone(orderId)))
+  }))
 
-  app.post("/v1/admin/orders/:id/void", requireAdmin, async (req, res) => {
+  app.post("/v1/admin/orders/:id/void", requireAdmin, asyncRoute(async (req, res) => {
     const body = voidOrderInputSchema.parse(req.body)
-    res.json(await withIdempotency(req, "void-order", () => voidOrder(getParam(req.params.id), body)))
-  })
+    const orderId = getParam(req.params.id)
+    res.json(await withIdempotency(req, "void-order", { orderId, ...body }, () => voidOrder(orderId, body)))
+  }))
 
-  app.get("/v1/admin/notifications", requireAdmin, async (_req, res) => {
+  app.get("/v1/admin/notifications", requireAdmin, asyncRoute(async (_req, res) => {
     res.json(await listNotifications())
-  })
+  }))
 
-  app.post("/v1/admin/notifications/:id/resend", requireAdmin, async (req, res) => {
+  app.post("/v1/admin/notifications/:id/resend", requireAdmin, asyncRoute(async (req, res) => {
     res.json(await resendNotification(getParam(req.params.id)))
-  })
+  }))
 
-  app.post("/v1/admin/notifications/:id/manual-resolve", requireAdmin, async (req, res) => {
+  app.post("/v1/admin/notifications/:id/manual-resolve", requireAdmin, asyncRoute(async (req, res) => {
     const note = typeof req.body?.note === "string" ? req.body.note : ""
     res.json(await markNotificationManualResolved(getParam(req.params.id), note))
-  })
+  }))
 
-  app.get("/v1/admin/notifications/:id/receipt", requireAdmin, async (req, res) => {
+  app.get("/v1/admin/notifications/:id/receipt", requireAdmin, asyncRoute(async (req, res) => {
     res.setHeader("Content-Type", "text/plain; charset=utf-8")
+    res.setHeader("Content-Disposition", `attachment; filename="receipt-${getParam(req.params.id)}.txt"`)
     res.send(await downloadNotificationReceipt(getParam(req.params.id)))
-  })
+  }))
 
-  app.get("/v1/admin/notifications/:id/message", requireAdmin, async (req, res) => {
+  app.get("/v1/admin/notifications/:id/message", requireAdmin, asyncRoute(async (req, res) => {
     res.json({ message: await getNotificationPreparedMessage(getParam(req.params.id)) })
-  })
+  }))
 
-  app.get("/v1/admin/settings", requireAdmin, async (_req, res) => {
+  app.get("/v1/admin/settings", requireAdmin, asyncRoute(async (_req, res) => {
     res.json(await getSettings())
-  })
+  }))
 
-  app.put("/v1/admin/settings", requireAdmin, async (req, res) => {
+  app.put("/v1/admin/settings", requireAdmin, asyncRoute(async (req, res) => {
     const body = settingsResponseSchema.parse(req.body)
     res.json(await updateSettings(body))
-  })
+  }))
 
-  app.get("/v1/public/landing", async (_req, res) => {
+  app.get("/v1/public/landing", asyncRoute(async (_req, res) => {
     res.json(await getLandingData())
-  })
+  }))
 
-  app.post("/v1/public/auth/login", customerLimiter, async (req, res) => {
+  app.post("/v1/public/auth/login", customerLimiter, customerPhoneLimiter, asyncRoute(async (req, res) => {
     const body = customerLoginInputSchema.parse(req.body)
     const customer = await loginCustomer(body.phone, body.name)
     if (!customer) {
@@ -311,11 +375,11 @@ export const createApp = () => {
     req.session.customerProfile = customer
     req.session.adminUserId = undefined
     res.json({ ok: true })
-  })
+  }))
 
-  app.post("/v1/public/auth/logout", requireCustomer, async (req, res) => {
+  app.post("/v1/public/auth/logout", requireCustomer, asyncRoute(async (req, res) => {
     req.session.destroy(() => res.json({ ok: true }))
-  })
+  }))
 
   app.get("/v1/public/auth/session", (req, res) => {
     res.json({
@@ -324,47 +388,47 @@ export const createApp = () => {
     })
   })
 
-  app.get("/v1/public/me/dashboard", requireCustomer, async (req, res) => {
+  app.get("/v1/public/me/dashboard", requireCustomer, asyncRoute(async (req, res) => {
     res.json(await getPublicDashboard(req.session.customerUserId!))
-  })
+  }))
 
-  app.get("/v1/public/me/orders", requireCustomer, async (req, res) => {
+  app.get("/v1/public/me/orders", requireCustomer, asyncRoute(async (req, res) => {
     res.json(await listCustomerOrders(req.session.customerUserId!))
-  })
+  }))
 
-  app.get("/v1/public/me/orders/:id", requireCustomer, async (req, res) => {
+  app.get("/v1/public/me/orders/:id", requireCustomer, asyncRoute(async (req, res) => {
     res.json(await getCustomerOrderDetail(req.session.customerUserId!, getParam(req.params.id)))
-  })
+  }))
 
-  app.get("/v1/public/me/points", requireCustomer, async (req, res) => {
+  app.get("/v1/public/me/points", requireCustomer, asyncRoute(async (req, res) => {
     res.json(await listCustomerPointLedger(req.session.customerUserId!))
-  })
+  }))
 
-  app.get("/v1/public/me/redemptions", requireCustomer, async (req, res) => {
+  app.get("/v1/public/me/redemptions", requireCustomer, asyncRoute(async (req, res) => {
     res.json(await listCustomerRedemptions(req.session.customerUserId!))
-  })
+  }))
 
-  app.get("/v1/public/me/monthly-summary", requireCustomer, async (req, res) => {
+  app.get("/v1/public/me/monthly-summary", requireCustomer, asyncRoute(async (req, res) => {
     const dashboard = await getPublicDashboard(req.session.customerUserId!)
     res.json(dashboard.monthlySummary)
-  })
+  }))
 
-  app.get("/v1/public/leaderboard", async (req, res) => {
+  app.get("/v1/public/leaderboard", asyncRoute(async (req, res) => {
     const month = typeof req.query.month === "string" ? req.query.month : nowJakarta().toFormat("yyyy-MM")
     res.json({
       rows: await getLeaderboardByMonth(month),
       availableMonths: await getAvailableLeaderboardMonths()
     })
-  })
+  }))
 
-  app.get("/v1/public/status/:token", async (req, res) => {
+  app.get("/v1/public/status/:token", asyncRoute(async (req, res) => {
     const payload = await getDirectOrderStatus(getParam(req.params.token))
     if (!payload) {
       res.status(404).json({ message: "Status order tidak ditemukan" })
       return
     }
     res.json(payload)
-  })
+  }))
 
   app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(400).json({ message: error.message })

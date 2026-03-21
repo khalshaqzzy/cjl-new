@@ -48,7 +48,8 @@ const envSchema = z.object({
   ADMIN_ORIGIN: z.string().default("http://localhost:3001"),
   PUBLIC_ORIGIN: z.string().default("http://localhost:3000"),
   API_ORIGIN: z.string().default("http://localhost:4000"),
-  WA_FAIL_MODE: z.enum(["never", "confirm-only", "all"]).default("never")
+  WA_FAIL_MODE: z.enum(["never", "confirm-only", "all"]).default("never"),
+  OUTBOX_POLL_MS: z.coerce.number().int().positive().default(250)
 })
 
 export const env = envSchema.parse(process.env)

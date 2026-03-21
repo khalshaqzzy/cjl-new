@@ -168,6 +168,7 @@ export const notificationRecordSchema = z.object({
   lastAttemptAt: z.string().optional(),
   preparedMessage: z.string(),
   manualResolutionNote: z.string().optional(),
+  manualResolvedAt: z.string().optional(),
 })
 
 export const leaderboardRowSchema = z.object({
@@ -272,6 +273,27 @@ export const adminDashboardResponseSchema = z.object({
       tone: z.enum(["neutral", "positive", "warning"]),
     }),
   ),
+  summary: z.object({
+    grossSales: z.number().int(),
+    netSales: z.number().int(),
+    discountTotal: z.number().int(),
+    confirmedOrders: z.number().int(),
+    activeOrders: z.number().int(),
+    completedOrders: z.number().int(),
+    totalWeightKg: z.number(),
+    averageOrderValue: z.number(),
+    newCustomers: z.number().int(),
+    pointsEarned: z.number().int(),
+    pointsRedeemed: z.number().int(),
+    manualPointsAdded: z.number().int(),
+    topServiceUsage: z.array(
+      z.object({
+        serviceCode: serviceCodeSchema,
+        label: z.string(),
+        usageCount: z.number().int(),
+      }),
+    ),
+  }),
   activeOrders: z.array(activeOrderCardSchema),
   notifications: z.array(notificationRecordSchema),
 })

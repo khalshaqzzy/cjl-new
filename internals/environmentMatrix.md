@@ -6,9 +6,9 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
 
 | Environment | Public web | Admin web | API | Runtime target | Build location | Data store |
 | --- | --- | --- | --- | --- | --- | --- |
-| `local` | `http://localhost:3000` | `http://localhost:3001` | `http://localhost:4000` | local machine | local machine | local MongoDB |
-| `staging` | `https://staging.cjlaundry.site` | `https://admin-staging.cjlaundry.site` | `https://api-staging.cjlaundry.site` | one GCP VM | built on staging VM | MongoDB container on staging VM |
-| `production` | `https://cjlaundry.site` | `https://admin.cjlaundry.site` | `https://api.cjlaundry.site` | one GCP VM | built on production VM | MongoDB container on production VM |
+| `local` | `http://localhost:3000` | `http://localhost:3001` | `http://localhost:4000` | local machine | local machine | local MongoDB single-node replica set |
+| `staging` | `https://staging.cjlaundry.site` | `https://admin-staging.cjlaundry.site` | `https://api-staging.cjlaundry.site` | one GCP VM | built on staging VM | MongoDB container single-node replica set on staging VM |
+| `production` | `https://cjlaundry.site` | `https://admin.cjlaundry.site` | `https://api.cjlaundry.site` | one GCP VM | built on production VM | MongoDB container single-node replica set on production VM |
 
 ## Local Workspace Runtime
 
@@ -34,13 +34,13 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
 
 - backend integration tests:
   - command: `npm run test:backend`
-  - database: `mongodb-memory-server`
+  - database: `mongodb-memory-server` replica set
   - API exercised over real HTTP on test port
 - frontend e2e tests:
   - command: `npm run test:e2e`
   - admin/public frontends started from local workspace scripts
   - API test server started from `scripts/testing/start-api.ts`
-  - database: `mongodb-memory-server`
+  - database: `mongodb-memory-server` replica set
 
 ## Hosted Runtime
 
@@ -48,7 +48,7 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
   - one Ubuntu VM
   - Docker Engine + Compose plugin
   - Caddy reverse proxy with host-based routing
-  - MongoDB container on the internal Docker network
+  - MongoDB container on the internal Docker network in single-node replica-set mode
   - API, admin, and public services built locally on the VM
 
 ## Deployment Orchestration

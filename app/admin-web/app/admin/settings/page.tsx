@@ -23,7 +23,6 @@ import {
   Package,
   Info,
 } from "lucide-react"
-import { mockServicePrices, type ServicePriceSettingVM } from "@/lib/mock-data"
 import { adminApi } from "@/lib/api"
 
 const serviceIcons: Record<string, typeof Shirt> = {
@@ -40,7 +39,7 @@ function ServicePriceCard({
   onPriceChange,
   onActiveChange,
 }: {
-  service: ServicePriceSettingVM
+  service: ServiceSetting
   onPriceChange: (price: number) => void
   onActiveChange: (active: boolean) => void
 }) {
@@ -87,12 +86,12 @@ function ServicePriceCard({
 }
 
 export default function SettingsPage() {
-  const [laundryName, setLaundryName] = useState("CJ Laundry")
-  const [laundryPhone, setLaundryPhone] = useState("+62 812-3456-7890")
-  const [laundryAddress, setLaundryAddress] = useState("Jl. Contoh No. 123, Jakarta")
-  const [services, setServices] = useState<ServiceSetting[]>(mockServicePrices as unknown as ServiceSetting[])
-  const [publicWhatsapp, setPublicWhatsapp] = useState("6281234567890")
-  const [operatingHours, setOperatingHours] = useState("Senin - Minggu, 07:00 - 22:00")
+  const [laundryName, setLaundryName] = useState("")
+  const [laundryPhone, setLaundryPhone] = useState("")
+  const [laundryAddress, setLaundryAddress] = useState("")
+  const [services, setServices] = useState<ServiceSetting[]>([])
+  const [publicWhatsapp, setPublicWhatsapp] = useState("")
+  const [operatingHours, setOperatingHours] = useState("")
   const [messageTemplates, setMessageTemplates] = useState({
     welcome: "",
     orderConfirmed: "",
@@ -111,6 +110,8 @@ export default function SettingsPage() {
   } | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
 
   useEffect(() => {
     adminApi.getSettings()
@@ -131,8 +132,10 @@ export default function SettingsPage() {
           services: payload.services,
           messageTemplates: payload.messageTemplates,
         })
+        setLoadError("")
       })
-      .catch(() => undefined)
+      .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat pengaturan"))
+      .finally(() => setIsLoading(false))
   }, [])
 
   const handlePriceChange = (serviceCode: string, price: number) => {
@@ -175,6 +178,18 @@ export default function SettingsPage() {
   return (
     <AdminShell title="Pengaturan" subtitle="Profil bisnis dan harga layanan">
       <div className="px-4 py-6 lg:px-6 space-y-8 pb-32">
+        {isLoading && (
+          <div className="flex items-center gap-2 rounded-xl border border-line-base bg-bg-surface px-4 py-3 text-sm text-text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Memuat pengaturan...
+          </div>
+        )}
+
+        {loadError && (
+          <div className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+            {loadError}
+          </div>
+        )}
 
         {/* Business Profile */}
         <section className="space-y-4">
@@ -288,9 +303,10 @@ export default function SettingsPage() {
           <Card className="rounded-xl border-line-base shadow-card bg-bg-surface">
             <CardContent className="p-5 divide-y divide-line-base">
               {[
-                { label: "Poin per Washer/Dryer", desc: "Poin untuk setiap unit Washer atau Dryer", value: "1", color: "bg-rose-50 text-rose-600" },
-                { label: "Poin per Paket Cuci Kering Lipat", desc: "Poin untuk setiap paket", value: "2", color: "bg-rose-50 text-rose-600" },
+                { label: "Washer + Dryer berpasangan", desc: "1 stamp untuk setiap pasangan Washer dan Dryer yang cocok pada order", value: "1", color: "bg-rose-50 text-rose-600" },
+                { label: "Paket Cuci Kering Lipat", desc: "1 stamp untuk setiap unit paket", value: "1", color: "bg-rose-50 text-rose-600" },
                 { label: "Redeem 1 Washer Gratis", desc: "Poin yang dibutuhkan untuk 1 Washer gratis", value: "10", color: "bg-success/10 text-success" },
+                { label: "Penyesuaian Manual", desc: "Menambah saldo poin pelanggan tanpa memengaruhi leaderboard", value: "0", color: "bg-info/10 text-info" },
               ].map(({ label, desc, value, color }) => (
                 <div key={label} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
                   <div className="flex-1 pr-4">

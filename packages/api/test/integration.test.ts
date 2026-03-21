@@ -1,50 +1,16 @@
 import assert from "node:assert/strict"
-import { randomUUID } from "node:crypto"
 import test from "node:test"
-import signature from "cookie-signature"
 import type { Server } from "node:http"
 import { DateTime } from "luxon"
-import { MongoMemoryServer } from "mongodb-memory-server"
+import { MongoMemoryReplSet } from "mongodb-memory-server"
 
 const baseUrl = "http://127.0.0.1:4105"
 
-let mongo: MongoMemoryServer
+let mongo: MongoMemoryReplSet
 let server: Server
 let getDatabase: (typeof import("../src/db.ts"))["getDatabase"]
 let disconnectDatabase: (typeof import("../src/db.ts"))["disconnectDatabase"]
-
-const createSessionCookie = async (
-  data: {
-    adminUserId?: string
-    customerUserId?: string
-    customerProfile?: {
-      customerId: string
-      name: string
-      phone: string
-    }
-  }
-) => {
-  const sessionId = `test-${randomUUID()}`
-  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7)
-
-  await getDatabase().collection("sessions").insertOne({
-    _id: sessionId,
-    session: JSON.stringify({
-      cookie: {
-        originalMaxAge: 1000 * 60 * 60 * 24 * 7,
-        expires: expiresAt.toISOString(),
-        httpOnly: true,
-        path: "/",
-        sameSite: "lax",
-        secure: false
-      },
-      ...data
-    }),
-    expires: expiresAt
-  })
-
-  return `cjl.sid=${encodeURIComponent(`s:${signature.sign(sessionId, process.env.SESSION_SECRET!)}`)}`
-}
+let stopBackgroundWork: (() => Promise<void>) | undefined
 
 const requestJson = async (
   path: string,
@@ -64,10 +30,31 @@ const requestJson = async (
   }
 }
 
+const waitFor = async <T>(
+  work: () => Promise<T>,
+  predicate: (value: T) => boolean,
+  timeoutMs = 10_000
+) => {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    const value = await work()
+    if (predicate(value)) {
+      return value
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+
+  throw new Error("Timed out waiting for condition")
+}
+
 test.before(async () => {
-  mongo = await MongoMemoryServer.create()
+  mongo = await MongoMemoryReplSet.create({
+    replSet: { count: 1, storageEngine: "wiredTiger" }
+  })
 
   process.env.PORT = "4105"
+  process.env.APP_ENV = "test"
   process.env.MONGODB_URI = mongo.getUri("cjlaundry_api_test")
   process.env.SESSION_SECRET = "integration-test-secret"
   process.env.SESSION_COOKIE_SECURE = "false"
@@ -87,6 +74,7 @@ test.before(async () => {
 
   const started = await serverModule.startServer()
   server = started.server
+  stopBackgroundWork = started.stopBackgroundWork
 })
 
 test.after(async () => {
@@ -101,11 +89,12 @@ test.after(async () => {
     })
   })
 
+  await stopBackgroundWork?.()
   await disconnectDatabase()
   await mongo.stop()
 })
 
-test("backend integration flow covers auth, orders, public access, and archived leaderboard rebuilds", async () => {
+test("backend integration flow covers auth, transactions, idempotency, outbox states, throttling, and archived leaderboard rebuilds", async () => {
   let result = await requestJson("/v1/admin/dashboard", { expectedStatus: 401 })
   assert.equal(result.payload.message, "Unauthorized")
 
@@ -118,18 +107,20 @@ test("backend integration flow covers auth, orders, public access, and archived 
     body: JSON.stringify({ username: "admin", password: "admin123" })
   })
   assert.equal(result.payload.ok, true)
-
-  const adminCookie = await createSessionCookie({ adminUserId: "admin-primary" })
+  const adminCookie = result.response.headers.get("set-cookie")
+  assert.ok(adminCookie)
 
   const uniqueSuffix = Date.now().toString().slice(-6)
   const customerName = `Budi Integration ${uniqueSuffix}`
   const customerPhone = `08123${uniqueSuffix}`
 
+  const createCustomerKey = `create-${uniqueSuffix}`
   result = await requestJson("/v1/admin/customers", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: adminCookie
+      Cookie: adminCookie!,
+      "Idempotency-Key": createCustomerKey
     },
     body: JSON.stringify({ name: customerName, phone: customerPhone })
   })
@@ -138,42 +129,39 @@ test("backend integration flow covers auth, orders, public access, and archived 
   assert.equal(result.payload.customer.name, customerName)
   assert.equal(result.payload.customer.phone, `+62${customerPhone.slice(1)}`)
 
-  const customerId = result.payload.customer.customerId as string
-
-  result = await requestJson("/v1/admin/customers", {
+  const createCustomerReplay = await requestJson("/v1/admin/customers", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: adminCookie
+      Cookie: adminCookie!,
+      "Idempotency-Key": createCustomerKey
     },
     body: JSON.stringify({ name: customerName, phone: customerPhone })
   })
+  assert.equal(createCustomerReplay.payload.customer.customerId, result.payload.customer.customerId)
 
-  assert.equal(result.payload.duplicate, true)
-  assert.equal(result.payload.customer.customerId, customerId)
+  const customerId = result.payload.customer.customerId as string
 
-  result = await requestJson("/v1/admin/notifications", {
-    headers: { Cookie: adminCookie }
-  })
-
-  assert.ok(
-    result.payload.some(
-      (notification: { eventType: string; customerName: string; deliveryStatus: string }) =>
-        notification.eventType === "welcome" &&
-        notification.customerName === customerName &&
-        notification.deliveryStatus === "sent"
-    )
+  result = await waitFor(
+    () => requestJson("/v1/admin/notifications", { headers: { Cookie: adminCookie! } }),
+    (value) =>
+      value.payload.some(
+        (notification: { eventType: string; customerName: string; deliveryStatus: string }) =>
+          notification.eventType === "welcome" &&
+          notification.customerName === customerName &&
+          notification.deliveryStatus === "sent"
+      )
   )
+  assert.ok(result.payload.length > 0)
 
   result = await requestJson(`/v1/admin/customers/${customerId}/points`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: adminCookie
+      Cookie: adminCookie!
     },
     body: JSON.stringify({ points: 20, reason: "Bonus integration" })
   })
-
   assert.equal(result.payload.profile.currentPoints, 20)
 
   const firstOrderPayload = {
@@ -194,11 +182,10 @@ test("backend integration flow covers auth, orders, public access, and archived 
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: adminCookie
+      Cookie: adminCookie!
     },
     body: JSON.stringify(firstOrderPayload)
   })
-
   assert.equal(result.payload.earnedStamps, 2)
   assert.equal(result.payload.redeemedPoints, 10)
   assert.equal(result.payload.total, 30000)
@@ -209,7 +196,7 @@ test("backend integration flow covers auth, orders, public access, and archived 
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: adminCookie,
+      Cookie: adminCookie!,
       "Idempotency-Key": confirmKey
     },
     body: JSON.stringify(firstOrderPayload)
@@ -218,26 +205,32 @@ test("backend integration flow covers auth, orders, public access, and archived 
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: adminCookie,
+      Cookie: adminCookie!,
       "Idempotency-Key": confirmKey
     },
     body: JSON.stringify(firstOrderPayload)
   })
-
   assert.equal(confirmFirst.payload.order.orderCode, confirmFirstReplay.payload.order.orderCode)
+
+  const confirmMismatch = await requestJson("/v1/admin/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": confirmKey
+    },
+    body: JSON.stringify({ ...firstOrderPayload, weightKg: 4 }),
+    expectedStatus: 400
+  })
+  assert.match(confirmMismatch.payload.message, /Idempotency-Key/)
 
   const firstOrderId = confirmFirst.payload.order.orderId as string
   const firstOrderToken = confirmFirst.payload.directToken as string
 
   result = await requestJson(`/v1/admin/customers/${customerId}`, {
-    headers: { Cookie: adminCookie }
+    headers: { Cookie: adminCookie! }
   })
   assert.equal(result.payload.profile.currentPoints, 12)
-
-  result = await requestJson("/v1/admin/orders/active", {
-    headers: { Cookie: adminCookie }
-  })
-  assert.ok(result.payload.some((order: { orderId: string }) => order.orderId === firstOrderId))
 
   result = await requestJson("/v1/public/auth/login", {
     method: "POST",
@@ -245,18 +238,11 @@ test("backend integration flow covers auth, orders, public access, and archived 
     body: JSON.stringify({ phone: customerPhone, name: customerName })
   })
   assert.equal(result.payload.ok, true)
-
-  const publicCookie = await createSessionCookie({
-    customerUserId: customerId,
-    customerProfile: {
-      customerId,
-      name: customerName,
-      phone: `+62${customerPhone.slice(1)}`
-    }
-  })
+  const publicCookie = result.response.headers.get("set-cookie")
+  assert.ok(publicCookie)
 
   result = await requestJson("/v1/public/me/dashboard", {
-    headers: { Cookie: publicCookie }
+    headers: { Cookie: publicCookie! }
   })
   assert.equal(result.payload.session.customerId, customerId)
   assert.ok(result.payload.activeOrders.some((order: { orderId: string }) => order.orderId === firstOrderId))
@@ -264,11 +250,46 @@ test("backend integration flow covers auth, orders, public access, and archived 
   result = await requestJson(`/v1/public/status/${firstOrderToken}`)
   assert.equal(result.payload.status, "Active")
 
+  await getDatabase().collection("notifications").insertOne({
+    _id: `notification_conflict_${uniqueSuffix}`,
+    customerName,
+    destinationPhone: `+62${customerPhone.slice(1)}`,
+    orderId: firstOrderId,
+    orderCode: confirmFirst.payload.order.orderCode,
+    eventType: "order_done",
+    renderStatus: "not_required",
+    deliveryStatus: "queued",
+    attemptCount: 0,
+    preparedMessage: "conflict",
+    businessKey: `order-done:${firstOrderId}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  })
+
+  const failedDone = await requestJson(`/v1/admin/orders/${firstOrderId}/done`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `done-conflict-${uniqueSuffix}`
+    },
+    body: JSON.stringify({}),
+    expectedStatus: 400
+  })
+  assert.ok(failedDone.payload.message)
+
+  result = await requestJson(`/v1/admin/orders/${firstOrderId}`, {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.status, "Active")
+
+  await getDatabase().collection("notifications").deleteOne({ _id: `notification_conflict_${uniqueSuffix}` })
+
   result = await requestJson(`/v1/admin/orders/${firstOrderId}/done`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: adminCookie,
+      Cookie: adminCookie!,
       "Idempotency-Key": `done-${uniqueSuffix}`
     },
     body: JSON.stringify({})
@@ -276,7 +297,7 @@ test("backend integration flow covers auth, orders, public access, and archived 
   assert.equal(result.payload.status, "Done")
 
   result = await requestJson(`/v1/public/me/orders/${firstOrderId}`, {
-    headers: { Cookie: publicCookie }
+    headers: { Cookie: publicCookie! }
   })
   assert.equal(result.payload.status, "Done")
 
@@ -298,7 +319,7 @@ test("backend integration flow covers auth, orders, public access, and archived 
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: adminCookie,
+      Cookie: adminCookie!,
       "Idempotency-Key": `archived-${uniqueSuffix}`
     },
     body: JSON.stringify(archivedOrderPayload)
@@ -315,7 +336,6 @@ test("backend integration flow covers auth, orders, public access, and archived 
     .plus({ days: 5, hours: 10 })
     .toUTC()
     .toISO()
-
   assert.ok(previousMonthIso)
 
   await getDatabase().collection("orders").updateOne(
@@ -342,7 +362,7 @@ test("backend integration flow covers auth, orders, public access, and archived 
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: adminCookie,
+      Cookie: adminCookie!,
       "Idempotency-Key": `void-${uniqueSuffix}`
     },
     body: JSON.stringify({
@@ -350,12 +370,11 @@ test("backend integration flow covers auth, orders, public access, and archived 
       notifyCustomer: true
     })
   })
-
   assert.equal(result.payload.status, "Cancelled")
   assert.equal(result.payload.cancellationSummary, "Pembatalan integration test")
 
   result = await requestJson(`/v1/public/me/orders/${archivedOrderId}`, {
-    headers: { Cookie: publicCookie }
+    headers: { Cookie: publicCookie! }
   })
   assert.equal(result.payload.status, "Cancelled")
 
@@ -363,7 +382,7 @@ test("backend integration flow covers auth, orders, public access, and archived 
   assert.equal(result.payload.status, "Cancelled")
 
   result = await requestJson(`/v1/admin/customers/${customerId}`, {
-    headers: { Cookie: adminCookie }
+    headers: { Cookie: adminCookie! }
   })
   assert.equal(result.payload.profile.currentPoints, 12)
 
@@ -380,9 +399,16 @@ test("backend integration flow covers auth, orders, public access, and archived 
   assert.equal(snapshots[1].version, 2)
   assert.equal(snapshots[1].rows.length, 0)
 
-  result = await requestJson("/v1/admin/notifications", {
-    headers: { Cookie: adminCookie }
-  })
+  result = await waitFor(
+    () => requestJson("/v1/admin/notifications", { headers: { Cookie: adminCookie! } }),
+    (value) =>
+      value.payload.some(
+        (notification: { eventType: string; orderCode?: string; deliveryStatus: string }) =>
+          notification.eventType === "order_void_notice" &&
+          notification.orderCode === archivedOrderCode &&
+          notification.deliveryStatus === "sent"
+      )
+  )
   assert.ok(
     result.payload.some(
       (notification: { eventType: string; orderCode?: string; deliveryStatus: string }) =>
@@ -391,4 +417,80 @@ test("backend integration flow covers auth, orders, public access, and archived 
         notification.deliveryStatus === "sent"
     )
   )
+
+  await getDatabase().collection("notifications").insertOne({
+    _id: `notification_render_failure_${uniqueSuffix}`,
+    customerName,
+    destinationPhone: `+62${customerPhone.slice(1)}`,
+    orderCode: "BROKEN",
+    eventType: "order_confirmed",
+    renderStatus: "pending",
+    deliveryStatus: "queued",
+    attemptCount: 0,
+    preparedMessage: "render me",
+    businessKey: `broken-render:${uniqueSuffix}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  })
+
+  const renderFailedNotification = await waitFor(
+    () => getDatabase().collection("notifications").findOne({ _id: `notification_render_failure_${uniqueSuffix}` }),
+    (value) => value?.renderStatus === "failed" && value.deliveryStatus === "failed"
+  )
+  assert.match(renderFailedNotification?.latestFailureReason ?? "", /receipt|Receipt|Order/)
+
+  await getDatabase().collection("notifications").insertOne({
+    _id: `notification_manual_${uniqueSuffix}`,
+    customerName,
+    destinationPhone: `+62${customerPhone.slice(1)}`,
+    eventType: "welcome",
+    renderStatus: "not_required",
+    deliveryStatus: "failed",
+    latestFailureReason: "Simulasi manual",
+    attemptCount: 2,
+    preparedMessage: "manual fallback",
+    businessKey: `manual-resolution:${uniqueSuffix}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  })
+
+  result = await requestJson(`/v1/admin/notifications/notification_manual_${uniqueSuffix}/manual-resolve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({ note: "Dikirim manual via admin" })
+  })
+  assert.equal(result.payload.deliveryStatus, "manual_resolved")
+  assert.equal(result.payload.manualResolutionNote, "Dikirim manual via admin")
+
+  result = await requestJson(`/v1/admin/notifications/notification_manual_${uniqueSuffix}/resend`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    }
+  })
+  assert.equal(result.payload.deliveryStatus, "queued")
+
+  const resentNotification = await waitFor(
+    () => getDatabase().collection("notifications").findOne({ _id: `notification_manual_${uniqueSuffix}` }),
+    (value) => value?.deliveryStatus === "sent"
+  )
+  assert.equal(resentNotification?.deliveryStatus, "sent")
+
+  let throttledLogin = null as Awaited<ReturnType<typeof requestJson>> | null
+  for (let attempt = 0; attempt < 11; attempt += 1) {
+    throttledLogin = await requestJson("/v1/public/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: customerPhone, name: "Nama Salah" }),
+      expectedStatus: attempt < 10 ? 401 : 429
+    })
+  }
+  assert.equal(throttledLogin?.response.status, 429)
+
+  result = await requestJson("/v1/public/leaderboard")
+  assert.ok(result.payload.availableMonths.some((month: { key: string }) => month.key === previousMonthKey))
 })

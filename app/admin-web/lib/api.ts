@@ -12,6 +12,8 @@ import type {
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"
 
+const resolveIdempotencyKey = (key?: string) => key ?? crypto.randomUUID()
+
 const apiFetch = async <T>(path: string, init?: RequestInit) => {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
@@ -34,6 +36,26 @@ const apiFetch = async <T>(path: string, init?: RequestInit) => {
   return (await response.json()) as T
 }
 
+const apiFetchBlob = async (path: string, init?: RequestInit) => {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: {
+      ...(init?.headers ?? {})
+    }
+  })
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null
+    throw new Error(payload?.message ?? "Request gagal")
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: response.headers.get("content-disposition")?.match(/filename=\"?([^"]+)\"?/)?.[1] ?? "receipt.txt"
+  }
+}
+
 export const adminApi = {
   getSession: () => apiFetch<{ authenticated: boolean }>("/v1/admin/auth/session"),
   login: (username: string, password: string) =>
@@ -46,9 +68,10 @@ export const adminApi = {
     apiFetch<AdminDashboardResponse>(`/v1/admin/dashboard?window=${window}`),
   listCustomers: (search = "") =>
     apiFetch<CustomerSearchResult[]>(`/v1/admin/customers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
-  createCustomer: (name: string, phone: string) =>
+  createCustomer: (name: string, phone: string, idempotencyKey?: string) =>
     apiFetch<{ customer: CustomerSearchResult; duplicate: boolean }>("/v1/admin/customers", {
       method: "POST",
+      headers: { "Idempotency-Key": resolveIdempotencyKey(idempotencyKey) },
       body: JSON.stringify({ name, phone })
     }),
   getCustomerDetail: (customerId: string) =>
@@ -80,23 +103,23 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  confirmOrder: (payload: ConfirmOrderInput) =>
+  confirmOrder: (payload: ConfirmOrderInput, idempotencyKey?: string) =>
     apiFetch<{ order: OrderHistoryItem; directToken: string }>("/v1/admin/orders", {
       method: "POST",
-      headers: { "Idempotency-Key": crypto.randomUUID() },
+      headers: { "Idempotency-Key": resolveIdempotencyKey(idempotencyKey) },
       body: JSON.stringify(payload)
     }),
   listActiveOrders: () => apiFetch<import("@cjl/contracts").ActiveOrderCard[]>("/v1/admin/orders/active"),
-  markOrderDone: (orderId: string) =>
+  markOrderDone: (orderId: string, idempotencyKey?: string) =>
     apiFetch(`/v1/admin/orders/${orderId}/done`, {
       method: "POST",
-      headers: { "Idempotency-Key": crypto.randomUUID() },
+      headers: { "Idempotency-Key": resolveIdempotencyKey(idempotencyKey) },
       body: JSON.stringify({})
     }),
-  voidOrder: (orderId: string, reason: string, notifyCustomer: boolean) =>
+  voidOrder: (orderId: string, reason: string, notifyCustomer: boolean, idempotencyKey?: string) =>
     apiFetch(`/v1/admin/orders/${orderId}/void`, {
       method: "POST",
-      headers: { "Idempotency-Key": crypto.randomUUID() },
+      headers: { "Idempotency-Key": resolveIdempotencyKey(idempotencyKey) },
       body: JSON.stringify({ reason, notifyCustomer })
     }),
   listNotifications: () => apiFetch<NotificationRecord[]>("/v1/admin/notifications"),
@@ -108,7 +131,7 @@ export const adminApi = {
       body: JSON.stringify({ note })
     }),
   getNotificationReceipt: (notificationId: string) =>
-    apiFetch<string>(`/v1/admin/notifications/${notificationId}/receipt`),
+    apiFetchBlob(`/v1/admin/notifications/${notificationId}/receipt`),
   getNotificationMessage: (notificationId: string) =>
     apiFetch<{ message: string }>(`/v1/admin/notifications/${notificationId}/message`),
   getSettings: () => apiFetch<SettingsResponse>("/v1/admin/settings"),

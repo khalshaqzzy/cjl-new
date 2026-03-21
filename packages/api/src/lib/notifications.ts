@@ -1,5 +1,4 @@
 import { env } from "../env.js"
-import { formatDateTime } from "./time.js"
 
 export const compileTemplate = (
   template: string,
@@ -23,15 +22,18 @@ export const buildReceiptText = (params: {
   customerName: string
   serviceSummary: string
   totalLabel: string
-  createdAt: string
+  createdAtLabel: string
+  laundryName?: string
+  laundryPhone?: string
 }) => {
   const lines = [
-    "CJ Laundry Receipt",
+    `${params.laundryName ?? "CJ Laundry"} Receipt`,
     `Order: ${params.orderCode}`,
     `Customer: ${params.customerName}`,
-    `Waktu: ${formatDateTime(params.createdAt)}`,
+    `Waktu: ${params.createdAtLabel}`,
     `Layanan: ${params.serviceSummary}`,
-    `Total: ${params.totalLabel}`
+    `Total: ${params.totalLabel}`,
+    ...(params.laundryPhone ? [`Kontak: ${params.laundryPhone}`] : [])
   ]
 
   return lines.join("\n")

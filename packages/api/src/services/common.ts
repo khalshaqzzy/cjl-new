@@ -1,9 +1,11 @@
+import type { ClientSession, Filter } from "mongodb"
 import type {
   CustomerProfile,
   NotificationRecord,
   OrderHistoryItem,
   PointLedgerItem
 } from "@cjl/contracts"
+import { env } from "../env.js"
 import { getDatabase } from "../db.js"
 import { createId } from "../lib/ids.js"
 import { formatCurrency } from "../lib/formatters.js"
@@ -21,11 +23,21 @@ import type {
 
 const db = () => getDatabase()
 
-export const getSettingsDocument = async () => {
-  const settings = await db().collection<SettingsDocument>("settings").findOne({ _id: "app-settings" })
+let outboxTimer: NodeJS.Timeout | null = null
+let outboxTickActive = false
+let outboxEnabled = false
+
+const notificationsCollection = () => db().collection<NotificationDocument>("notifications")
+
+export const getSettingsDocument = async (session?: ClientSession) => {
+  const settings = await db()
+    .collection<SettingsDocument>("settings")
+    .findOne({ _id: "app-settings" }, { session })
+
   if (!settings) {
     throw new Error("Settings belum tersedia")
   }
+
   return settings
 }
 
@@ -33,7 +45,8 @@ export const saveAuditLog = async (
   action: string,
   entityType: string,
   entityId: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  session?: ClientSession
 ) => {
   await db().collection<AuditLogDocument>("audit_logs").insertOne({
     _id: createId("audit"),
@@ -44,7 +57,7 @@ export const saveAuditLog = async (
     entityId,
     metadata,
     createdAt: new Date().toISOString()
-  })
+  }, { session })
 }
 
 export const mapNotification = (notification: NotificationDocument): NotificationRecord => ({
@@ -59,7 +72,8 @@ export const mapNotification = (notification: NotificationDocument): Notificatio
   attemptCount: notification.attemptCount,
   lastAttemptAt: notification.lastAttemptAt ? formatRelativeLabel(notification.lastAttemptAt) : undefined,
   preparedMessage: notification.preparedMessage,
-  manualResolutionNote: notification.manualResolutionNote
+  manualResolutionNote: notification.manualResolutionNote,
+  manualResolvedAt: notification.manualResolvedAt ? formatDateTime(notification.manualResolvedAt) : undefined
 })
 
 export const mapOrderHistory = (order: OrderDocument): OrderHistoryItem => ({
@@ -104,9 +118,10 @@ export const mapCustomerProfile = (
 
 export const buildPreparedMessage = async (
   eventType: NotificationDocument["eventType"],
-  params: Record<string, string | number | undefined>
+  params: Record<string, string | number | undefined>,
+  session?: ClientSession
 ) => {
-  const settings = await getSettingsDocument()
+  const settings = await getSettingsDocument(session)
   const template = {
     welcome: settings.messageTemplates.welcome,
     order_confirmed: settings.messageTemplates.orderConfirmed,
@@ -118,41 +133,39 @@ export const buildPreparedMessage = async (
   return compileTemplate(template, params)
 }
 
-export const insertPointLedger = async (entry: PointLedgerDocument) => {
-  await db().collection<PointLedgerDocument>("point_ledgers").insertOne(entry)
+export const insertPointLedger = async (entry: PointLedgerDocument, session?: ClientSession) => {
+  await db().collection<PointLedgerDocument>("point_ledgers").insertOne(entry, { session })
 }
 
-export const processNotification = async (notificationId: string) => {
-  const collection = db().collection<NotificationDocument>("notifications")
-  const notification = await collection.findOne({ _id: notificationId })
-  if (!notification) {
-    return
+export const queueNotification = async (notification: NotificationDocument, session?: ClientSession) => {
+  await notificationsCollection().insertOne(notification, { session })
+}
+
+const createRenderedReceipt = async (notification: NotificationDocument) => {
+  if (!notification.orderId) {
+    throw new Error("Receipt tidak tersedia untuk notifikasi ini")
   }
 
+  const order = await db().collection<OrderDocument>("orders").findOne({ _id: notification.orderId })
+  if (!order) {
+    throw new Error("Order receipt tidak ditemukan")
+  }
+
+  return buildReceiptText(order.receiptSnapshot)
+}
+
+const markNotificationFailed = async (
+  notificationId: string,
+  reason: string,
+  nextState: Partial<NotificationDocument>
+) => {
   const now = new Date().toISOString()
-  if (shouldForceNotificationFailure(notification.eventType)) {
-    await collection.updateOne(
-      { _id: notificationId },
-      {
-        $set: {
-          deliveryStatus: "failed",
-          latestFailureReason: "Simulasi kegagalan WhatsApp aktif",
-          lastAttemptAt: now,
-          updatedAt: now
-        },
-        $inc: { attemptCount: 1 }
-      }
-    )
-    return
-  }
-
-  await collection.updateOne(
+  await notificationsCollection().updateOne(
     { _id: notificationId },
     {
       $set: {
-        deliveryStatus: "sent",
-        latestFailureReason: undefined,
-        renderStatus: notification.renderStatus ?? "not_required",
+        ...nextState,
+        latestFailureReason: reason,
         lastAttemptAt: now,
         updatedAt: now
       },
@@ -161,65 +174,257 @@ export const processNotification = async (notificationId: string) => {
   )
 }
 
-export const queueNotification = async (notification: NotificationDocument) => {
-  await db().collection<NotificationDocument>("notifications").insertOne(notification)
-  await processNotification(notification._id)
+export const processNotification = async (notificationId: string) => {
+  const notification = await notificationsCollection().findOne({ _id: notificationId })
+  if (!notification) {
+    return
+  }
+
+  if (notification.deliveryStatus === "sent" || notification.deliveryStatus === "manual_resolved") {
+    return
+  }
+
+  const now = new Date().toISOString()
+
+  if (notification.eventType === "order_confirmed") {
+    if (notification.renderStatus === "pending") {
+      try {
+        const renderedReceipt = await createRenderedReceipt(notification)
+        await notificationsCollection().updateOne(
+          { _id: notificationId },
+          {
+            $set: {
+              renderStatus: "ready",
+              renderedReceipt,
+              updatedAt: now
+            },
+            $unset: {
+              latestFailureReason: ""
+            }
+          }
+        )
+      } catch (error) {
+        await markNotificationFailed(
+          notificationId,
+          error instanceof Error ? error.message : "Gagal merender receipt",
+          {
+            renderStatus: "failed",
+            deliveryStatus: "failed"
+          }
+        )
+        return
+      }
+    }
+
+    const refreshed = await notificationsCollection().findOne({ _id: notificationId })
+    if (!refreshed || refreshed.renderStatus !== "ready") {
+      return
+    }
+  }
+
+  if (shouldForceNotificationFailure(notification.eventType)) {
+    await markNotificationFailed(notificationId, "Simulasi kegagalan WhatsApp aktif", {
+      deliveryStatus: "failed"
+    })
+    return
+  }
+
+  await notificationsCollection().updateOne(
+    { _id: notificationId },
+    {
+      $set: {
+        deliveryStatus: "sent",
+        lastAttemptAt: now,
+        updatedAt: now
+      },
+      $unset: {
+        latestFailureReason: ""
+      },
+      $inc: { attemptCount: 1 }
+    }
+  )
 }
 
-export const mapCustomerSearch = async (customer: CustomerDocument) => {
-  const activeOrderCount = await db().collection<OrderDocument>("orders").countDocuments({
-    customerId: customer._id,
-    status: "Active"
-  })
-  const latestOrder = await db()
-    .collection<OrderDocument>("orders")
-    .find({ customerId: customer._id })
-    .sort({ createdAt: -1 })
-    .limit(1)
-    .next()
+const processQueuedNotifications = async () => {
+  if (!outboxEnabled) {
+    return
+  }
 
-  return {
-    customerId: customer._id,
-    name: customer.name,
-    phone: customer.phone,
-    currentPoints: customer.currentPoints,
-    activeOrderCount,
-    recentActivityAt: latestOrder ? formatRelativeLabel(latestOrder.createdAt) : undefined
+  if (outboxTickActive) {
+    return
+  }
+
+  outboxTickActive = true
+
+  try {
+    const notifications = await notificationsCollection()
+      .find({
+        $or: [
+          { deliveryStatus: "queued" },
+          { eventType: "order_confirmed", renderStatus: "pending", deliveryStatus: "failed" }
+        ]
+      })
+      .sort({ createdAt: 1 })
+      .limit(10)
+      .toArray()
+
+    for (const notification of notifications) {
+      await processNotification(notification._id)
+    }
+  } catch {
+    // Swallow background worker errors so shutdown or transient DB interruptions
+    // do not crash the process; operational visibility stays in notification state.
+  } finally {
+    outboxTickActive = false
   }
 }
 
-export const filterCustomersByQuery = (
+export const startOutboxWorker = () => {
+  if (outboxTimer) {
+    return
+  }
+
+  outboxEnabled = true
+  outboxTimer = setInterval(() => {
+    void processQueuedNotifications()
+  }, env.OUTBOX_POLL_MS)
+
+  void processQueuedNotifications()
+}
+
+export const stopOutboxWorker = async () => {
+  outboxEnabled = false
+  if (outboxTimer) {
+    clearInterval(outboxTimer)
+    outboxTimer = null
+  }
+
+  while (outboxTickActive) {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+}
+
+export const markNotificationForRetry = async (notificationId: string) => {
+  const notification = await notificationsCollection().findOne({ _id: notificationId })
+  if (!notification) {
+    throw new Error("Notifikasi tidak ditemukan")
+  }
+
+  const now = new Date().toISOString()
+  await notificationsCollection().updateOne(
+    { _id: notificationId },
+    {
+      $set: {
+        deliveryStatus: "queued",
+        renderStatus: notification.eventType === "order_confirmed" ? "pending" : notification.renderStatus ?? "not_required",
+        updatedAt: now
+      },
+      ...(notification.eventType === "order_confirmed"
+        ? {
+            $unset: {
+              latestFailureReason: "",
+              manualResolutionNote: "",
+              manualResolvedAt: "",
+              renderedReceipt: ""
+            }
+          }
+        : {
+            $unset: {
+              latestFailureReason: "",
+              manualResolutionNote: "",
+              manualResolvedAt: ""
+            }
+          })
+    }
+  )
+}
+
+export const markNotificationManualResolved = async (notificationId: string, note: string) => {
+  const now = new Date().toISOString()
+  await notificationsCollection().updateOne(
+    { _id: notificationId },
+    {
+      $set: {
+        deliveryStatus: "manual_resolved",
+        manualResolutionNote: note,
+        manualResolvedAt: now,
+        updatedAt: now
+      }
+    }
+  )
+}
+
+export const buildOrderReceipt = async (notificationId: string) => {
+  const notification = await notificationsCollection().findOne({ _id: notificationId })
+  if (!notification) {
+    throw new Error("Notifikasi tidak ditemukan")
+  }
+
+  if (notification.eventType !== "order_confirmed") {
+    throw new Error("Receipt tidak tersedia")
+  }
+
+  if (notification.renderedReceipt) {
+    return notification.renderedReceipt
+  }
+
+  return createRenderedReceipt(notification)
+}
+
+export const mapCustomerSearch = (
+  customer: CustomerDocument,
+  activeOrderCount: number,
+  latestOrderAt?: string
+) => ({
+  customerId: customer._id,
+  name: customer.name,
+  phone: customer.phone,
+  currentPoints: customer.currentPoints,
+  activeOrderCount,
+  recentActivityAt: latestOrderAt ? formatRelativeLabel(latestOrderAt) : undefined
+})
+
+export const filterCustomersByQuery = <T extends { name: string; phone: string }>(
   query: string | undefined,
-  customers: Array<Awaited<ReturnType<typeof mapCustomerSearch>>>
+  customers: T[]
 ) => {
   if (!query?.trim()) {
     return customers
   }
 
   const normalizedQuery = normalizeName(query)
+  const digits = query.replace(/\D/g, "")
   return customers.filter(
     (customer) =>
       normalizeName(customer.name).includes(normalizedQuery) ||
-      customer.phone.replace(/\s/g, "").includes(query.replace(/\s/g, ""))
+      customer.phone.replace(/\D/g, "").includes(digits)
   )
 }
 
-export const buildOrderReceipt = async (notificationId: string) => {
-  const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
-  if (!notification || !notification.orderId || !notification.orderCode) {
-    throw new Error("Receipt tidak tersedia")
+export const buildCustomerSearchFilter = (query?: string): Filter<CustomerDocument> => {
+  if (!query?.trim()) {
+    return {}
   }
 
-  const order = await db().collection<OrderDocument>("orders").findOne({ _id: notification.orderId })
-  if (!order) {
-    throw new Error("Order receipt tidak ditemukan")
+  const normalizedQuery = normalizeName(query)
+  const digits = query.replace(/\D/g, "")
+  const digitCandidates = Array.from(new Set([
+    digits,
+    digits.startsWith("0") ? `62${digits.slice(1)}` : "",
+    digits.startsWith("62") ? digits.slice(2) : ""
+  ].filter(Boolean)))
+
+  const clauses: Filter<CustomerDocument>[] = [
+    { normalizedName: { $regex: normalizedQuery, $options: "i" } }
+  ]
+
+  if (digitCandidates.length > 0) {
+    clauses.push({
+      $or: digitCandidates.map((candidate) => ({
+        phoneDigits: { $regex: candidate }
+      }))
+    })
   }
 
-  return buildReceiptText({
-    orderCode: order.orderCode,
-    customerName: order.customerName,
-    serviceSummary: order.items.map((item) => `${item.quantity}x ${item.serviceLabel}`).join(", "),
-    totalLabel: formatCurrency(order.total),
-    createdAt: order.createdAt
-  })
+  return { $or: clauses }
 }

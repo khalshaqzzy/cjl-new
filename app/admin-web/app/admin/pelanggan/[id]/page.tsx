@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import type { CustomerProfile, OrderHistoryItem, PointLedgerItem } from "@cjl/contracts"
+import { useParams, useRouter } from "next/navigation"
 import { AdminShell } from "@/components/admin/admin-shell"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -39,14 +40,6 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react"
-import {
-  mockCustomerProfile,
-  mockPointLedger,
-  mockOrderHistory,
-  type CustomerProfileVM,
-  type PointLedgerItemVM,
-  type OrderHistoryItemVM,
-} from "@/lib/mock-data"
 import { adminApi } from "@/lib/api"
 
 const statusConfig: Record<string, { label: string; badgeClass: string }> = {
@@ -78,7 +71,7 @@ function OrderHistoryRow({
   order,
   onVoid,
 }: {
-  order: OrderHistoryItemVM
+  order: OrderHistoryItem
   onVoid?: () => void
 }) {
   const status = statusConfig[order.status] ?? statusConfig.Done
@@ -141,7 +134,7 @@ function OrderHistoryRow({
   )
 }
 
-function PointLedgerRow({ entry }: { entry: PointLedgerItemVM }) {
+function PointLedgerRow({ entry }: { entry: PointLedgerItem }) {
   const config = pointToneConfig[entry.tone] ?? pointToneConfig.adjustment
   const Icon = config.icon
   return (
@@ -174,15 +167,18 @@ function PointLedgerRow({ entry }: { entry: PointLedgerItemVM }) {
 const QUICK_POINT_CHIPS = [5, 10, 20, 50]
 
 export default function CustomerDetailPage() {
+  const params = useParams<{ id: string }>()
   const router = useRouter()
-  const [customer, setCustomer] = useState<CustomerProfileVM>(mockCustomerProfile)
-  const [pointLedger, setPointLedger] = useState<PointLedgerItemVM[]>(mockPointLedger)
-  const [orderHistory, setOrderHistory] = useState<OrderHistoryItemVM[]>(mockOrderHistory)
+  const [customer, setCustomer] = useState<CustomerProfile | null>(null)
+  const [pointLedger, setPointLedger] = useState<PointLedgerItem[]>([])
+  const [orderHistory, setOrderHistory] = useState<OrderHistoryItem[]>([])
   const [activeTab, setActiveTab] = useState("orders")
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
 
   const [showEditSheet, setShowEditSheet] = useState(false)
-  const [editName, setEditName] = useState(customer.name)
-  const [editPhone, setEditPhone] = useState(customer.phone)
+  const [editName, setEditName] = useState("")
+  const [editPhone, setEditPhone] = useState("")
   const [isEditing, setIsEditing] = useState(false)
 
   const [showAddPointsSheet, setShowAddPointsSheet] = useState(false)
@@ -190,42 +186,43 @@ export default function CustomerDetailPage() {
   const [addPointsNote, setAddPointsNote] = useState("")
   const [isAddingPoints, setIsAddingPoints] = useState(false)
   const [showVoidSheet, setShowVoidSheet] = useState(false)
-  const [selectedOrderForVoid, setSelectedOrderForVoid] = useState<OrderHistoryItemVM | null>(null)
+  const [selectedOrderForVoid, setSelectedOrderForVoid] = useState<OrderHistoryItem | null>(null)
   const [voidReason, setVoidReason] = useState("")
   const [notifyCustomerOnVoid, setNotifyCustomerOnVoid] = useState(true)
   const [isVoiding, setIsVoiding] = useState(false)
 
-  const [isResendingWA, setIsResendingWA] = useState(false)
-
-  const getCustomerId = () => window.location.pathname.split("/").pop() ?? ""
+  const customerId = typeof params?.id === "string" ? params.id : ""
 
   const loadCustomerDetail = async () => {
-    const customerId = getCustomerId()
     if (!customerId) {
       return
     }
 
     const payload = await adminApi.getCustomerDetail(customerId)
-    setCustomer(payload.profile as CustomerProfileVM)
-    setPointLedger(payload.pointLedger as PointLedgerItemVM[])
-    setOrderHistory(payload.orderHistory as OrderHistoryItemVM[])
+    setCustomer(payload.profile)
+    setPointLedger(payload.pointLedger)
+    setOrderHistory(payload.orderHistory)
+    setEditName(payload.profile.name)
+    setEditPhone(payload.profile.phone)
   }
 
   useEffect(() => {
-    loadCustomerDetail().catch(() => undefined)
-  }, [])
+    loadCustomerDetail()
+      .then(() => setLoadError(""))
+      .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat data pelanggan"))
+      .finally(() => setIsLoading(false))
+  }, [customerId])
 
   const activeOrders = orderHistory.filter((o) => o.status === "Active")
   const historicalOrders = orderHistory.filter((o) => o.status !== "Active")
 
   const handleEditIdentity = async () => {
     setIsEditing(true)
-    const customerId = getCustomerId()
     if (customerId) {
       const payload = await adminApi.updateCustomer(customerId, editName, editPhone)
-      setCustomer((payload.profile as CustomerProfileVM))
-      setPointLedger(payload.pointLedger as PointLedgerItemVM[])
-      setOrderHistory(payload.orderHistory as OrderHistoryItemVM[])
+      setCustomer(payload.profile)
+      setPointLedger(payload.pointLedger)
+      setOrderHistory(payload.orderHistory)
     }
     setIsEditing(false)
     setShowEditSheet(false)
@@ -234,23 +231,16 @@ export default function CustomerDetailPage() {
   const handleAddPoints = async () => {
     if (!addPointsAmount || !addPointsNote) return
     setIsAddingPoints(true)
-    const customerId = getCustomerId()
     if (customerId) {
       const payload = await adminApi.addCustomerPoints(customerId, parseInt(addPointsAmount), addPointsNote)
-      setCustomer(payload.profile as CustomerProfileVM)
-      setPointLedger(payload.pointLedger as PointLedgerItemVM[])
-      setOrderHistory(payload.orderHistory as OrderHistoryItemVM[])
+      setCustomer(payload.profile)
+      setPointLedger(payload.pointLedger)
+      setOrderHistory(payload.orderHistory)
     }
     setIsAddingPoints(false)
     setShowAddPointsSheet(false)
     setAddPointsAmount("")
     setAddPointsNote("")
-  }
-
-  const handleResendWA = async () => {
-    setIsResendingWA(true)
-    await new Promise((r) => setTimeout(r, 400))
-    setIsResendingWA(false)
   }
 
   const handleVoidOrder = async () => {
@@ -268,9 +258,34 @@ export default function CustomerDetailPage() {
     setNotifyCustomerOnVoid(true)
   }
 
-  const newPointsBalance = addPointsAmount
+  const newPointsBalance = addPointsAmount && customer
     ? customer.currentPoints + (parseInt(addPointsAmount) || 0)
     : null
+
+  if (isLoading) {
+    return (
+      <AdminShell title="Detail Pelanggan">
+        <div className="px-4 py-10 lg:px-6">
+          <div className="flex items-center gap-2 rounded-xl border border-line-base bg-bg-surface px-4 py-3 text-sm text-text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Memuat detail pelanggan...
+          </div>
+        </div>
+      </AdminShell>
+    )
+  }
+
+  if (loadError || !customer) {
+    return (
+      <AdminShell title="Detail Pelanggan">
+        <div className="px-4 py-10 lg:px-6">
+          <div className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+            {loadError || "Pelanggan tidak ditemukan"}
+          </div>
+        </div>
+      </AdminShell>
+    )
+  }
 
   return (
     <AdminShell
@@ -311,14 +326,9 @@ export default function CustomerDetailPage() {
                   variant="outline"
                   size="sm"
                   className="rounded-lg h-8 px-2.5 text-xs"
-                  onClick={handleResendWA}
-                  disabled={isResendingWA}
+                  onClick={() => loadCustomerDetail().catch(() => undefined)}
                 >
-                  {isResendingWA ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <><Send className="h-3.5 w-3.5 mr-1" />WA</>
-                  )}
+                  <><RefreshCw className="h-3.5 w-3.5 mr-1" />Refresh</>
                 </Button>
                 <Button
                   variant="outline"

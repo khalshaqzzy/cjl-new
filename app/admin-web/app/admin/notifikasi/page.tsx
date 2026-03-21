@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import type { NotificationRecord } from "@cjl/contracts"
 import { AdminShell } from "@/components/admin/admin-shell"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -30,9 +31,7 @@ import {
   User,
   MessageSquare,
   FileImage,
-  ExternalLink,
 } from "lucide-react"
-import { type OutboxNotificationVM } from "@/lib/mock-data"
 import { adminApi } from "@/lib/api"
 
 const eventTypeLabels: Record<string, string> = {
@@ -40,6 +39,7 @@ const eventTypeLabels: Record<string, string> = {
   order_confirmed: "Order Dikonfirmasi",
   order_done: "Order Selesai",
   order_void_notice: "Order Dibatalkan",
+  account_info: "Info Akun",
 }
 
 const statusConfig = {
@@ -79,7 +79,7 @@ function NotificationCard({
   onCopy,
   onManualResolve,
 }: {
-  notification: OutboxNotificationVM
+  notification: NotificationRecord
   onResend: () => void
   onDownload: () => void
   onCopy: () => void
@@ -155,10 +155,17 @@ function NotificationCard({
         )}
 
         {/* Error Message */}
-        {notification.lastError && (
+        {notification.latestFailureReason && (
           <div className="mb-3 rounded-xl bg-danger/10 p-3 text-sm text-danger flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <span>{notification.lastError}</span>
+            <span>{notification.latestFailureReason}</span>
+          </div>
+        )}
+
+        {notification.manualResolutionNote && (
+          <div className="mb-3 rounded-xl bg-warning/10 p-3 text-sm text-warning flex items-start gap-2">
+            <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <span>{notification.manualResolutionNote}</span>
           </div>
         )}
 
@@ -230,7 +237,7 @@ function NotificationCard({
   )
 }
 
-function SummaryBanner({ notifications }: { notifications: OutboxNotificationVM[] }) {
+function SummaryBanner({ notifications }: { notifications: NotificationRecord[] }) {
   const failed = notifications.filter((n) => n.deliveryStatus === "failed").length
   const queued = notifications.filter((n) => n.deliveryStatus === "queued").length
 
@@ -277,17 +284,23 @@ function SummaryBanner({ notifications }: { notifications: OutboxNotificationVM[
 }
 
 export default function NotifikasiPage() {
-  const [notifications, setNotifications] = useState<OutboxNotificationVM[]>([])
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([])
   const [activeTab, setActiveTab] = useState("all")
-  const [selectedNotification, setSelectedNotification] = useState<OutboxNotificationVM | null>(null)
+  const [selectedNotification, setSelectedNotification] = useState<NotificationRecord | null>(null)
   const [showManualResolveSheet, setShowManualResolveSheet] = useState(false)
   const [manualNote, setManualNote] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
 
   useEffect(() => {
     adminApi.listNotifications()
-      .then((payload) => setNotifications(payload as OutboxNotificationVM[]))
-      .catch(() => undefined)
+      .then((payload) => {
+        setNotifications(payload)
+        setLoadError("")
+      })
+      .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat notifikasi"))
+      .finally(() => setIsLoading(false))
   }, [])
 
   const filteredNotifications = notifications.filter((n) => {
@@ -303,11 +316,11 @@ export default function NotifikasiPage() {
     sent: notifications.filter((n) => n.deliveryStatus === "sent").length,
   }
 
-  const handleResend = async (notification: OutboxNotificationVM) => {
+  const handleResend = async (notification: NotificationRecord) => {
     setIsProcessing(true)
     const updated = await adminApi.resendNotification(notification.notificationId)
     setNotifications((prev) =>
-      prev.map((n) => (n.notificationId === notification.notificationId ? (updated as OutboxNotificationVM) : n))
+      prev.map((n) => (n.notificationId === notification.notificationId ? (updated as NotificationRecord) : n))
     )
     setIsProcessing(false)
   }
@@ -317,7 +330,7 @@ export default function NotifikasiPage() {
     setIsProcessing(true)
     const updated = await adminApi.manualResolveNotification(selectedNotification.notificationId, manualNote)
     setNotifications((prev) =>
-      prev.map((n) => (n.notificationId === selectedNotification.notificationId ? (updated as OutboxNotificationVM) : n))
+      prev.map((n) => (n.notificationId === selectedNotification.notificationId ? (updated as NotificationRecord) : n))
     )
     setIsProcessing(false)
     setShowManualResolveSheet(false)
@@ -325,9 +338,22 @@ export default function NotifikasiPage() {
     setSelectedNotification(null)
   }
 
-  const handleCopy = (notification: OutboxNotificationVM) => {
+  const handleCopy = (notification: NotificationRecord) => {
     adminApi.getNotificationMessage(notification.notificationId)
       .then((payload) => navigator.clipboard.writeText(payload.message))
+      .catch(() => undefined)
+  }
+
+  const handleDownload = (notification: NotificationRecord) => {
+    adminApi.getNotificationReceipt(notification.notificationId)
+      .then(({ blob, filename }) => {
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement("a")
+        anchor.href = url
+        anchor.download = filename
+        anchor.click()
+        URL.revokeObjectURL(url)
+      })
       .catch(() => undefined)
   }
 
@@ -383,18 +409,23 @@ export default function NotifikasiPage() {
           </TabsList>
 
           <TabsContent value={activeTab} className="mt-4">
-            {filteredNotifications.length > 0 ? (
+            {isLoading ? (
+              <div className="flex items-center gap-2 rounded-xl border border-line-base bg-bg-surface px-4 py-3 text-sm text-text-muted">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Memuat notifikasi...
+              </div>
+            ) : loadError ? (
+              <div className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+                {loadError}
+              </div>
+            ) : filteredNotifications.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredNotifications.map((notification) => (
                   <NotificationCard
                     key={notification.notificationId}
                     notification={notification}
                     onResend={() => handleResend(notification)}
-                    onDownload={() => {
-                      adminApi.getNotificationReceipt(notification.notificationId)
-                        .then((payload) => navigator.clipboard.writeText(payload))
-                        .catch(() => undefined)
-                    }}
+                    onDownload={() => handleDownload(notification)}
                     onCopy={() => handleCopy(notification)}
                     onManualResolve={() => {
                       setSelectedNotification(notification)

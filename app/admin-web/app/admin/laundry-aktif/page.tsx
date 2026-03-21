@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import type { ActiveOrderCard as ActiveOrderCardType } from "@cjl/contracts"
 import { AdminShell } from "@/components/admin/admin-shell"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -31,7 +32,6 @@ import {
   ArrowUpDown,
   X,
 } from "lucide-react"
-import { type ActiveOrderCardVM } from "@/lib/mock-data"
 import { adminApi } from "@/lib/api"
 
 type SortOption = "oldest" | "newest"
@@ -72,7 +72,7 @@ function ActiveOrderCard({
   onMarkDone,
   onViewDetail,
 }: {
-  order: ActiveOrderCardVM
+  order: ActiveOrderCardType
   onMarkDone: () => void
   onViewDetail: () => void
 }) {
@@ -153,18 +153,25 @@ function ActiveOrderCard({
 }
 
 export default function LaundryAktifPage() {
-  const [orders, setOrders] = useState<ActiveOrderCardVM[]>([])
+  const [orders, setOrders] = useState<ActiveOrderCardType[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<SortOption>("oldest")
-  const [selectedOrder, setSelectedOrder] = useState<ActiveOrderCardVM | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<ActiveOrderCardType | null>(null)
   const [showConfirmSheet, setShowConfirmSheet] = useState(false)
   const [showDetailSheet, setShowDetailSheet] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+  const doneKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     adminApi.listActiveOrders()
-      .then((payload) => setOrders(payload as ActiveOrderCardVM[]))
-      .catch(() => undefined)
+      .then((payload) => {
+        setOrders(payload)
+        setLoadError("")
+      })
+      .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat order aktif"))
+      .finally(() => setIsLoading(false))
   }, [])
 
   const filteredOrders = useMemo(() => {
@@ -184,12 +191,14 @@ export default function LaundryAktifPage() {
   const handleMarkDone = async () => {
     if (!selectedOrder) return
     setIsProcessing(true)
-    await adminApi.markOrderDone(selectedOrder.orderId)
+    doneKeyRef.current ||= crypto.randomUUID()
+    await adminApi.markOrderDone(selectedOrder.orderId, doneKeyRef.current)
     setOrders((prev) => prev.filter((o) => o.orderId !== selectedOrder.orderId))
     setIsProcessing(false)
     setShowConfirmSheet(false)
     setShowDetailSheet(false)
     setSelectedOrder(null)
+    doneKeyRef.current = null
   }
 
   return (
@@ -248,7 +257,16 @@ export default function LaundryAktifPage() {
         </div>
 
         {/* Orders grid */}
-        {filteredOrders.length > 0 ? (
+        {isLoading ? (
+          <div className="flex items-center gap-2 rounded-xl border border-line-base bg-bg-surface px-4 py-3 text-sm text-text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Memuat order aktif...
+          </div>
+        ) : loadError ? (
+          <div className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+            {loadError}
+          </div>
+        ) : filteredOrders.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filteredOrders.map((order) => (
               <ActiveOrderCard

@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import type { ConfirmOrderInput, OrderPreviewResponse } from "@cjl/contracts"
+import { useEffect, useMemo, useRef, useState } from "react"
+import type { ConfirmOrderInput, CustomerSearchResult, OrderPreviewResponse, ServiceSetting } from "@cjl/contracts"
 import { AdminShell } from "@/components/admin/admin-shell"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { adminApi } from "@/lib/api"
-import type { CustomerSearchResultVM, ServicePickerItemVM } from "@/lib/mock-data"
 import {
   ArrowRight,
   CheckCircle2,
@@ -34,6 +33,17 @@ import {
   X,
   Droplets,
 } from "lucide-react"
+
+type ServicePickerItemVM = {
+  serviceCode: ServiceSetting["serviceCode"]
+  label: string
+  pricingLabel: string
+  quantity: number
+  selected: boolean
+  disabled?: boolean
+  pricePerUnit: number
+  pricingModel: ServiceSetting["pricingModel"]
+}
 
 const serviceIcons: Record<string, typeof Shirt> = {
   washer: Waves,
@@ -126,7 +136,7 @@ function StepIndicator({ current }: { current: 1 | 2 }) {
   )
 }
 
-function CustomerRow({ customer, onSelect }: { customer: CustomerSearchResultVM; onSelect: () => void }) {
+function CustomerRow({ customer, onSelect }: { customer: CustomerSearchResult; onSelect: () => void }) {
   return (
     <button
       type="button"
@@ -165,18 +175,19 @@ function StepCustomer({
   onClear,
   onNext,
 }: {
-  selectedCustomer: CustomerSearchResultVM | null
-  onSelect: (customer: CustomerSearchResultVM) => void
+  selectedCustomer: CustomerSearchResult | null
+  onSelect: (customer: CustomerSearchResult) => void
   onClear: () => void
   onNext: () => void
 }) {
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<CustomerSearchResultVM[]>([])
+  const [results, setResults] = useState<CustomerSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [newName, setNewName] = useState("")
   const [newPhone, setNewPhone] = useState("")
   const [isCreating, setIsCreating] = useState(false)
+  const createCustomerKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!query.trim()) {
@@ -190,7 +201,7 @@ function StepCustomer({
       adminApi.listCustomers(query)
         .then((payload) => {
           if (active) {
-            setResults(payload as CustomerSearchResultVM[])
+            setResults(payload)
           }
         })
         .catch(() => {
@@ -214,13 +225,15 @@ function StepCustomer({
   const handleCreate = async () => {
     setIsCreating(true)
     try {
-      const response = await adminApi.createCustomer(newName, newPhone)
-      onSelect(response.customer as CustomerSearchResultVM)
+      createCustomerKeyRef.current ||= crypto.randomUUID()
+      const response = await adminApi.createCustomer(newName, newPhone, createCustomerKeyRef.current)
+      onSelect(response.customer)
       setShowNew(false)
       setNewName("")
       setNewPhone("")
       setQuery("")
       setResults([])
+      createCustomerKeyRef.current = null
     } finally {
       setIsCreating(false)
     }
@@ -435,7 +448,7 @@ function StepServices({
   onNext,
   isConfirming,
 }: {
-  customer: CustomerSearchResultVM
+  customer: CustomerSearchResult
   services: ServicePickerItemVM[]
   setServices: React.Dispatch<React.SetStateAction<ServicePickerItemVM[]>>
   weightKg: string
@@ -579,7 +592,7 @@ function StepServices({
   )
 }
 
-function OrderSummarySheet({ open, onOpenChange, customer, preview, onConfirm, isConfirming }: { open: boolean; onOpenChange: (value: boolean) => void; customer: CustomerSearchResultVM; preview: OrderPreviewResponse | null; onConfirm: () => void; isConfirming: boolean }) {
+function OrderSummarySheet({ open, onOpenChange, customer, preview, onConfirm, isConfirming }: { open: boolean; onOpenChange: (value: boolean) => void; customer: CustomerSearchResult; preview: OrderPreviewResponse | null; onConfirm: () => void; isConfirming: boolean }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="rounded-t-2xl max-h-[90vh] flex flex-col" aria-describedby={undefined}>
@@ -656,7 +669,7 @@ function SuccessScreen({ customerName, orderCode, onNewOrder }: { customerName: 
 
 export default function POSPage() {
   const [step, setStep] = useState<1 | 2>(1)
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchResultVM | null>(null)
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchResult | null>(null)
   const [weightKg, setWeightKg] = useState("")
   const [services, setServices] = useState<ServicePickerItemVM[]>([])
   const [baseServices, setBaseServices] = useState<ServicePickerItemVM[]>([])
@@ -667,6 +680,7 @@ export default function POSPage() {
   const [showSummary, setShowSummary] = useState(false)
   const [createdOrderCode, setCreatedOrderCode] = useState("")
   const [showSuccess, setShowSuccess] = useState(false)
+  const confirmOrderKeyRef = useRef<string | null>(null)
 
   const payload = useMemo(() => selectedCustomer ? buildOrderPayload(selectedCustomer.customerId, weightKg, services, redeemCount) : null, [redeemCount, selectedCustomer, services, weightKg])
 
@@ -710,7 +724,8 @@ export default function POSPage() {
     if (!payload) return
     setIsConfirming(true)
     try {
-      const response = await adminApi.confirmOrder(payload)
+      confirmOrderKeyRef.current ||= crypto.randomUUID()
+      const response = await adminApi.confirmOrder(payload, confirmOrderKeyRef.current)
       setCreatedOrderCode(response.order.orderCode)
       setShowSummary(false)
       setShowSuccess(true)
@@ -729,6 +744,7 @@ export default function POSPage() {
     setCreatedOrderCode("")
     setShowSuccess(false)
     setShowSummary(false)
+    confirmOrderKeyRef.current = null
   }
 
   if (showSuccess && selectedCustomer) {

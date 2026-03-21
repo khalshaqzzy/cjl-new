@@ -64,6 +64,7 @@ Important architecture rules already frozen in the repo:
 
 - all three public surfaces for one environment live on the same VM
 - MongoDB stays on the private Docker network and is not exposed publicly
+- MongoDB runs in single-node replica-set mode so transaction-backed business writes are supported
 - GitHub Actions does not build deployment images
 - GitHub Actions only ships the selected git release to the VM over SSH
 - the VM builds images locally from the shipped release

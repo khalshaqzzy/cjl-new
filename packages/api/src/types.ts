@@ -12,9 +12,20 @@ export type CustomerDocument = {
   normalizedName: string
   phone: string
   normalizedPhone: string
+  phoneDigits: string
   currentPoints: number
   createdAt: string
   updatedAt: string
+}
+
+export type OrderReceiptSnapshotDocument = {
+  orderCode: string
+  customerName: string
+  serviceSummary: string
+  totalLabel: string
+  createdAtLabel: string
+  laundryName: string
+  laundryPhone: string
 }
 
 export type OrderItemDocument = {
@@ -41,6 +52,7 @@ export type OrderDocument = {
   earnedStamps: number
   resultingPointBalance: number
   directToken: string
+  receiptSnapshot: OrderReceiptSnapshotDocument
   status: "Active" | "Done" | "Voided"
   createdAt: string
   completedAt?: string
@@ -76,6 +88,8 @@ export type NotificationDocument = {
   lastAttemptAt?: string
   preparedMessage: string
   manualResolutionNote?: string
+  manualResolvedAt?: string
+  renderedReceipt?: string
   businessKey: string
   createdAt: string
   updatedAt: string
@@ -128,11 +142,14 @@ export type LeaderboardSnapshotDocument = {
 }
 
 export type IdempotencyKeyDocument = {
-  _id: string
+  _id?: string
   scope: string
   key: string
-  response: unknown
+  fingerprint: string
+  status: "in_progress" | "completed"
+  response?: unknown
   createdAt: string
+  updatedAt: string
 }
 
 export type AdminDocument = {
@@ -147,5 +164,11 @@ export type DirectOrderTokenDocument = {
   token: string
   orderId: string
   revokedAt?: string
+  revokedReason?: string
   createdAt: string
+}
+
+export type CounterDocument = {
+  _id: string
+  sequence: number
 }

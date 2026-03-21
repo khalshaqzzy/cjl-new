@@ -1,4 +1,5 @@
 const main = async () => {
+  process.env.APP_ENV = process.env.APP_ENV ?? "test"
   process.env.PORT = process.env.PORT ?? "4100"
   process.env.SESSION_SECRET = process.env.SESSION_SECRET ?? "cjlaundry-e2e-secret"
   process.env.SESSION_COOKIE_SECURE = process.env.SESSION_COOKIE_SECURE ?? "false"
@@ -10,11 +11,15 @@ const main = async () => {
   process.env.API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4100"
   process.env.WA_FAIL_MODE = process.env.WA_FAIL_MODE ?? "never"
 
-  const { MongoMemoryServer } = await import("mongodb-memory-server")
-  const mongo = await MongoMemoryServer.create({
-    instance: {
+  const { MongoMemoryReplSet } = await import("mongodb-memory-server")
+  const mongo = await MongoMemoryReplSet.create({
+    instanceOpts: [{
       port: 27019,
       dbName: "cjlaundry_e2e"
+    }],
+    replSet: {
+      count: 1,
+      storageEngine: "wiredTiger"
     }
   })
   process.env.MONGODB_URI = process.env.MONGODB_URI ?? mongo.getUri("cjlaundry_e2e")
@@ -22,7 +27,7 @@ const main = async () => {
   const { disconnectDatabase } = await import("../../packages/api/src/db.ts")
   const { startServer } = await import("../../packages/api/src/server.ts")
 
-  const { server } = await startServer()
+  const { server, stopBackgroundWork } = await startServer()
   console.log(`CJ Laundry test API listening on ${process.env.PORT}`)
 
   const shutdown = async () => {
@@ -36,6 +41,7 @@ const main = async () => {
         resolve()
       })
     })
+    await stopBackgroundWork()
     await disconnectDatabase()
     await mongo.stop()
   }

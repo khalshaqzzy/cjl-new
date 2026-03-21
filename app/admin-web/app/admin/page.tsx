@@ -153,16 +153,23 @@ function AttentionCard({
 export default function DashboardPage() {
   const [timeFilter, setTimeFilter] = useState("daily")
   const [dashboard, setDashboard] = useState<Awaited<ReturnType<typeof adminApi.getDashboard>> | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
 
   useEffect(() => {
     adminApi.getDashboard(timeFilter as "daily" | "weekly" | "monthly")
-      .then(setDashboard)
-      .catch(() => undefined)
+      .then((payload) => {
+        setDashboard(payload)
+        setLoadError("")
+      })
+      .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat dashboard"))
+      .finally(() => setIsLoading(false))
   }, [timeFilter])
 
   const activeOrders = dashboard?.activeOrders ?? []
   const notifications = dashboard?.notifications ?? []
   const metrics = dashboard?.metrics
+  const summary = dashboard?.summary
   const failedNotifications = notifications.filter(
     (n) => n.deliveryStatus === "failed"
   ).length
@@ -212,37 +219,81 @@ export default function DashboardPage() {
         </div>
 
         {/* KPI Cards */}
+        {isLoading && (
+          <div className="flex items-center gap-2 rounded-xl border border-line-base bg-bg-surface px-4 py-3 text-sm text-text-muted">
+            <Clock className="h-4 w-4 animate-pulse" />
+            Memuat dashboard...
+          </div>
+        )}
+
+        {loadError && (
+          <div className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-sm text-danger">
+            {loadError}
+          </div>
+        )}
+
         <div className="overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0">
-          <div className="flex gap-3 snap-x snap-mandatory lg:grid lg:grid-cols-4">
-            <MetricCard
-              label="Penjualan Hari Ini"
-              value={metrics?.[0]?.value ?? "Rp 0"}
-              deltaLabel={metrics?.[0]?.deltaLabel}
-              tone={metrics?.[0]?.tone ?? "positive"}
-              icon={TrendingUp}
-            />
-            <MetricCard
-              label="Order Aktif"
-              value={metrics?.[1]?.value ?? activeOrders.length.toString()}
-              tone={metrics?.[1]?.tone ?? "neutral"}
-              icon={Shirt}
-            />
-            <MetricCard
-              label="Order Selesai"
-              value={metrics?.[2]?.value ?? "0"}
-              deltaLabel={metrics?.[2]?.deltaLabel}
-              tone={metrics?.[2]?.tone ?? "positive"}
-              icon={Package}
-            />
-            <MetricCard
-              label="Poin Diberikan"
-              value={metrics?.[3]?.value ?? "0"}
-              deltaLabel={metrics?.[3]?.deltaLabel}
-              tone={metrics?.[3]?.tone ?? "positive"}
-              icon={Star}
-            />
+          <div className="flex gap-3 snap-x snap-mandatory lg:grid lg:grid-cols-3 xl:grid-cols-6">
+            {(metrics ?? []).map((metric) => {
+              const iconMap: Record<string, typeof TrendingUp> = {
+                "net-sales": TrendingUp,
+                "gross-sales": ShoppingCart,
+                "active-orders": Shirt,
+                "completed-orders": Package,
+                "new-customers": Users,
+                "points-earned": Star,
+              }
+
+              return (
+                <MetricCard
+                  key={metric.id}
+                  label={metric.label}
+                  value={metric.value}
+                  deltaLabel={metric.deltaLabel}
+                  tone={metric.tone}
+                  icon={iconMap[metric.id] ?? TrendingUp}
+                />
+              )
+            })}
           </div>
         </div>
+
+        {summary && (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Order Terkonfirmasi", value: String(summary.confirmedOrders) },
+              { label: "Berat Diproses", value: `${summary.totalWeightKg.toFixed(1)} kg` },
+              { label: "Rata-rata Order", value: `Rp ${summary.averageOrderValue.toLocaleString("id-ID")}` },
+              { label: "Poin Manual", value: String(summary.manualPointsAdded) },
+            ].map((item) => (
+              <Card key={item.label} className="rounded-xl border-line-base shadow-card bg-bg-surface">
+                <CardContent className="p-4">
+                  <p className="text-xs text-text-muted">{item.label}</p>
+                  <p className="mt-1 text-lg font-bold text-text-strong">{item.value}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {summary && summary.topServiceUsage.length > 0 && (
+          <Card className="rounded-xl border-line-base shadow-card bg-bg-surface">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-text-strong">Layanan Teratas</h3>
+                <span className="text-xs text-text-muted">Periode {timeFilters.find((filter) => filter.key === timeFilter)?.label}</span>
+              </div>
+              <div className="space-y-2">
+                {summary.topServiceUsage.map((service) => (
+                  <div key={service.serviceCode} className="flex items-center justify-between rounded-lg bg-bg-subtle px-3 py-2">
+                    <span className="text-sm text-text-body">{service.label}</span>
+                    <span className="text-sm font-semibold text-text-strong">{service.usageCount}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Attention */}
         {(failedNotifications > 0 || activeOrders.length > 5) && (
