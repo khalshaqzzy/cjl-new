@@ -42,8 +42,8 @@ Purpose: short external checklist for provisioning staging and production before
 - add production deploy-user SSH private key
 - add staging `known_hosts`
 - add production `known_hosts`
-- add all staging Mongo, session, bootstrap admin, and Caddy secrets
-- add all production Mongo, session, bootstrap admin, and Caddy secrets
+- add all staging Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
+- add all production Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
 
 ## Validation
 

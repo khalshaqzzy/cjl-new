@@ -65,6 +65,7 @@ Important architecture rules already frozen in the repo:
 - all three public surfaces for one environment live on the same VM
 - MongoDB stays on the private Docker network and is not exposed publicly
 - MongoDB runs in single-node replica-set mode so transaction-backed business writes are supported
+- MongoDB replica-set mode with auth also requires an internal keyfile, which this repo now renders from `MONGO_REPLICA_KEY`
 - GitHub Actions does not build deployment images
 - GitHub Actions only ships the selected git release to the VM over SSH
 - the VM builds images locally from the shipped release
@@ -103,6 +104,7 @@ Use GitHub environment secrets for:
 
 - VM host/user/key details
 - Mongo hosted credentials
+- `MONGO_REPLICA_KEY`
 - session secret
 - bootstrap admin credentials
 - known_hosts
@@ -133,6 +135,12 @@ These are the main files you will keep referring to.
 - `deploy/env/runtime.production.env.example`
 
 These are safe templates only. They show shape and naming, not real secrets.
+
+Mongo note:
+
+- because the repo uses a replica set and root auth at the same time, hosted runtime envs must define `MONGO_REPLICA_KEY`
+- this is not the app login password; it is the internal Mongo replica-set authentication secret used to generate the runtime keyfile
+- keep it alphanumeric or base64-safe with no spaces, quotes, or punctuation like `-`
 
 ### Deployment assets
 
@@ -481,6 +489,7 @@ Open the `staging` environment, then use `Add secret` for each value below.
 | `STAGING_MONGO_ROOT_USERNAME` | strong Mongo root username |
 | `STAGING_MONGO_ROOT_PASSWORD` | strong Mongo root password |
 | `STAGING_MONGO_DATABASE` | usually `cjlaundry` |
+| `STAGING_MONGO_REPLICA_KEY` | long alphanumeric or base64-safe internal Mongo replica-set key |
 | `STAGING_SESSION_SECRET` | long random secret |
 | `STAGING_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
 | `STAGING_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the first admin password |
@@ -500,6 +509,7 @@ Open the `production` environment and add:
 | `PRODUCTION_MONGO_ROOT_USERNAME` | strong Mongo root username |
 | `PRODUCTION_MONGO_ROOT_PASSWORD` | strong Mongo root password |
 | `PRODUCTION_MONGO_DATABASE` | usually `cjlaundry` |
+| `PRODUCTION_MONGO_REPLICA_KEY` | long alphanumeric or base64-safe internal Mongo replica-set key |
 | `PRODUCTION_SESSION_SECRET` | long random secret |
 | `PRODUCTION_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
 | `PRODUCTION_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the first admin password |
@@ -523,6 +533,7 @@ Important:
 - store the real admin password somewhere secure before hashing it
 - only the hash belongs in GitHub
 - changing the hash later does not automatically overwrite an already-seeded admin user
+- generate a separate `*_MONGO_REPLICA_KEY` value and keep it stable for the life of that environment unless you intentionally rotate Mongo internal auth
 
 ### 10.5 What GitHub will write onto the VM
 
@@ -723,6 +734,7 @@ The most important variables are:
 | `API_DOMAIN` | API hostname |
 | `CADDY_EMAIL` | ACME email for TLS |
 | `MONGO_*` | Mongo credentials and database |
+| `MONGO_REPLICA_KEY` | internal Mongo replica-set keyfile source used when auth is enabled |
 | `SESSION_SECRET` | session-signing secret |
 | `ADMIN_BOOTSTRAP_*` | first admin seed |
 | `WA_FAIL_MODE` | failure simulation mode; keep `never` in hosted envs |

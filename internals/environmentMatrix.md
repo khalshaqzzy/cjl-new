@@ -49,6 +49,7 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
   - Docker Engine + Compose plugin
   - Caddy reverse proxy with host-based routing
   - MongoDB container on the internal Docker network in single-node replica-set mode
+  - MongoDB internal replica-set keyfile rendered from `MONGO_REPLICA_KEY`
   - API, admin, and public services built locally on the VM
 
 ## Deployment Orchestration

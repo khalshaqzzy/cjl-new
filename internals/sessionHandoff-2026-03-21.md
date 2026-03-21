@@ -60,6 +60,9 @@ Purpose: repo snapshot after deployment/workflow work plus PRD-gap closure for b
   - notification preview UI plus richer outbox metadata
   - localized cancelled-state detail in portal order detail and direct status pages
   - public non-landing pages no longer import presenter helpers from `mock-data`
+- fixed hosted and local Mongo replica-set auth bootstrap so `mongod` no longer crashes with `security.keyFile is required when authorization is enabled with replica sets`
+- switched Compose Mongo startup to generate the runtime keyfile from `MONGO_REPLICA_KEY`
+- documented that `MONGO_REPLICA_KEY` must be present in hosted environment secrets and remain character-safe for Mongo keyfile parsing
 
 ## Verification Run
 
@@ -86,6 +89,7 @@ All passed at session end.
 - current backend and e2e harness now use replica-set-capable in-memory Mongo for transaction validation
 - first real cloud rollout has not been executed yet in this session
 - a reusable VM bootstrap script now exists for creating the deploy user, installing Docker, and creating the expected `/opt/cjl/<env>` runtime layout
+- local and hosted Compose Mongo runtime now also depend on a valid `MONGO_REPLICA_KEY` so replica-set auth can initialize cleanly
 - frontend session behavior depends on:
   - `SESSION_COOKIE_SECURE=false` for local HTTP
   - `SESSION_COOKIE_SECURE=true` and `TRUST_PROXY=1` for hosted HTTPS behind Caddy
