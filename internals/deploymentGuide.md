@@ -18,10 +18,11 @@ If you follow this file from top to bottom, you should end with:
 ### What this guide covers
 
 - local development setup
-- local Docker Compose runtime
-- staging and production GCP VM setup
-- GitHub Actions CI and deploy workflows
-- DNS and TLS routing with Caddy
+- local env file placement
+- GCP VM provisioning for staging and production
+- SSH deploy-user setup for GitHub Actions
+- GitHub environments and secret placement
+- branch-based CI and deploy workflows
 - first staging rollout
 - first production rollout
 - smoke tests and rollback
@@ -30,8 +31,9 @@ If you follow this file from top to bottom, you should end with:
 
 - writing product code
 - changing business logic
+- live traffic migration strategy beyond the repo baseline
 - advanced host hardening beyond the repo baseline
-- operational WhatsApp bot persistence, because that runtime is not implemented in this repo yet
+- WhatsApp bot runtime persistence, because that runtime is not implemented in this repo yet
 
 ### How to use this guide
 
@@ -39,78 +41,84 @@ Work in this order:
 
 1. understand the environment topology
 2. prepare your local machine and local env files
-3. provision GCP VMs and DNS
-4. add GitHub environments and secrets
-5. validate the branch-based workflows
-6. deploy staging
-7. validate staging
-8. deploy production
+3. generate SSH keys for GitHub Actions
+4. provision the GCP VMs
+5. bootstrap the deploy user on each VM
+6. configure DNS
+7. add GitHub environments and secrets
+8. deploy staging
+9. validate staging
+10. deploy production
 
 Do not skip straight to production. Staging is the safety checkpoint.
 
 ## 2. Environment Topology
 
-| Environment | Public web | Admin web | API | Runtime target | Notes |
+| Environment | Public web | Admin web | API | Runtime target | Deployment trigger |
 | --- | --- | --- | --- | --- | --- |
-| `local` | `http://localhost:3000` | `http://localhost:3001` | `http://localhost:4000` | local machine | day-to-day development |
-| `staging` | `https://staging.cjlaundry.site` | `https://admin-staging.cjlaundry.site` | `https://api-staging.cjlaundry.site` | one GCP VM + Docker Compose + Caddy | auto-deploy from branch `staging` |
-| `production` | `https://cjlaundry.site` | `https://admin.cjlaundry.site` | `https://api.cjlaundry.site` | one GCP VM + Docker Compose + Caddy | auto-deploy from branch `main` |
+| `local` | `http://localhost:3000` | `http://localhost:3001` | `http://localhost:4000` | local machine | manual |
+| `staging` | `https://staging.cjlaundry.site` | `https://admin-staging.cjlaundry.site` | `https://api-staging.cjlaundry.site` | one GCP VM + Docker Compose + Caddy | push to `staging` after CI success |
+| `production` | `https://cjlaundry.site` | `https://admin.cjlaundry.site` | `https://api.cjlaundry.site` | one GCP VM + Docker Compose + Caddy | push to `main` after CI success |
 
-Important architecture rule from the PRD:
+Important architecture rules already frozen in the repo:
 
 - all three public surfaces for one environment live on the same VM
-- MongoDB stays on the VM Docker network and is not exposed publicly
+- MongoDB stays on the private Docker network and is not exposed publicly
 - GitHub Actions does not build deployment images
-- GitHub Actions only ships the selected release to the VM over SSH and then tells the VM to build locally
+- GitHub Actions only ships the selected git release to the VM over SSH
+- the VM builds images locally from the shipped release
 
-## 3. Before You Start
+## 3. Where Each Env Value Goes
 
-Before touching any cloud setup, confirm all of the following:
+This section matters because most deployment mistakes come from putting the right value in the wrong place.
 
-- you can access this GitHub repository
-- you can edit GitHub Actions secrets and environments
-- you have Node.js and npm working locally
-- you can create GCP Compute Engine VMs
-- you can edit DNS for `cjlaundry.site`
-- you can add SSH keys for the deployment user on each VM
+| Location | Purpose | Examples | Should be committed? |
+| --- | --- | --- | --- |
+| local machine `.env.local` files | local development only | `packages/api/.env.local`, `app/admin-web/.env.local`, `app/public-web/.env.local` | no |
+| GitHub environment secrets | canonical hosted secrets for CI/CD | `STAGING_SESSION_SECRET`, `PRODUCTION_VM_SSH_PRIVATE_KEY` | no |
+| VM runtime env file | rendered by GitHub Actions before deploy | `/opt/cjl/staging/shared/runtime.env`, `/opt/cjl/production/shared/runtime.env` | no |
+| repo example files | safe templates only | `packages/api/.env.example`, `deploy/env/runtime.staging.env.example` | yes |
 
-If even one of those is missing, pause and get access first. Otherwise you will get blocked halfway through setup.
+### 3.1 Local-only env files
 
-### 3.1 Tools to install on your machine
+These files stay on your machine:
 
-Install these before you start the setup:
+- `packages/api/.env.local`
+- `app/admin-web/.env.local`
+- `app/public-web/.env.local`
 
-- Git
-- Node.js 22.x
-- npm 10.x or newer
-- Docker Desktop or Docker Engine for local container testing
-- optional: Google Cloud CLI
+Use them only for local development. Never paste staging or production secrets into them.
 
-Helpful install checks:
+### 3.2 GitHub-hosted secrets
 
-```powershell
-node -v
-npm -v
-docker --version
-docker compose version
-```
+These live in GitHub:
 
-The GitHub deployment flow does not require local GCloud or SSH tooling if you only trigger Actions from the browser, but having both locally is useful for debugging.
+- repository Settings
+- Environments
+- `staging` or `production`
+- Environment secrets
 
-### 3.2 What success looks like
+Use GitHub environment secrets for:
 
-By the end of this guide, a junior developer should be able to answer these questions clearly:
+- VM host/user/key details
+- Mongo hosted credentials
+- session secret
+- bootstrap admin credentials
+- known_hosts
+- Caddy ACME email
 
-- which domains belong to local, staging, and production
-- which values live in local `.env` files
-- which values live in GitHub environment secrets
-- how the release gets from GitHub to the VM
-- why the VM builds images itself instead of pulling prebuilt images from GitHub
-- how to roll back if a deploy breaks
+### 3.3 VM runtime env files
+
+These files live only on the VM:
+
+- `/opt/cjl/staging/shared/runtime.env`
+- `/opt/cjl/production/shared/runtime.env`
+
+You do not create these files by hand during normal deployment. The GitHub workflow renders them from the environment secrets and uploads them over SSH right before deployment.
 
 ## 4. Repo Files That Matter
 
-These are the main files you will keep referring to:
+These are the main files you will keep referring to.
 
 ### Local env examples
 
@@ -118,19 +126,18 @@ These are the main files you will keep referring to:
 - `app/admin-web/.env.example`
 - `app/public-web/.env.example`
 
-These are for local development only. Do not paste staging or production secrets into them.
-
-### Deployment reference env examples
+### Hosted runtime env examples
 
 - `deploy/env/runtime.staging.env.example`
 - `deploy/env/runtime.production.env.example`
 
-These are reference files. GitHub Actions renders the actual runtime env file on the target VM later.
+These are safe templates only. They show shape and naming, not real secrets.
 
 ### Deployment assets
 
 - `deploy/api/docker-compose.remote.yml`
 - `deploy/api/Caddyfile`
+- `deploy/scripts/bootstrap-vm.sh`
 - `deploy/scripts/remote-deploy.sh`
 - `deploy/scripts/remote-rollback.sh`
 - `deploy/scripts/smoke-check.sh`
@@ -143,7 +150,7 @@ These are reference files. GitHub Actions renders the actual runtime env file on
 
 ## 5. Step 1: Prepare Local Development First
 
-Do this before staging or production. It proves the repo is healthy on your machine.
+Do this before touching staging or production. It proves the repo is healthy on your machine.
 
 ### 5.1 Install dependencies
 
@@ -184,23 +191,14 @@ At minimum, local values should be:
 - `app/public-web/.env.local`
   - `NEXT_PUBLIC_API_BASE_URL=http://localhost:4000`
 
-### 5.3 Understand what is local-only
-
-These files stay on your machine and should never be committed:
-
-- `packages/api/.env.local`
-- `app/admin-web/.env.local`
-- `app/public-web/.env.local`
-
-Use them for local development only. Do not paste staging or production secrets into them.
-
-### 5.4 Run local verification
+### 5.3 Run local verification
 
 From the repo root:
 
 ```powershell
 npm test
 npm run build
+docker compose config
 ```
 
 Then optionally boot local containers:
@@ -209,7 +207,7 @@ Then optionally boot local containers:
 npm run docker:up
 ```
 
-Manual health checks:
+Manual checks:
 
 - `http://localhost:4000/health`
 - `http://localhost:4000/ready`
@@ -224,29 +222,59 @@ npm run docker:down
 
 What done looks like:
 
-- the repo builds
-- the repo tests pass
+- tests pass
+- build passes
+- compose config renders
 - `/health` responds successfully
 - `/ready` responds successfully
 
-## 6. Step 2: Understand the Hosted Runtime Shape
+## 6. Step 2: Generate the SSH Keys GitHub Actions Will Use
 
-Hosted staging and production use the same shape:
+Each environment should have its own SSH key pair. Do not reuse the same key for staging and production.
 
-- one Ubuntu VM per environment
-- Docker Engine + Compose plugin on the VM
-- Caddy as reverse proxy and TLS terminator
-- MongoDB, API, admin web, and public web all run in Docker Compose
-- GitHub Actions copies the selected git release to the VM over SSH
-- the VM builds containers locally from that release
+### 6.1 Create the staging key pair
 
-This means:
+Run this on your machine:
 
-- no GHCR image publication is required
-- no registry pull secret is required
-- the VM must have enough CPU, RAM, and disk to build the app images locally
+```powershell
+ssh-keygen -t ed25519 -C "github-actions-staging" -f "$HOME\\.ssh\\cjl-staging-actions"
+```
 
-## 7. Step 3: Prepare GCP VMs
+This creates:
+
+- private key: `$HOME\.ssh\cjl-staging-actions`
+- public key: `$HOME\.ssh\cjl-staging-actions.pub`
+
+### 6.2 Create the production key pair
+
+```powershell
+ssh-keygen -t ed25519 -C "github-actions-production" -f "$HOME\\.ssh\\cjl-production-actions"
+```
+
+### 6.3 Where these key files go
+
+- the `.pub` file goes onto the VM deploy user's `authorized_keys`
+- the private key file content goes into GitHub environment secret:
+  - `STAGING_VM_SSH_PRIVATE_KEY`
+  - `PRODUCTION_VM_SSH_PRIVATE_KEY`
+
+To print the public key:
+
+```powershell
+Get-Content "$HOME\\.ssh\\cjl-staging-actions.pub"
+Get-Content "$HOME\\.ssh\\cjl-production-actions.pub"
+```
+
+To print the private key when filling GitHub secrets:
+
+```powershell
+Get-Content "$HOME\\.ssh\\cjl-staging-actions"
+Get-Content "$HOME\\.ssh\\cjl-production-actions"
+```
+
+Paste the full private key including the `BEGIN` and `END` lines into GitHub.
+
+## 7. Step 3: Provision the GCP VMs
 
 You need two Ubuntu VMs:
 
@@ -265,8 +293,9 @@ Use this unless you intentionally want something larger:
 
 Reason:
 
-- the VM must both run containers and build them locally during deployment
-- `e2-small` is usually too constrained for smooth multi-image builds
+- the VM must run Docker
+- the VM must build three app images locally during deployment
+- smaller shapes tend to make build time and memory pressure worse
 
 ### 7.2 Reserve static IPs
 
@@ -282,13 +311,11 @@ Create:
 - staging VM
 - production VM
 
-Make sure SSH access works for the user GitHub Actions will use later.
+Important:
 
-What done looks like:
-
-- each VM has a public IP
-- you can SSH into each VM manually
-- you know which VM is staging and which is production
+- enable SSH access for your admin account first
+- keep note of the public IP for each VM
+- do not rely on ephemeral IPs for public DNS
 
 ### 7.4 Open required firewall ports
 
@@ -298,45 +325,101 @@ Allow inbound:
 - `80/tcp`
 - `443/tcp`
 
-Do not expose MongoDB or the internal app ports directly to the public internet.
+Do not expose:
 
-### 7.5 Install required packages on each VM
+- `27017`
+- `3000`
+- `3001`
+- `4000`
 
-SSH into each VM and run:
+Those stay private inside the VM host and Docker network.
 
-```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y ca-certificates curl git docker.io docker-compose-plugin
-sudo systemctl enable docker
-sudo systemctl start docker
+## 8. Step 4: Bootstrap the Deploy User on Each VM
+
+This repo now includes a VM bootstrap script so you do not have to do package installation and deploy-user setup manually line by line.
+
+### 8.1 Copy the bootstrap script to the staging VM
+
+From your machine:
+
+```powershell
+scp .\deploy\scripts\bootstrap-vm.sh <your-admin-user>@<staging-vm-ip>:/tmp/bootstrap-vm.sh
 ```
 
-### 7.6 Create required directories on each VM
+### 8.2 Run the bootstrap script on staging
 
-On each VM run:
-
-```bash
-sudo mkdir -p /opt/cjl/staging/releases /opt/cjl/staging/shared
-sudo mkdir -p /opt/cjl/production/releases /opt/cjl/production/shared
-sudo chown -R "$USER":"$USER" /opt/cjl
-```
-
-These paths are used by the workflows and scripts already committed in this repo.
-
-### 7.7 Optional Docker convenience
-
-If you want to use Docker without `sudo` after reconnecting:
+SSH into the staging VM as your existing admin user, then run:
 
 ```bash
-sudo usermod -aG docker "$USER"
-newgrp docker
+chmod +x /tmp/bootstrap-vm.sh
+sudo bash /tmp/bootstrap-vm.sh staging cjl-staging-deploy "PASTE_THE_STAGING_PUBLIC_KEY_HERE"
 ```
 
-## 8. Step 4: Set Up DNS
+This script will:
+
+- install Docker Engine and the Compose plugin
+- create user `cjl-staging-deploy` if missing
+- install the public key into `/home/cjl-staging-deploy/.ssh/authorized_keys`
+- add the user to the `docker` group
+- create `/opt/cjl/staging/releases`
+- create `/opt/cjl/staging/shared`
+- create the shared Caddy and Mongo bind-mount directories
+- enable UFW for SSH, HTTP, and HTTPS
+
+### 8.3 Run the bootstrap script on production
+
+Repeat the same process on the production VM:
+
+```powershell
+scp .\deploy\scripts\bootstrap-vm.sh <your-admin-user>@<production-vm-ip>:/tmp/bootstrap-vm.sh
+```
+
+Then on the production VM:
+
+```bash
+chmod +x /tmp/bootstrap-vm.sh
+sudo bash /tmp/bootstrap-vm.sh production cjl-production-deploy "PASTE_THE_PRODUCTION_PUBLIC_KEY_HERE"
+```
+
+### 8.4 Verify the deploy user before touching GitHub
+
+From your machine, test SSH using the private key you generated earlier.
+
+Example for staging:
+
+```powershell
+ssh -i "$HOME\\.ssh\\cjl-staging-actions" cjl-staging-deploy@<staging-vm-ip> "docker version"
+```
+
+Example for production:
+
+```powershell
+ssh -i "$HOME\\.ssh\\cjl-production-actions" cjl-production-deploy@<production-vm-ip> "docker version"
+```
+
+If this fails, GitHub Actions will also fail. Fix this before continuing.
+
+### 8.5 Capture the host fingerprint for GitHub
+
+GitHub Actions needs `known_hosts` so SSH host verification is strict.
+
+From your machine:
+
+```powershell
+ssh-keyscan -H <staging-vm-ip>
+ssh-keyscan -H <production-vm-ip>
+```
+
+Save the full output lines into:
+
+- `STAGING_VM_SSH_KNOWN_HOSTS`
+- `PRODUCTION_VM_SSH_KNOWN_HOSTS`
+
+## 9. Step 5: Configure DNS
 
 All hosted domains for one environment point to the same VM. Caddy routes traffic to the correct internal service by hostname.
 
-### 8.1 Staging DNS records
+### 9.1 Staging DNS records
 
 Point these names to the staging VM static IP:
 
@@ -344,7 +427,7 @@ Point these names to the staging VM static IP:
 - `admin-staging.cjlaundry.site`
 - `staging.cjlaundry.site`
 
-### 8.2 Production DNS records
+### 9.2 Production DNS records
 
 Point these names to the production VM static IP:
 
@@ -352,64 +435,75 @@ Point these names to the production VM static IP:
 - `admin.cjlaundry.site`
 - `cjlaundry.site`
 
-After you save the records, wait for DNS propagation before troubleshooting TLS.
+After saving DNS, wait for propagation before debugging TLS.
 
-## 9. Step 5: Fill GitHub Environments and Secrets
+## 10. Step 6: Fill GitHub Environments and Secrets
 
 Go to:
 
-- repository Settings
-- Secrets and variables
-- Actions
+- the GitHub repository
+- `Settings`
+- `Environments`
 
-You need environment-level secrets because staging and production have different VMs and different credentials.
-
-### 9.1 Create GitHub environments
-
-Create:
+You need two GitHub environments:
 
 - `staging`
 - `production`
 
-### 9.2 Add staging environment secrets
+### 10.1 Create the environments
 
-Inside the GitHub `staging` environment, add:
+In GitHub:
 
-| Secret | Purpose |
+1. open repository `Settings`
+2. click `Environments`
+3. click `New environment`
+4. create `staging`
+5. create `production`
+
+Recommended protection:
+
+- `staging`: no reviewer requirement is fine
+- `production`: add required reviewers if your team wants a manual gate
+
+### 10.2 Add staging environment secrets
+
+Open the `staging` environment, then use `Add secret` for each value below.
+
+| Secret | What to paste |
 | --- | --- |
-| `STAGING_VM_HOST` | public IP or DNS of the staging VM |
-| `STAGING_VM_USER` | SSH user used by Actions |
-| `STAGING_VM_SSH_PRIVATE_KEY` | private key for that SSH user |
-| `STAGING_VM_SSH_KNOWN_HOSTS` | known_hosts entry for the staging VM |
-| `STAGING_VM_SSH_PORT` | optional custom SSH port, otherwise `22` |
-| `STAGING_CADDY_EMAIL` | email used for TLS/Let's Encrypt |
-| `STAGING_MONGO_ROOT_USERNAME` | Mongo root username for staging |
-| `STAGING_MONGO_ROOT_PASSWORD` | Mongo root password for staging |
-| `STAGING_MONGO_DATABASE` | Mongo database name, usually `cjlaundry` |
-| `STAGING_SESSION_SECRET` | session secret, minimum 32 chars |
-| `STAGING_ADMIN_BOOTSTRAP_USERNAME` | bootstrap admin username |
-| `STAGING_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the bootstrap password |
+| `STAGING_VM_HOST` | staging VM public IP or DNS |
+| `STAGING_VM_USER` | `cjl-staging-deploy` |
+| `STAGING_VM_SSH_PRIVATE_KEY` | full contents of `$HOME\.ssh\cjl-staging-actions` |
+| `STAGING_VM_SSH_KNOWN_HOSTS` | full output of `ssh-keyscan -H <staging-vm-ip>` |
+| `STAGING_VM_SSH_PORT` | `22` unless you intentionally changed SSH port |
+| `STAGING_CADDY_EMAIL` | the email Caddy should use for ACME |
+| `STAGING_MONGO_ROOT_USERNAME` | strong Mongo root username |
+| `STAGING_MONGO_ROOT_PASSWORD` | strong Mongo root password |
+| `STAGING_MONGO_DATABASE` | usually `cjlaundry` |
+| `STAGING_SESSION_SECRET` | long random secret |
+| `STAGING_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
+| `STAGING_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the first admin password |
 
-### 9.3 Add production environment secrets
+### 10.3 Add production environment secrets
 
-Inside the GitHub `production` environment, add:
+Open the `production` environment and add:
 
-| Secret | Purpose |
+| Secret | What to paste |
 | --- | --- |
-| `PRODUCTION_VM_HOST` | public IP or DNS of the production VM |
-| `PRODUCTION_VM_USER` | SSH user used by Actions |
-| `PRODUCTION_VM_SSH_PRIVATE_KEY` | private key for that SSH user |
-| `PRODUCTION_VM_SSH_KNOWN_HOSTS` | known_hosts entry for the production VM |
-| `PRODUCTION_VM_SSH_PORT` | optional custom SSH port, otherwise `22` |
-| `PRODUCTION_CADDY_EMAIL` | email used for TLS/Let's Encrypt |
-| `PRODUCTION_MONGO_ROOT_USERNAME` | Mongo root username for production |
-| `PRODUCTION_MONGO_ROOT_PASSWORD` | Mongo root password for production |
-| `PRODUCTION_MONGO_DATABASE` | Mongo database name, usually `cjlaundry` |
-| `PRODUCTION_SESSION_SECRET` | session secret, minimum 32 chars |
-| `PRODUCTION_ADMIN_BOOTSTRAP_USERNAME` | bootstrap admin username |
-| `PRODUCTION_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the bootstrap password |
+| `PRODUCTION_VM_HOST` | production VM public IP or DNS |
+| `PRODUCTION_VM_USER` | `cjl-production-deploy` |
+| `PRODUCTION_VM_SSH_PRIVATE_KEY` | full contents of `$HOME\.ssh\cjl-production-actions` |
+| `PRODUCTION_VM_SSH_KNOWN_HOSTS` | full output of `ssh-keyscan -H <production-vm-ip>` |
+| `PRODUCTION_VM_SSH_PORT` | `22` unless you intentionally changed SSH port |
+| `PRODUCTION_CADDY_EMAIL` | the email Caddy should use for ACME |
+| `PRODUCTION_MONGO_ROOT_USERNAME` | strong Mongo root username |
+| `PRODUCTION_MONGO_ROOT_PASSWORD` | strong Mongo root password |
+| `PRODUCTION_MONGO_DATABASE` | usually `cjlaundry` |
+| `PRODUCTION_SESSION_SECRET` | long random secret |
+| `PRODUCTION_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
+| `PRODUCTION_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the first admin password |
 
-### 9.4 Generate secure values
+### 10.4 Generate secure values
 
 Generate a session secret:
 
@@ -423,29 +517,26 @@ Generate a bcrypt hash for an admin password:
 node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('replace-with-real-password', 12));"
 ```
 
-Store the real password somewhere secure before hashing it. After the hash is created, only the hash belongs in GitHub secrets.
+Important:
 
-### 9.5 Why there is no image registry secret
+- store the real admin password somewhere secure before hashing it
+- only the hash belongs in GitHub
+- changing the hash later does not automatically overwrite an already-seeded admin user
 
-This repo intentionally does not push app images from GitHub.
+### 10.5 What GitHub will write onto the VM
 
-Deployment flow is:
+During deployment, GitHub Actions renders a runtime file and uploads it here:
 
-1. GitHub checks out the selected commit
-2. GitHub streams a tar archive of that release to the VM over SSH
-3. the VM runs `docker compose up -d --build`
+- staging: `/opt/cjl/staging/shared/runtime.env`
+- production: `/opt/cjl/production/shared/runtime.env`
 
-So:
+That file is built from the environment secrets above. It is the hosted equivalent of a local `.env.local`.
 
-- no GHCR token is required
-- no VM-side GitHub token is required
-- the VM builds directly from the exact code release shipped over SSH
+## 11. Step 7: Understand What GitHub Actions Will Do
 
-## 10. Step 6: Understand What GitHub Actions Will Do
+This matters because it tells you what must already be correct before the first deploy.
 
-This is important because it tells you what must already be correct before the first deploy.
-
-### 10.1 CI workflow
+### 11.1 CI workflow
 
 `.github/workflows/ci.yml` runs:
 
@@ -454,80 +545,90 @@ This is important because it tells you what must already be correct before the f
 - `npm run build`
 - `docker compose config`
 
-### 10.2 Staging deploy workflow
+### 11.2 Staging deploy workflow
 
 `.github/workflows/deploy-staging.yml`:
 
 1. waits for `CI` to succeed on branch `staging`
 2. checks out the exact commit that passed CI
-3. streams that git release to the staging VM over SSH
-4. renders `/opt/cjl/staging/shared/runtime.env` on the VM
-5. runs `deploy/scripts/remote-deploy.sh` on the VM
-6. smoke-checks:
-   - `https://api-staging.cjlaundry.site/health`
-   - `https://api-staging.cjlaundry.site/ready`
-   - `https://admin-staging.cjlaundry.site`
-   - `https://staging.cjlaundry.site`
+3. starts an SSH agent with `STAGING_VM_SSH_PRIVATE_KEY`
+4. verifies the VM host using `STAGING_VM_SSH_KNOWN_HOSTS`
+5. creates `/opt/cjl/staging/releases/<git-sha>` on the VM
+6. streams a `git archive` tarball into that release directory
+7. renders `runtime.env` from GitHub secrets
+8. uploads that file to `/opt/cjl/staging/shared/runtime.env`
+9. runs `deploy/scripts/remote-deploy.sh` on the VM
+10. smoke-checks the staging URLs
 
-### 10.3 Production deploy workflow
+### 11.3 Production deploy workflow
 
-`.github/workflows/deploy-production.yml`:
+`.github/workflows/deploy-production.yml` does the same shape for `main` and the production VM.
 
-1. waits for `CI` to succeed on branch `main`
-2. checks out the exact commit that passed CI
-3. streams that git release to the production VM over SSH
-4. renders `/opt/cjl/production/shared/runtime.env` on the VM
-5. runs `deploy/scripts/remote-deploy.sh` on the VM
-6. smoke-checks:
-   - `https://api.cjlaundry.site/health`
-   - `https://api.cjlaundry.site/ready`
-   - `https://admin.cjlaundry.site`
-   - `https://cjlaundry.site`
+### 11.4 Why there is no image registry secret
 
-## 11. Step 7: First Staging Rollout
+This repo intentionally does not push app images from GitHub.
+
+Deployment flow is:
+
+1. GitHub checks out the selected commit
+2. GitHub streams that release to the VM over SSH
+3. the VM runs `docker compose up -d --build`
+
+So:
+
+- no GHCR token is required
+- no registry pull secret is required
+- the VM builds directly from the exact code shipped over SSH
+
+## 12. Step 8: First Staging Rollout
 
 Do not do this until all earlier steps are complete.
 
-### 11.1 Final pre-flight checklist
+### 12.1 Final pre-flight checklist
 
 Before pushing for staging, confirm:
 
-- the staging VM is reachable over SSH
-- Docker is installed and running on the staging VM
-- `staging.cjlaundry.site`, `admin-staging.cjlaundry.site`, and `api-staging.cjlaundry.site` resolve to the staging VM
-- staging GitHub environment secrets are filled
-- branch `staging` exists and contains the code you want
+- local `npm test` passed
+- local `npm run build` passed
+- local `docker compose config` passed
+- staging VM is reachable over SSH as `cjl-staging-deploy`
+- `docker version` works when logged in as the deploy user
+- staging DNS records resolve to the staging VM
+- GitHub `staging` environment exists
+- all staging secrets are filled
+- branch `staging` exists and contains the desired code
 
-### 11.2 Trigger the rollout
+### 12.2 Trigger the rollout
 
-1. push the desired code to branch `staging`
-2. wait for `CI` to succeed
-3. wait for `Deploy Staging` to start automatically
-4. watch the job until all stages pass
+1. push the desired commit to branch `staging`
+2. open the `Actions` tab in GitHub
+3. wait for `CI` to finish successfully on `staging`
+4. wait for `Deploy Staging` to start automatically
+5. watch the job until every step passes
 
 If `Deploy Staging` does not start, the most likely reason is that `CI` did not finish successfully on `staging`.
 
-### 11.3 What the workflow writes on the VM
+### 12.3 What the staging workflow writes on the VM
 
 The staging deploy writes:
 
-- `/opt/cjl/staging/releases/<git-sha>/...` for the shipped repo release
+- `/opt/cjl/staging/releases/<git-sha>/...`
 - `/opt/cjl/staging/shared/runtime.env`
-- `/opt/cjl/staging/current` as a symlink to the active release
+- `/opt/cjl/staging/current`
 - `/opt/cjl/staging/current_release`
 
-This is useful when debugging or rolling back later.
+This is useful later for debugging and rollback.
 
-## 12. Step 8: Validate Staging
+## 13. Step 9: Validate Staging
 
-After the staging workflow succeeds, verify these URLs manually:
+After the staging workflow succeeds, verify:
 
 - `https://api-staging.cjlaundry.site/health`
 - `https://api-staging.cjlaundry.site/ready`
 - `https://admin-staging.cjlaundry.site`
 - `https://staging.cjlaundry.site`
 
-### 12.1 API checks
+### 13.1 API checks
 
 Confirm:
 
@@ -540,16 +641,16 @@ Confirm:
 - settings seed exists
 - bootstrap admin seed exists
 
-### 12.2 Admin checks
+### 13.2 Admin checks
 
-Log in using the staging bootstrap admin credentials and confirm:
+Log in with the staging bootstrap admin credentials and confirm:
 
 - login works
 - logout works
 - dashboard loads
 - customer search works
 
-### 12.3 Core business checks
+### 13.3 Core business checks
 
 Manually validate:
 
@@ -560,28 +661,25 @@ Manually validate:
 5. open the active order list
 6. mark the order done
 7. check the customer points balance and ledger history
-8. login to the public portal with the created customer
+8. log in to the public portal with the created customer
 9. open the direct order status link
 
 If any of these fail, do not deploy production yet.
 
-Infrastructure smoke checks only prove the apps are reachable. They do not prove the business flow is correct.
-
-## 13. Step 9: First Production Rollout
+## 14. Step 10: First Production Rollout
 
 Only do this after staging is healthy and manually validated.
 
-### 13.1 Pre-flight checklist
+### 14.1 Pre-flight checklist
 
 Confirm:
 
-- the production VM is reachable over SSH
-- Docker is installed and running on the production VM
-- `cjlaundry.site`, `admin.cjlaundry.site`, and `api.cjlaundry.site` resolve to the production VM
+- the production VM is reachable over SSH as `cjl-production-deploy`
+- production DNS resolves correctly
 - production GitHub environment secrets are filled
-- branch `main` contains the exact commit already validated in staging
+- the exact commit was already validated in staging
 
-### 13.2 Trigger production
+### 14.2 Trigger production
 
 Production auto-deploys from pushes to `main` after `CI` succeeds.
 
@@ -594,12 +692,7 @@ For the first production rollout:
 
 You may also trigger `Deploy Production` manually with `workflow_dispatch` and a specific `git_ref`.
 
-Junior-level rule:
-
-- never use production as your first test
-- if you are unsure which commit to deploy, use the exact commit that already passed staging validation
-
-### 13.3 Validate production
+### 14.3 Validate production
 
 Check:
 
@@ -610,9 +703,9 @@ Check:
 
 Then repeat the same business smoke checks you used in staging.
 
-## 14. Runtime Env Shape
+## 15. Runtime Env Shape
 
-The GitHub workflows render the actual VM env file from secrets, but these example files describe what belongs there:
+The GitHub workflows render the real runtime env file from environment secrets, but these example files define the expected shape:
 
 - `deploy/env/runtime.staging.env.example`
 - `deploy/env/runtime.production.env.example`
@@ -622,21 +715,22 @@ The most important variables are:
 | Variable | Purpose |
 | --- | --- |
 | `APP_ENV` | `staging` or `production` |
-| `SHARED_DIR` | shared state path for Caddy and Mongo bind mounts |
-| `ADMIN_DOMAIN` | admin public hostname |
-| `PUBLIC_DOMAIN` | public public hostname |
-| `API_DOMAIN` | API public hostname |
+| `COMPOSE_PROJECT_NAME` | compose project name for the environment |
+| `SHARED_DIR` | bind-mount location for Mongo and Caddy state |
+| `ADMIN_DOMAIN` | admin hostname |
+| `PUBLIC_DOMAIN` | public hostname |
+| `API_DOMAIN` | API hostname |
 | `CADDY_EMAIL` | ACME email for TLS |
-| `MONGO_*` | Mongo root credentials and database name |
-| `SESSION_SECRET` | session signing secret |
-| `ADMIN_BOOTSTRAP_*` | initial admin login seed |
-| `WA_FAIL_MODE` | failure simulation mode, should stay `never` in hosted envs |
+| `MONGO_*` | Mongo credentials and database |
+| `SESSION_SECRET` | session-signing secret |
+| `ADMIN_BOOTSTRAP_*` | first admin seed |
+| `WA_FAIL_MODE` | failure simulation mode; keep `never` in hosted envs |
 
-## 15. Rollback
+## 16. Rollback
 
 Rollback is part of deployment. Do not deploy if you are not comfortable reversing the change.
 
-### 15.1 Preferred rollback
+### 16.1 Preferred rollback
 
 Re-run the deploy workflow against the last known good `git_ref`.
 
@@ -644,16 +738,16 @@ This restores:
 
 - the prior shipped repo release
 - a fresh local build on the VM from that release
-- the prior active `current` symlink target
+- the prior `current` symlink target
 
-### 15.2 Emergency rollback directly on the VM
+### 16.2 Emergency rollback directly on the VM
 
 If GitHub Actions is unavailable:
 
 1. SSH into the affected VM
-2. list the release directories
+2. list `/opt/cjl/<env>/releases`
 3. choose the last known good release SHA
-4. run the rollback script directly
+4. run the rollback script
 
 Example for staging:
 
@@ -675,15 +769,15 @@ bash /opt/cjl/production/current/deploy/scripts/remote-rollback.sh \
   /opt/cjl/production/shared/runtime.env
 ```
 
-### 15.3 What rollback does not do
+### 16.3 What rollback does not do
 
-Rollback does not revert database writes that already happened after the bad release went live.
+Rollback does not revert business writes already committed to MongoDB after the bad release went live.
 
-Rollback restores code/runtime state, not business data history.
+Rollback restores code and runtime state, not user history.
 
-## 16. Troubleshooting
+## 17. Troubleshooting
 
-### 16.1 `/ready` fails but `/health` works
+### 17.1 `/ready` fails but `/health` works
 
 Likely causes:
 
@@ -697,23 +791,7 @@ Check:
 - `docker compose logs api`
 - `docker compose logs mongo`
 
-This pattern usually means the API process is alive, but one of its dependencies is not configured correctly.
-
-### 16.2 TLS certificate does not issue
-
-Likely causes:
-
-- the domain points to the wrong IP
-- ports `80` or `443` are blocked
-- the VM firewall is not open
-
-Check:
-
-- DNS resolution
-- GCP firewall rules
-- whether Caddy is actually running
-
-### 16.3 GitHub Actions cannot SSH into the VM
+### 17.2 GitHub Actions cannot SSH into the VM
 
 Check:
 
@@ -725,10 +803,10 @@ Check:
 
 Manual verification tip:
 
-- try SSH from your own terminal with the same host and user first
-- if manual SSH fails, GitHub Actions will fail too
+- try SSH from your machine with the same private key first
+- if that fails, GitHub Actions will fail too
 
-### 16.4 The VM deploy starts but image build fails
+### 17.3 The VM deploy starts but image build fails
 
 Check:
 
@@ -745,44 +823,50 @@ free -h
 docker system df
 ```
 
-### 16.5 Admin bootstrap login fails
+### 17.4 TLS certificate does not issue
+
+Likely causes:
+
+- domain points to the wrong IP
+- ports `80` or `443` are blocked
+- Caddy is not reachable
+
+Check:
+
+- DNS resolution
+- GCP firewall rules
+- `docker compose logs caddy`
+
+### 17.5 Admin bootstrap login fails
 
 Check:
 
 - `*_ADMIN_BOOTSTRAP_USERNAME`
 - `*_ADMIN_BOOTSTRAP_PASSWORD_HASH`
-- whether the stored hash actually matches the intended password
+- whether the stored hash matches the intended password
 
 Important:
 
 - the bootstrap admin is seeded only if missing
-- changing the hash later does not automatically overwrite an already-created admin record
+- changing the hash later does not overwrite an existing admin
 
-### 16.6 The frontend points at the wrong API
-
-Check the runtime env rendered by GitHub Actions:
-
-- `ADMIN_DOMAIN`
-- `PUBLIC_DOMAIN`
-- `API_DOMAIN`
-
-Because the frontends are built on the VM, a wrong `API_DOMAIN` value means the built frontend will carry the wrong `NEXT_PUBLIC_API_BASE_URL`.
-
-## 17. Final Checklist
+## 18. Final Checklist
 
 You are ready when all of the following are true:
 
-- local env files exist and local build/test pass
-- `docker compose config` succeeds from the repo root
-- `https://api-staging.cjlaundry.site`, `https://admin-staging.cjlaundry.site`, and `https://staging.cjlaundry.site` all resolve to the staging VM
-- `https://api.cjlaundry.site`, `https://admin.cjlaundry.site`, and `https://cjlaundry.site` all resolve to the production VM
-- staging and production VMs are reachable over SSH
-- Docker is installed and running on both VMs
-- required VM directories exist
+- local `.env.local` files exist
+- local `npm test` succeeds
+- local `npm run build` succeeds
+- local `docker compose config` succeeds
+- staging and production SSH key pairs exist
+- staging and production deploy users can log in over SSH with those keys
+- staging and production VMs have Docker running
+- `/opt/cjl/staging` and `/opt/cjl/production` directory trees exist
+- staging and production DNS records point to the correct VM IPs
 - GitHub environments `staging` and `production` exist
 - all required environment secrets are filled
 - `CI` succeeds on `staging`
 - staging deploy completes successfully
-- staging smoke tests pass
+- staging smoke checks pass
 - staging business flow passes manual validation
 - production deploy is ready to run
