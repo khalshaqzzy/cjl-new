@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs"
 import type { AdminDocument, SettingsDocument } from "./types.js"
 import { getDatabase } from "./db.js"
-import { defaultSettings } from "./defaults.js"
+import { defaultMessageTemplates, defaultSettings, legacyDefaultMessageTemplates } from "./defaults.js"
 import { env } from "./env.js"
 import { formatCustomerName, normalizeName, normalizePhone } from "./lib/normalization.js"
 
@@ -13,6 +13,25 @@ export const ensureSeedData = async () => {
   const existingSettings = await settingsCollection.findOne({ _id: "app-settings" })
   if (!existingSettings) {
     await settingsCollection.insertOne(defaultSettings())
+  } else {
+    const isLegacyMessageTemplate =
+      existingSettings.messageTemplates.welcome === legacyDefaultMessageTemplates.welcome &&
+      existingSettings.messageTemplates.orderConfirmed === legacyDefaultMessageTemplates.orderConfirmed &&
+      existingSettings.messageTemplates.orderDone === legacyDefaultMessageTemplates.orderDone &&
+      existingSettings.messageTemplates.orderVoidNotice === legacyDefaultMessageTemplates.orderVoidNotice &&
+      existingSettings.messageTemplates.accountInfo === legacyDefaultMessageTemplates.accountInfo
+
+    if (isLegacyMessageTemplate) {
+      await settingsCollection.updateOne(
+        { _id: "app-settings" },
+        {
+          $set: {
+            messageTemplates: defaultMessageTemplates,
+            updatedAt: new Date().toISOString()
+          }
+        }
+      )
+    }
   }
 
   const admin = await adminCollection.findOne({ username: env.ADMIN_USERNAME })

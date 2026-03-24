@@ -274,7 +274,7 @@ export default function SettingsPage() {
             <CardContent className="p-5 space-y-4">
               {[
                 { key: "welcome", label: "Welcome", helper: "Terkirim saat pelanggan baru dibuat." },
-                { key: "orderConfirmed", label: "Order Dikonfirmasi", helper: "Gunakan token seperti {{orderCode}}, {{createdAt}}, {{earnedStamps}}, {{redeemedPoints}}, {{currentPoints}}, {{statusUrl}}." },
+      { key: "orderConfirmed", label: "Order Dikonfirmasi", helper: "Gunakan token seperti {{orderCode}}, {{createdAt}}, {{weightKgLabel}}, {{serviceSummary}}, {{totalLabel}}, {{earnedStamps}}, {{redeemedPoints}}, {{currentPoints}}, {{statusUrl}}." },
                 { key: "orderDone", label: "Order Selesai", helper: "Gunakan {{orderCode}}, {{createdAt}}, {{completedAt}}." },
                 { key: "orderVoidNotice", label: "Order Dibatalkan", helper: "Gunakan {{orderCode}} dan {{reason}} untuk koreksi operasional." },
                 { key: "accountInfo", label: "Info Akun", helper: "Terkirim setelah nama/nomor pelanggan diperbarui." },

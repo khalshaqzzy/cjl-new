@@ -1,5 +1,69 @@
 import type { SettingsDocument } from "./types.js"
 
+export const legacyDefaultMessageTemplates = {
+  welcome: "Halo {{customerName}}, selamat datang di {{laundryName}}. Nomor terdaftar Anda {{customerPhone}}. Login portal menggunakan nomor HP + nama terdaftar.",
+  orderConfirmed: "Halo {{customerName}}, order {{orderCode}} sudah dikonfirmasi pada {{createdAt}}. Poin diperoleh: {{earnedStamps}}, poin dipakai: {{redeemedPoints}}, saldo sekarang: {{currentPoints}}. Pantau status: {{statusUrl}}",
+  orderDone: "Halo {{customerName}}, order {{orderCode}} yang masuk pada {{createdAt}} telah selesai pada {{completedAt}}.",
+  orderVoidNotice: "Halo {{customerName}}, order {{orderCode}} dibatalkan. Alasan: {{reason}}.",
+  accountInfo: "Halo {{customerName}}, data akun Anda diperbarui. Nomor login terbaru: {{customerPhone}}."
+} as const
+
+export const defaultMessageTemplates = {
+  welcome: `Halo {{customerName}}!
+
+Selamat datang di CJ Laundry. Akun pelanggan Anda sudah berhasil terdaftar.
+
+Website CJ Laundry:
+https://cjlaundry.site
+
+Di website tersebut Anda bisa:
+- login ke customer portal
+- cek status laundry
+- lihat riwayat order
+- cek poin / stamp
+- lihat leaderboard pelanggan
+
+Gunakan data berikut untuk login:
+Nomor HP: {{customerPhone}}
+Nama: {{customerName}}
+
+Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.`,
+  orderConfirmed: `Halo {{customerName}}!
+
+Pesanan Anda dengan kode {{orderCode}} sudah kami konfirmasi pada {{createdAt}}.
+
+Detail order:
+- Berat: {{weightKgLabel}}
+- Layanan: {{serviceSummary}}
+- Total: {{totalLabel}}
+
+Poin loyalty:
+- Poin diperoleh: {{earnedStamps}}
+- Poin digunakan: {{redeemedPoints}}
+- Saldo poin sekarang: {{currentPoints}}
+
+Pantau status order Anda di:
+{{statusUrl}}
+
+Receipt ringkas juga kami kirim bersama pesan ini. Terima kasih sudah order di CJ Laundry.`,
+  orderDone: `Halo {{customerName}}!
+
+Pesanan Anda dengan kode {{orderCode}} yang masuk pada {{createdAt}} telah selesai pada {{completedAt}}.
+
+Laundry Anda sudah dapat diambil.
+
+Terima kasih sudah menggunakan layanan CJ Laundry. Kami tunggu order berikutnya ya.`,
+  orderVoidNotice: "Halo {{customerName}}, order {{orderCode}} dibatalkan. Alasan: {{reason}}.",
+  accountInfo: `Halo {{customerName}}!
+
+Data akun CJ Laundry Anda sudah diperbarui.
+
+Nomor login terbaru:
+{{customerPhone}}
+
+Silakan gunakan nomor tersebut bersama nama terdaftar Anda saat login ke portal customer.`
+} as const
+
 export const defaultSettings = (): SettingsDocument => ({
   _id: "app-settings",
   business: {
@@ -60,12 +124,6 @@ export const defaultSettings = (): SettingsDocument => ({
       publicDescription: "Setrika rapi profesional"
     }
   ],
-  messageTemplates: {
-    welcome: "Halo {{customerName}}, selamat datang di {{laundryName}}. Nomor terdaftar Anda {{customerPhone}}. Login portal menggunakan nomor HP + nama terdaftar.",
-    orderConfirmed: "Halo {{customerName}}, order {{orderCode}} sudah dikonfirmasi pada {{createdAt}}. Poin diperoleh: {{earnedStamps}}, poin dipakai: {{redeemedPoints}}, saldo sekarang: {{currentPoints}}. Pantau status: {{statusUrl}}",
-    orderDone: "Halo {{customerName}}, order {{orderCode}} yang masuk pada {{createdAt}} telah selesai pada {{completedAt}}.",
-    orderVoidNotice: "Halo {{customerName}}, order {{orderCode}} dibatalkan. Alasan: {{reason}}.",
-    accountInfo: "Halo {{customerName}}, data akun Anda diperbarui. Nomor login terbaru: {{customerPhone}}."
-  },
+  messageTemplates: defaultMessageTemplates,
   updatedAt: new Date().toISOString()
 })

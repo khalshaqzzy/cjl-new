@@ -40,6 +40,14 @@ Purpose: repo snapshot after real WhatsApp gateway implementation plus admin sta
   - admin WhatsApp status endpoints
   - internal event ingestion
   - mirrored inbox reads
+- upgraded default WhatsApp copy to be more informative and customer-facing:
+  - welcome message now hardcodes `CJ Laundry`, includes website usage, and formats login credentials explicitly
+  - order confirmed message now includes weight, service summary, and total
+  - order done message now explicitly says the laundry is ready for pickup and closes with thanks
+- changed public-facing `orderCode` generation from sequential daily numbering to a non-sequential 3-character hashed suffix:
+  - format remains `CJ-YYYYMMDD-XXX`
+  - suffix derives from hashed `orderId`
+  - retry loop preserves uniqueness without exposing order volume
 - kept existing failed-send manual fallback semantics intact
 - added ADR `docs/adr/0006-whatsapp-gateway-sidecar-and-api-owned-mirroring.md`
 
@@ -59,6 +67,7 @@ All passed at session end.
 - local and hosted runtimes now require a stable `WHATSAPP_GATEWAY_TOKEN`
 - hosted runtime now depends on a persistent `${SHARED_DIR}/whatsapp-auth` mount for session survival
 - the backend integration suite now uses a mocked gateway over real HTTP, so test failures around WhatsApp should be debuggable without a real paired device
+- `orderCode` no longer reveals approximate daily order counts to customers or operators outside the system of record
 
 ## Recommended Next Start
 

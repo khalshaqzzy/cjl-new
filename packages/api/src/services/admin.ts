@@ -23,7 +23,6 @@ import { normalizeName, normalizePhone, normalizeWhatsappPhone } from "../lib/no
 import { formatDateTime, formatRelativeLabel, formatWeightLabel, monthKeyFromIso, nowJakarta } from "../lib/time.js"
 import type {
   AdminDocument,
-  CounterDocument,
   CustomerDocument,
   DirectOrderTokenDocument,
   IdempotencyKeyDocument,
@@ -86,18 +85,22 @@ const phoneDigits = (phone: string) => normalizePhone(phone).replace(/\D/g, "")
 const sha256 = (payload: string) =>
   crypto.createHash("sha256").update(payload).digest("hex")
 
-const nextCounterValue = async (counterId: string, session: Parameters<typeof withMongoTransaction>[0] extends (session: infer T) => Promise<unknown> ? T : never) => {
-  const result = await db().collection<CounterDocument>("counters").findOneAndUpdate(
-    { _id: counterId },
-    { $inc: { sequence: 1 } },
-    {
-      upsert: true,
-      returnDocument: "after",
-      session
-    }
-  )
+const createUniqueOrderCode = async (
+  orderId: string,
+  date: Date,
+  session: Parameters<typeof withMongoTransaction>[0] extends (session: infer T) => Promise<unknown> ? T : never
+) => {
+  for (let retry = 0; retry < 32; retry += 1) {
+    const seed = retry === 0 ? orderId : `${orderId}:${retry}`
+    const orderCode = createOrderCode(seed, date)
+    const duplicate = await db().collection<OrderDocument>("orders").findOne({ orderCode }, { session })
 
-  return result?.sequence ?? 1
+    if (!duplicate) {
+      return orderCode
+    }
+  }
+
+  throw new Error("Gagal membuat kode order unik")
 }
 
 const buildOrderReceiptSnapshot = async (
@@ -550,10 +553,10 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
     }
 
     const createdAt = new Date().toISOString()
+    const orderDate = nowJakarta().toJSDate()
     const orderId = createId("order")
     const directToken = createOpaqueToken()
-    const orderSequence = await nextCounterValue("orders", session)
-    const orderCode = createOrderCode(orderSequence, nowJakarta().toJSDate())
+    const orderCode = await createUniqueOrderCode(orderId, orderDate, session)
     const serviceSummary = preview.activeItems.map((item) => `${item.quantity}x ${item.serviceLabel}`).join(", ")
     const receiptSnapshot = await buildOrderReceiptSnapshot(
       orderCode,
@@ -638,6 +641,9 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
       customerName: customer.name,
       orderCode,
       createdAt: formatDateTime(createdAt),
+      weightKgLabel: formatWeightLabel(input.weightKg),
+      serviceSummary,
+      totalLabel: formatCurrency(preview.total),
       earnedStamps: preview.earnedStamps,
       redeemedPoints: preview.redeemedPoints,
       currentPoints: preview.resultingPointBalance,
