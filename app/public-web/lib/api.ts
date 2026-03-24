@@ -1,6 +1,7 @@
 "use client"
 
 import type {
+  CustomerMagicLinkRedeemInput,
   CustomerOrderDetail,
   DirectOrderStatus,
   LandingResponse,
@@ -57,6 +58,14 @@ export const publicApi = {
     apiFetch<{ ok: true }>("/v1/public/auth/login", {
       method: "POST",
       body: JSON.stringify({ phone, name })
+    }),
+  redeemMagicLink: (token: CustomerMagicLinkRedeemInput["token"]) =>
+    apiFetch<{
+      ok: true
+      session: { customerId: string; name: string; phone: string; publicNameVisible: boolean }
+    }>("/v1/public/auth/magic-link/redeem", {
+      method: "POST",
+      body: JSON.stringify({ token })
     }),
   logout: () => apiFetch<{ ok: true }>("/v1/public/auth/logout", { method: "POST" }),
   getSession: () =>

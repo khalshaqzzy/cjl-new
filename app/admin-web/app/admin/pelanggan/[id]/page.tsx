@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import type { CustomerProfile, OrderHistoryItem, PointLedgerItem } from "@cjl/contracts"
 import { useParams, useRouter } from "next/navigation"
 import { AdminShell } from "@/components/admin/admin-shell"
+import { CustomerLoginLinkSheet } from "@/components/admin/customer-login-link-sheet"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -191,6 +192,9 @@ export default function CustomerDetailPage() {
   const [voidReason, setVoidReason] = useState("")
   const [notifyCustomerOnVoid, setNotifyCustomerOnVoid] = useState(true)
   const [isVoiding, setIsVoiding] = useState(false)
+  const [isGeneratingMagicLink, setIsGeneratingMagicLink] = useState(false)
+  const [loginLinkUrl, setLoginLinkUrl] = useState("")
+  const [showLoginLinkSheet, setShowLoginLinkSheet] = useState(false)
 
   const customerId = typeof params?.id === "string" ? params.id : ""
 
@@ -281,6 +285,24 @@ export default function CustomerDetailPage() {
     ? customer.currentPoints + (parseInt(addPointsAmount) || 0)
     : null
 
+  const handleGenerateMagicLink = async () => {
+    if (!customerId) {
+      return
+    }
+
+    setIsGeneratingMagicLink(true)
+    try {
+      const response = await adminApi.generateCustomerMagicLink(customerId)
+      setLoginLinkUrl(response.oneTimeLogin.url)
+      setShowLoginLinkSheet(true)
+      setFeedback({ tone: "success", message: "Link login tambahan berhasil dibuat." })
+    } catch (error) {
+      setFeedback({ tone: "danger", message: error instanceof Error ? error.message : "Gagal membuat link login tambahan" })
+    } finally {
+      setIsGeneratingMagicLink(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <AdminShell title="Detail Pelanggan">
@@ -358,6 +380,25 @@ export default function CustomerDetailPage() {
                   onClick={() => loadCustomerDetail().catch(() => undefined)}
                 >
                   <><RefreshCw className="h-3.5 w-3.5 mr-1" />Refresh</>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg h-8 px-2.5 text-xs"
+                  onClick={handleGenerateMagicLink}
+                  disabled={isGeneratingMagicLink}
+                >
+                  {isGeneratingMagicLink ? (
+                    <>
+                      <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                      QR Login
+                    </>
+                  ) : (
+                    <>
+                      <Send className="mr-1 h-3.5 w-3.5" />
+                      QR Login
+                    </>
+                  )}
                 </Button>
                 <Button
                   variant="outline"
@@ -749,6 +790,15 @@ export default function CustomerDetailPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <CustomerLoginLinkSheet
+        open={showLoginLinkSheet}
+        onOpenChange={setShowLoginLinkSheet}
+        loginUrl={loginLinkUrl}
+        customerName={customer.name}
+        title="QR Login Tambahan"
+        description="Buat QR atau link login tambahan dari detail customer kapan saja."
+      />
     </AdminShell>
   )
 }

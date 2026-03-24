@@ -6,9 +6,10 @@ import type {
   OrderHistoryItem,
   PointLedgerItem
 } from "@cjl/contracts"
+import { sanitizeAdminWhatsappContacts, resolvePrimaryAdminWhatsappContact } from "../lib/admin-whatsapp.js"
 import { env } from "../env.js"
 import { getDatabase } from "../db.js"
-import { createId } from "../lib/ids.js"
+import { createId, createOpaqueToken } from "../lib/ids.js"
 import { formatCurrency } from "../lib/formatters.js"
 import { compileTemplate, shouldForceNotificationFailure } from "../lib/notifications.js"
 import { renderReceiptImageBase64 } from "../lib/receipt-image.js"
@@ -18,6 +19,7 @@ import { formatDateTime, formatRelativeLabel, formatWeightLabel } from "../lib/t
 import { sendNotificationToWhatsapp } from "./whatsapp.js"
 import type {
   AuditLogDocument,
+  CustomerMagicLinkDocument,
   CustomerDocument,
   NotificationDocument,
   OrderDocument,
@@ -58,8 +60,36 @@ export const getSettingsDocument = async (session?: ClientSession) => {
     throw new Error("Settings belum tersedia")
   }
 
+  const adminWhatsappContacts = sanitizeAdminWhatsappContacts(
+    settings.business.adminWhatsappContacts,
+    [
+      settings.business.publicContactPhone,
+      settings.business.publicWhatsapp,
+    ]
+  )
+
+  if (JSON.stringify(adminWhatsappContacts) !== JSON.stringify(settings.business.adminWhatsappContacts ?? [])) {
+    await db().collection<SettingsDocument>("settings").updateOne(
+      { _id: "app-settings" },
+      {
+        $set: {
+          "business.adminWhatsappContacts": adminWhatsappContacts,
+          updatedAt: new Date().toISOString(),
+        }
+      },
+      { session }
+    )
+  }
+
+  settings.business.adminWhatsappContacts = adminWhatsappContacts
   return settings
 }
+
+export const getPrimaryAdminWhatsappContact = (settings: SettingsDocument) =>
+  resolvePrimaryAdminWhatsappContact(settings.business.adminWhatsappContacts, [
+    settings.business.publicContactPhone,
+    settings.business.publicWhatsapp,
+  ])
 
 export const saveAuditLog = async (
   action: string,
@@ -196,6 +226,32 @@ export const buildPreparedMessage = async (
 
 export const insertPointLedger = async (entry: PointLedgerDocument, session?: ClientSession) => {
   await db().collection<PointLedgerDocument>("point_ledgers").insertOne(entry, { session })
+}
+
+export const buildCustomerMagicLinkUrl = (token: string) =>
+  `${env.PUBLIC_ORIGIN}/auto-login?token=${encodeURIComponent(token)}`
+
+export const createCustomerMagicLink = async (
+  customerId: string,
+  source: CustomerMagicLinkDocument["source"],
+  session?: ClientSession
+) => {
+  const createdAt = new Date().toISOString()
+  const token = createOpaqueToken()
+  const document: CustomerMagicLinkDocument = {
+    _id: createId("magic"),
+    token,
+    customerId,
+    source,
+    createdAt,
+  }
+
+  await db().collection<CustomerMagicLinkDocument>("customer_magic_links").insertOne(document, { session })
+
+  return {
+    token,
+    url: buildCustomerMagicLinkUrl(token),
+  }
 }
 
 export const queueNotification = async (notification: NotificationDocument, session?: ClientSession) => {
@@ -506,7 +562,7 @@ export const buildOrderReceiptPdf = async (orderId: string) => {
     },
     {
       laundryName: settings.business.laundryName,
-      laundryPhone: settings.business.publicContactPhone
+      laundryPhone: getPrimaryAdminWhatsappContact(settings).phone
     }
   )
 }

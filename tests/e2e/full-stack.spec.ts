@@ -35,6 +35,7 @@ test("admin and public frontends stay fully integrated through the backend", asy
   const customerName = `E2e Customer ${uniqueSuffix}`
   const upperCustomerName = customerName.toUpperCase()
   const customerPhone = `08123${uniqueSuffix}`
+  const primaryAdminPhone = `08999${uniqueSuffix}`
 
   await page.goto("http://127.0.0.1:3101/")
 
@@ -44,12 +45,29 @@ test("admin and public frontends stay fully integrated through the backend", asy
 
   await expect(page).toHaveURL(/\/admin$/)
 
+  await page.goto("http://127.0.0.1:3101/admin/settings")
+  await page.getByTestId("settings-add-admin-contact").click()
+  await page.getByTestId("settings-admin-contact-phone-1").fill(primaryAdminPhone)
+  await page.getByTestId("settings-admin-contact-primary-1").click()
+  await page.getByRole("button", { name: "Simpan" }).click()
+  await expect(page.getByText("Pengaturan berhasil disimpan.")).toBeVisible()
+
+  const landingPage = await browser.newPage()
+  await landingPage.goto("http://127.0.0.1:3100/")
+  await expect(landingPage.getByRole("link", { name: "Chat Sekarang" })).toHaveAttribute("href", new RegExp(primaryAdminPhone.replace(/^0/, "62")))
+  await expect(landingPage.locator("#kontak").getByText(primaryAdminPhone)).toBeVisible()
+
   await page.goto("http://127.0.0.1:3101/admin/pos")
   await page.getByTestId("pos-open-create-customer").click()
   await page.getByTestId("pos-create-customer-name").fill(customerName)
   await page.getByTestId("pos-create-customer-phone").fill(customerPhone)
+  await page.getByTestId("pos-show-qr-after-create").click()
   await page.getByTestId("pos-create-customer-submit").click()
-  await expect(page.getByText(upperCustomerName)).toBeVisible()
+  await expect(page.getByText("QR Login Customer Baru")).toBeVisible()
+  const firstMagicLinkUrl = (await page.getByText(/\/auto-login\?token=/).first().innerText()).trim()
+  await expect(firstMagicLinkUrl).toContain("/auto-login?token=")
+  await page.keyboard.press("Escape")
+  await expect(page.getByTestId("pos-next-to-services")).toBeEnabled()
   await page.getByTestId("pos-next-to-services").click()
 
   await page.getByTestId("pos-weight-input").fill("3")
@@ -77,13 +95,19 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(page.getByText("Pelanggan Teratas")).toBeVisible()
 
   const publicPage = await browser.newPage()
-  await publicPage.goto("http://127.0.0.1:3100/login")
-  await publicPage.getByTestId("public-login-phone").fill(customerPhone)
-  await publicPage.getByTestId("public-login-name").fill(customerName)
-  await publicPage.getByTestId("public-login-submit").click()
-
+  await publicPage.goto(firstMagicLinkUrl)
   await expect(publicPage).toHaveURL(/\/portal$/)
   await expect(publicPage.getByTestId("portal-stamp-hero")).toBeVisible()
+  await publicPage.goto(firstMagicLinkUrl)
+  await expect(publicPage.getByText("Link Tidak Valid")).toBeVisible()
+  await publicPage.goto("http://127.0.0.1:3100/portal")
+
+  const chatPopup = publicPage.waitForEvent("popup")
+  await publicPage.getByTestId("portal-chat-admin-button").click()
+  await expect(publicPage.getByText("Admin 2")).toBeVisible()
+  await publicPage.getByTestId("portal-admin-contact-1").click()
+  const adminPopup = await chatPopup
+  await expect(adminPopup).toHaveURL(new RegExp(primaryAdminPhone.replace(/^0/, "62")))
 
   await publicPage.goto("http://127.0.0.1:3100/portal/riwayat")
   await expect(publicPage.getByText(orderCode)).toBeVisible()
@@ -149,6 +173,22 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(page.getByText("Fallback WhatsApp manual dibuka oleh admin.")).toBeVisible()
 
   await page.goto(`http://127.0.0.1:3101/admin/pelanggan/${customer?._id}`)
+  await page.getByRole("button", { name: "QR Login" }).click()
+  await expect(page.getByText("QR Login Tambahan")).toBeVisible()
+  const secondMagicLinkUrl = (await page.getByText(/\/auto-login\?token=/).first().innerText()).trim()
+  await page.keyboard.press("Escape")
+  await page.getByRole("button", { name: "QR Login" }).click()
+  const thirdMagicLinkUrl = (await page.getByText(/\/auto-login\?token=/).first().innerText()).trim()
+  await page.keyboard.press("Escape")
+
+  const secondMagicPage = await browser.newPage()
+  await secondMagicPage.goto(secondMagicLinkUrl)
+  await expect(secondMagicPage).toHaveURL(/\/portal$/)
+
+  const thirdMagicPage = await browser.newPage()
+  await thirdMagicPage.goto(thirdMagicLinkUrl)
+  await expect(thirdMagicPage).toHaveURL(/\/portal$/)
+
   await page.getByTestId(`void-order-${order._id}`).click()
   await page.getByTestId("void-reason-input").fill("Pelanggan membatalkan order pada skenario e2e")
   await page.getByTestId("void-submit").click()
@@ -166,6 +206,11 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await directStatusPage.reload()
   await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Dibatalkan")
   await expect(directStatusPage.getByText("Alasan Pembatalan")).toBeVisible()
+
+  await publicPage.setViewportSize({ width: 390, height: 844 })
+  await publicPage.goto("http://127.0.0.1:3100/portal")
+  await publicPage.getByTestId("portal-mobile-logout").click()
+  await expect(publicPage).toHaveURL(/\/login$/)
 
   await page.getByRole("button", { name: "Keluar" }).click()
   await expect(page).toHaveURL("http://127.0.0.1:3101/")

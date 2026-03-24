@@ -3,12 +3,32 @@ import type { AdminDocument, SettingsDocument } from "./types.js"
 import { getDatabase } from "./db.js"
 import { defaultMessageTemplates, defaultSettings, legacyDefaultMessageTemplates } from "./defaults.js"
 import { env } from "./env.js"
+import { sanitizeAdminWhatsappContacts } from "./lib/admin-whatsapp.js"
 import { formatCustomerName, normalizeName, normalizePhone } from "./lib/normalization.js"
 
 export const ensureSeedData = async () => {
   const db = getDatabase()
   const settingsCollection = db.collection<SettingsDocument>("settings")
   const adminCollection = db.collection<AdminDocument>("admins")
+  const previousDefaultWelcomeTemplate = `Halo {{customerName}}!
+
+Selamat datang di CJ Laundry. Akun pelanggan Anda sudah berhasil terdaftar.
+
+Website CJ Laundry:
+https://cjlaundry.site
+
+Di website tersebut Anda bisa:
+- login ke customer portal
+- cek status laundry
+- lihat riwayat order
+- cek poin / stamp
+- lihat leaderboard pelanggan
+
+Gunakan data berikut untuk login:
+Nomor HP: {{customerPhone}}
+Nama: {{customerName}}
+
+Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.`
 
   const existingSettings = await settingsCollection.findOne({ _id: "app-settings" })
   if (!existingSettings) {
@@ -21,13 +41,47 @@ export const ensureSeedData = async () => {
       existingSettings.messageTemplates.orderVoidNotice === legacyDefaultMessageTemplates.orderVoidNotice &&
       existingSettings.messageTemplates.accountInfo === legacyDefaultMessageTemplates.accountInfo
 
+    const shouldUpgradeWelcomeTemplate =
+      isLegacyMessageTemplate ||
+      existingSettings.messageTemplates.welcome === previousDefaultWelcomeTemplate
+
+    const nextAdminWhatsappContacts = sanitizeAdminWhatsappContacts(
+      existingSettings.business.adminWhatsappContacts,
+      [
+        existingSettings.business.publicContactPhone,
+        existingSettings.business.publicWhatsapp,
+      ]
+    )
+
     if (isLegacyMessageTemplate) {
       await settingsCollection.updateOne(
         { _id: "app-settings" },
         {
           $set: {
             messageTemplates: defaultMessageTemplates,
+            "business.adminWhatsappContacts": nextAdminWhatsappContacts,
             updatedAt: new Date().toISOString()
+          }
+        }
+      )
+    } else if (
+      shouldUpgradeWelcomeTemplate ||
+      JSON.stringify(nextAdminWhatsappContacts) !== JSON.stringify(existingSettings.business.adminWhatsappContacts ?? [])
+    ) {
+      await settingsCollection.updateOne(
+        { _id: "app-settings" },
+        {
+          $set: {
+            ...(shouldUpgradeWelcomeTemplate
+              ? {
+                  messageTemplates: {
+                    ...existingSettings.messageTemplates,
+                    welcome: defaultMessageTemplates.welcome,
+                  },
+                }
+              : {}),
+            "business.adminWhatsappContacts": nextAdminWhatsappContacts,
+            updatedAt: new Date().toISOString(),
           }
         }
       )
@@ -48,6 +102,8 @@ export const ensureSeedData = async () => {
   await db.collection("customers").createIndex({ normalizedPhone: 1 }, { unique: true })
   await db.collection("customers").createIndex({ phoneDigits: 1 })
   await db.collection("customers").createIndex({ normalizedName: 1 })
+  await db.collection("customer_magic_links").createIndex({ token: 1 }, { unique: true })
+  await db.collection("customer_magic_links").createIndex({ customerId: 1, createdAt: -1 })
   await db.collection("orders").createIndex({ orderCode: 1 }, { unique: true })
   await db.collection("orders").createIndex({ customerId: 1, createdAt: -1 })
   await db.collection("orders").createIndex({ status: 1, createdAt: -1 })

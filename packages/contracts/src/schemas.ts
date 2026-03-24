@@ -58,11 +58,18 @@ export const serviceSettingSchema = z.object({
   publicDescription: z.string().optional(),
 })
 
+export const adminWhatsappContactSchema = z.object({
+  id: z.string(),
+  phone: z.string().min(1),
+  isPrimary: z.boolean(),
+})
+
 export const businessProfileSchema = z.object({
   laundryName: z.string(),
   laundryPhone: z.string(),
   publicContactPhone: z.string(),
   publicWhatsapp: z.string(),
+  adminWhatsappContacts: z.array(adminWhatsappContactSchema),
   address: z.string(),
   operatingHours: z.string(),
 })
@@ -101,6 +108,20 @@ export const customerProfileSchema = z.object({
   activeOrderCount: z.number().int(),
   totalOrders: z.number().int(),
   lastActivityAt: z.string().optional(),
+})
+
+export const oneTimeLoginSchema = z.object({
+  url: z.string().min(1),
+})
+
+export const createCustomerResponseSchema = z.object({
+  customer: customerSearchResultSchema,
+  duplicate: z.boolean(),
+  oneTimeLogin: oneTimeLoginSchema.optional(),
+})
+
+export const customerMagicLinkResponseSchema = z.object({
+  oneTimeLogin: oneTimeLoginSchema,
 })
 
 export const orderLinePreviewSchema = z.object({
@@ -315,6 +336,7 @@ export const publicDashboardResponseSchema = z.object({
     phone: z.string(),
     publicNameVisible: z.boolean(),
   }),
+  adminWhatsappContacts: z.array(adminWhatsappContactSchema),
   stampBalance: z.object({
     currentPoints: z.number().int(),
     eligibleFreeWashers: z.number().int(),
@@ -505,6 +527,10 @@ export const customerLoginInputSchema = z.object({
   name: z.string().min(1),
 })
 
+export const customerMagicLinkRedeemInputSchema = z.object({
+  token: z.string().min(1),
+})
+
 export const adminLoginInputSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
@@ -519,9 +545,13 @@ export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>
 export type NotificationDeliveryStatus = z.infer<typeof notificationDeliveryStatusSchema>
 export type NotificationRenderStatus = z.infer<typeof notificationRenderStatusSchema>
 export type ServiceSetting = z.infer<typeof serviceSettingSchema>
+export type AdminWhatsappContact = z.infer<typeof adminWhatsappContactSchema>
 export type SettingsResponse = z.infer<typeof settingsResponseSchema>
 export type CustomerSearchResult = z.infer<typeof customerSearchResultSchema>
 export type CustomerProfile = z.infer<typeof customerProfileSchema>
+export type OneTimeLogin = z.infer<typeof oneTimeLoginSchema>
+export type CreateCustomerResponse = z.infer<typeof createCustomerResponseSchema>
+export type CustomerMagicLinkResponse = z.infer<typeof customerMagicLinkResponseSchema>
 export type OrderPreviewResponse = z.infer<typeof orderPreviewResponseSchema>
 export type ActiveOrderCard = z.infer<typeof activeOrderCardSchema>
 export type OrderHistoryItem = z.infer<typeof orderHistoryItemSchema>
@@ -546,6 +576,7 @@ export type OrderPreviewInput = z.infer<typeof orderPreviewInputSchema>
 export type ConfirmOrderInput = z.infer<typeof confirmOrderInputSchema>
 export type VoidOrderInput = z.infer<typeof voidOrderInputSchema>
 export type CustomerLoginInput = z.infer<typeof customerLoginInputSchema>
+export type CustomerMagicLinkRedeemInput = z.infer<typeof customerMagicLinkRedeemInputSchema>
 export type AdminLoginInput = z.infer<typeof adminLoginInputSchema>
 export type CustomerNameVisibilityInput = z.infer<typeof customerNameVisibilityInputSchema>
 export type WhatsappInternalEvent = z.infer<typeof whatsappInternalEventSchema>

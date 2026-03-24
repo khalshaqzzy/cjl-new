@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import type { PublicDashboardResponse } from '@cjl/contracts'
+import { AdminChatSelector } from '@/components/public/admin-chat-selector'
 import { PortalShell } from '@/components/public/portal-shell'
 import { publicApi } from '@/lib/api'
 import { getStatusColor, getStatusLabel } from '@/lib/presenters'
@@ -144,6 +145,7 @@ export default function PortalDashboard() {
   }, [])
 
   const session = dashboard?.session ?? null
+  const adminWhatsappContacts = dashboard?.adminWhatsappContacts ?? []
   const stampBalance = dashboard?.stampBalance ?? { currentPoints: 0, eligibleFreeWashers: 0, lifetimeEarnedStamps: 0 }
   const summaryCards = dashboard?.summaryCards ?? []
   const activeOrders = dashboard?.activeOrders ?? []
@@ -266,6 +268,14 @@ export default function PortalDashboard() {
               <h2 className="font-display text-base font-bold text-text-strong">Order Aktif</h2>
               <p className="mt-1 text-sm text-text-muted">Saat ini belum ada order aktif yang perlu dipantau.</p>
             </div>
+          )}
+
+          {!isLoading && session && adminWhatsappContacts.length > 0 && (
+            <AdminChatSelector
+              contacts={adminWhatsappContacts}
+              customerName={session.name}
+              customerPhone={session.phone}
+            />
           )}
 
           <div className="grid grid-cols-2 gap-3">

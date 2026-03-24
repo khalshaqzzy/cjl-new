@@ -64,7 +64,8 @@ Seluruh aplikasi v1 di-deploy sebagai satu monolith pada VM per environment. Run
 - Manual point addition dari admin memengaruhi saldo poin customer, tetapi tidak memengaruhi leaderboard.
 - Cancel/void membalik poin dan memicu recalculation leaderboard untuk bulan order terkait, termasuk bulan yang sudah diarsipkan.
 - Harga layanan dapat diubah dari admin settings, tetapi setiap order menyimpan snapshot harga saat transaksi dibuat.
-- WhatsApp memakai 1 nomor khusus CJ Laundry yang dipair ke bot di VM, tanpa Official WhatsApp API.
+- WhatsApp bot memakai 1 nomor khusus CJ Laundry yang dipair ke bot di VM, tanpa Official WhatsApp API.
+- Customer-facing admin contact dapat berisi lebih dari satu nomor WhatsApp; satu nomor `primary` dipakai untuk landing page, portal contact CTA, dan fallback public contact surface.
 - Runtime backend v1 memakai Express.js, bukan Fastify.
 - Arsitektur runtime v1 adalah monolith yang berjalan di VM per environment, bukan frontend terpisah di platform hosting terpisah.
 - Database utama v1 adalah MongoDB yang berjalan di Docker Compose dan tidak diekspos langsung ke public internet.
@@ -226,7 +227,8 @@ Rules:
    - registered customer phone,
    - laundry brand name,
    - laundry contact phone,
-   - instruction that the customer can login using registered name and phone.
+   - instruction that the customer can login using registered name and phone,
+   - one-time auto-login link that can be opened directly or rendered as QR by admin UI.
 
 ### 10.3 Search/select customer before order
 
@@ -356,7 +358,9 @@ Customer identity edit rules:
 3. Customer enters registered phone and name.
 4. Backend normalizes phone and name.
 5. If match succeeds, backend creates a customer session.
-6. If match fails, user sees generic login failure without disclosing which field was wrong.
+6. Customer may also arrive via one-time magic-login link from WhatsApp or QR shown by admin.
+7. Magic-login token is valid for one successful login only.
+8. If match fails or token is invalid/reused, user sees generic failure without disclosing which field was wrong.
 
 ### 10.9 Public customer portal
 
@@ -437,6 +441,7 @@ Content goals:
 - Duplicate normalized phone disallowed.
 - Registration success triggers welcome WA exactly once.
 - System must prevent duplicate customer creation if network retry happens.
+- Successful non-duplicate registration also creates one one-time magic-login token for welcome WA delivery.
 
 ### 12.3 Customer search
 
@@ -487,10 +492,12 @@ Settings must support:
 
 - laundry display name,
 - laundry contact phone,
+- ordered customer-facing admin WhatsApp contacts with exactly one primary contact,
 - public contact info,
 - service prices,
 - service active/inactive state,
 - WhatsApp message templates or configurable message blocks.
+- Welcome WA templates must support an `{{autoLoginUrl}}` placeholder.
 
 ### 12.9 Dashboard
 
@@ -822,7 +829,8 @@ Must include:
 - customer registered phone,
 - laundry name,
 - laundry phone,
-- brief explanation of login using phone + name.
+- brief explanation of login using phone + name,
+- one-time auto-login URL suitable for direct tap from WhatsApp.
 
 ### 15.2 Order confirmed WA
 
@@ -966,6 +974,8 @@ Must include:
 - stamps earned history
 - stamp redemption history
 - monthly summary
+- chat-admin CTA that lets customer choose among configured admin WhatsApp numbers
+- visible logout control on both desktop and mobile layouts
 
 ### 18.2 Monthly summary contents
 
@@ -1130,6 +1140,7 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - Admin can create a customer with name and phone.
 - Duplicate phone is rejected.
 - Successful creation creates one welcome WA event and never duplicates it on retry.
+- Successful non-duplicate creation also returns one one-time login URL for optional admin QR presentation.
 - Admin can later edit customer name and phone through audited flow without breaking customer history or customer ID.
 - Successful identity change resends account-information WA to the latest normalized phone number.
 
@@ -1159,11 +1170,14 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 ### 22.5 Customer portal
 
 - Customer can login with normalized phone + name.
+- Customer can also login via one-time magic link/QR delivered through admin or welcome WA.
 - Customer sees only their own points, orders, and history.
 - Monthly summary contains no money values.
 - Authenticated order detail shows itemized prices/totals and supports PDF receipt download for the customer’s own order.
 - Direct order link shows only the targeted order.
 - Cancelled/voided orders are shown to customers as `Cancelled`, never `Voided`.
+- Customer portal exposes a chat-admin selector backed by the configured admin WhatsApp numbers.
+- Customer session remains active with a sliding 30-day renewal from the latest authenticated request.
 
 ### 22.6 Leaderboard
 
@@ -1212,6 +1226,9 @@ The implementation must explicitly cover at minimum:
 14. Cross-month void on an archived leaderboard month triggers snapshot rebuild with audit/version trail.
 15. Receipt render failure or WhatsApp media send failure appears in outbox with resend, download receipt, manual WhatsApp fallback, and manual resolve fallback.
 16. Customer identity edit preserves history, enforces unique normalized phone, and resends updated account-information WA.
+17. Welcome WA one-time auto-login link succeeds once and rejects token reuse.
+18. Additional QR/login links generated from customer detail do not revoke older unused one-time links.
+19. Landing page and portal contact CTA follow the primary configured admin WhatsApp contact with fallback `087780563875`.
 
 ## 24. Suggested Implementation Notes
 

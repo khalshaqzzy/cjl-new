@@ -73,7 +73,7 @@ function AnimatedCounter({ value, suffix }: { value: number; suffix: string }) {
   )
 }
 
-export function HeroSection() {
+export function HeroSection({ whatsapp = "6287780563875" }: { whatsapp?: string }) {
   return (
     <section className="relative min-h-screen flex flex-col justify-center overflow-hidden bg-bg-soft">
       {/* Decorative radial glow — very subtle pink */}
@@ -155,7 +155,7 @@ export function HeroSection() {
               asChild
               className="text-text-body hover:text-text-strong hover:bg-pink-cloud h-14 px-8 gap-2"
             >
-              <a href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer">
+              <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noopener noreferrer">
                 <MessageCircle className="w-5 h-5 text-success" />
                 Chat WhatsApp
               </a>

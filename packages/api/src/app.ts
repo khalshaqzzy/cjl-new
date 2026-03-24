@@ -9,6 +9,7 @@ import {
   confirmOrderInputSchema,
   createCustomerInputSchema,
   customerNameVisibilityInputSchema,
+  customerMagicLinkRedeemInputSchema,
   customerLoginInputSchema,
   dashboardWindowSchema,
   manualPointAdjustmentInputSchema,
@@ -30,6 +31,7 @@ import {
   createCustomer,
   failIdempotencyRequest,
   findAdminByUsername,
+  generateCustomerMagicLink,
   getAdminDashboard,
   getCustomerDetail,
   getNotificationPreparedMessage,
@@ -61,7 +63,9 @@ import {
   listCustomerPointLedger,
   listCustomerRedemptions,
   loginCustomer,
+  redeemCustomerMagicLink,
   getCustomerOrderDetail,
+  markCustomerMagicLinkUsed,
   updateCustomerNameVisibility
 } from "./services/public.js"
 import {
@@ -87,6 +91,17 @@ declare module "express-session" {
   }
 }
 
+const ADMIN_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7
+const CUSTOMER_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30
+
+const applyAdminSessionLifetime = (req: express.Request) => {
+  req.session.cookie.maxAge = ADMIN_SESSION_MAX_AGE_MS
+}
+
+const applyCustomerSessionLifetime = (req: express.Request) => {
+  req.session.cookie.maxAge = CUSTOMER_SESSION_MAX_AGE_MS
+}
+
 const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!req.session.adminUserId) {
     res.status(401).json({ message: "Unauthorized" })
@@ -100,6 +115,8 @@ const requireCustomer = (req: express.Request, res: express.Response, next: expr
     res.status(401).json({ message: "Unauthorized" })
     return
   }
+  applyCustomerSessionLifetime(req)
+  req.session.touch()
   next()
 }
 
@@ -191,12 +208,13 @@ export const createApp = () => {
       name: "cjl.sid",
       secret: env.SESSION_SECRET,
       resave: false,
+      rolling: true,
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
         sameSite: "lax",
         secure: env.SESSION_COOKIE_SECURE,
-        maxAge: 1000 * 60 * 60 * 24 * 7
+        maxAge: ADMIN_SESSION_MAX_AGE_MS
       },
       ...(sessionStore ? { store: sessionStore } : {})
     })
@@ -283,6 +301,7 @@ export const createApp = () => {
     req.session.adminUserId = admin._id
     req.session.customerUserId = undefined
     req.session.customerProfile = undefined
+    applyAdminSessionLifetime(req)
     res.json({ ok: true })
   }))
 
@@ -307,6 +326,10 @@ export const createApp = () => {
   app.post("/v1/admin/customers", requireAdmin, asyncRoute(async (req, res) => {
     const body = createCustomerInputSchema.parse(req.body)
     res.json(await withIdempotency(req, "create-customer", body, () => createCustomer(body)))
+  }))
+
+  app.post("/v1/admin/customers/:id/magic-link", requireAdmin, asyncRoute(async (req, res) => {
+    res.json(await generateCustomerMagicLink(getParam(req.params.id)))
   }))
 
   app.get("/v1/admin/customers/:id", requireAdmin, asyncRoute(async (req, res) => {
@@ -428,7 +451,36 @@ export const createApp = () => {
     req.session.customerUserId = customer.customerId
     req.session.customerProfile = customer
     req.session.adminUserId = undefined
+    applyCustomerSessionLifetime(req)
     res.json({ ok: true })
+  }))
+
+  app.post("/v1/public/auth/magic-link/redeem", asyncRoute(async (req, res) => {
+    const body = customerMagicLinkRedeemInputSchema.parse(req.body)
+    const redeemed = await redeemCustomerMagicLink(body)
+    if (!redeemed) {
+      res.status(401).json({ message: "Link login sudah tidak valid" })
+      return
+    }
+
+    req.session.customerUserId = redeemed.session.customerId
+    req.session.customerProfile = redeemed.session
+    req.session.adminUserId = undefined
+    applyCustomerSessionLifetime(req)
+
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((error) => {
+        if (error) {
+          reject(error)
+          return
+        }
+
+        resolve()
+      })
+    })
+
+    await markCustomerMagicLinkUsed(redeemed.magicLinkId)
+    res.json({ ok: true, session: redeemed.session })
   }))
 
   app.post("/v1/public/auth/logout", requireCustomer, asyncRoute(async (req, res) => {
@@ -436,6 +488,10 @@ export const createApp = () => {
   }))
 
   app.get("/v1/public/auth/session", (req, res) => {
+    if (req.session.customerUserId && req.session.customerProfile) {
+      applyCustomerSessionLifetime(req)
+      req.session.touch()
+    }
     res.json({
       authenticated: Boolean(req.session.customerUserId),
       session: req.session.customerProfile ?? null

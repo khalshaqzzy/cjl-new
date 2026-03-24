@@ -116,7 +116,10 @@ const requestJson = async (
   path: string,
   init?: RequestInit & { expectedStatus?: number }
 ) => {
-  const response = await fetch(`${baseUrl}${path}`, init)
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(10_000),
+  })
   const expectedStatus = init?.expectedStatus ?? 200
 
   assert.equal(response.status, expectedStatus)
@@ -146,6 +149,28 @@ const waitFor = async <T>(
   }
 
   throw new Error("Timed out waiting for condition")
+}
+
+const extractCookieExpiry = (cookieHeader: string) => {
+  const match = cookieHeader.match(/Expires=([^;]+)/i)
+  assert.ok(match)
+  return new Date(match[1])
+}
+
+const assertCookieLifetimeDays = (
+  cookieHeader: string,
+  minimumDays: number,
+  maximumDays: number
+) => {
+  const expiresAt = extractCookieExpiry(cookieHeader)
+  const diffDays = (expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  assert.ok(diffDays >= minimumDays, `cookie lifetime ${diffDays}d was shorter than ${minimumDays}d`)
+  assert.ok(diffDays <= maximumDays, `cookie lifetime ${diffDays}d was longer than ${maximumDays}d`)
+}
+
+const extractMagicToken = (url: string) => {
+  const parsed = new URL(url)
+  return parsed.searchParams.get("token")
 }
 
 test.before(async () => {
@@ -184,6 +209,7 @@ test.before(async () => {
 
 test.after(async () => {
   if (server) {
+    server.closeAllConnections?.()
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
         if (error) {
@@ -199,6 +225,7 @@ test.after(async () => {
   await stopBackgroundWork?.()
   await disconnectDatabase()
   if (gatewayServer) {
+    gatewayServer.closeAllConnections?.()
     await new Promise<void>((resolve, reject) => {
       gatewayServer.close((error) => {
         if (error) {
@@ -228,6 +255,72 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.ok, true)
   const adminCookie = result.response.headers.get("set-cookie")
   assert.ok(adminCookie)
+  assertCookieLifetimeDays(adminCookie, 6.5, 7.5)
+
+  const initialSettings = await requestJson("/v1/admin/settings", {
+    headers: { Cookie: adminCookie! }
+  })
+
+  const multiContactSettings = {
+    ...initialSettings.payload,
+    business: {
+      ...initialSettings.payload.business,
+      adminWhatsappContacts: [
+        { id: "admin-1", phone: "081111111111", isPrimary: false },
+        { id: "admin-2", phone: "082222222222", isPrimary: true }
+      ]
+    }
+  }
+
+  result = await requestJson("/v1/admin/settings", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(multiContactSettings)
+  })
+  assert.equal(result.payload.business.adminWhatsappContacts.length, 2)
+  assert.equal(result.payload.business.adminWhatsappContacts[1].isPrimary, true)
+
+  result = await requestJson("/v1/public/landing")
+  assert.equal(result.payload.laundryInfo.phone, "082222222222")
+  assert.equal(result.payload.laundryInfo.whatsapp, "6282222222222")
+
+  const fallbackSettings = {
+    ...multiContactSettings,
+    business: {
+      ...multiContactSettings.business,
+      publicContactPhone: "",
+      publicWhatsapp: "",
+      adminWhatsappContacts: []
+    }
+  }
+
+  result = await requestJson("/v1/admin/settings", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(fallbackSettings)
+  })
+  assert.equal(result.payload.business.adminWhatsappContacts.length, 1)
+  assert.equal(result.payload.business.adminWhatsappContacts[0].phone, "087780563875")
+  assert.equal(result.payload.business.adminWhatsappContacts[0].isPrimary, true)
+
+  result = await requestJson("/v1/public/landing")
+  assert.equal(result.payload.laundryInfo.phone, "087780563875")
+  assert.equal(result.payload.laundryInfo.whatsapp, "6287780563875")
+
+  result = await requestJson("/v1/admin/settings", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(multiContactSettings)
+  })
 
   const uniqueSuffix = Date.now().toString().slice(-6)
   const customerName = `Budi Integration ${uniqueSuffix}`
@@ -248,6 +341,9 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.duplicate, false)
   assert.equal(result.payload.customer.name, upperCustomerName)
   assert.equal(result.payload.customer.phone, `+62${customerPhone.slice(1)}`)
+  assert.match(result.payload.oneTimeLogin.url, /\/auto-login\?token=/)
+  const registrationMagicToken = extractMagicToken(result.payload.oneTimeLogin.url)
+  assert.ok(registrationMagicToken)
 
   const createCustomerReplay = await requestJson("/v1/admin/customers", {
     method: "POST",
@@ -261,6 +357,49 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(createCustomerReplay.payload.customer.customerId, result.payload.customer.customerId)
 
   const customerId = result.payload.customer.customerId as string
+
+  result = await requestJson(`/v1/admin/customers/${customerId}/magic-link`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({})
+  })
+  assert.match(result.payload.oneTimeLogin.url, /\/auto-login\?token=/)
+  assert.notEqual(result.payload.oneTimeLogin.url, createCustomerReplay.payload.oneTimeLogin.url)
+  const regeneratedMagicToken = extractMagicToken(result.payload.oneTimeLogin.url)
+  assert.ok(regeneratedMagicToken)
+
+  let magicLinkRedeem = await requestJson("/v1/public/auth/magic-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: regeneratedMagicToken })
+  })
+  assert.equal(magicLinkRedeem.payload.ok, true)
+  assert.equal(magicLinkRedeem.payload.session.customerId, customerId)
+  const regeneratedMagicCookie = magicLinkRedeem.response.headers.get("set-cookie")
+  assert.ok(regeneratedMagicCookie)
+  assertCookieLifetimeDays(regeneratedMagicCookie, 29, 31)
+
+  magicLinkRedeem = await requestJson("/v1/public/auth/magic-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: regeneratedMagicToken }),
+    expectedStatus: 401
+  })
+  assert.match(magicLinkRedeem.payload.message, /tidak valid/i)
+
+  magicLinkRedeem = await requestJson("/v1/public/auth/magic-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: registrationMagicToken })
+  })
+  assert.equal(magicLinkRedeem.payload.ok, true)
+  assert.equal(magicLinkRedeem.payload.session.customerId, customerId)
+  const registrationMagicCookie = magicLinkRedeem.response.headers.get("set-cookie")
+  assert.ok(registrationMagicCookie)
+  assertCookieLifetimeDays(registrationMagicCookie, 29, 31)
 
   result = await waitFor(
     () => requestJson("/v1/admin/notifications", { headers: { Cookie: adminCookie! } }),
@@ -279,6 +418,11 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       )
   )
   assert.ok(result.payload.length > 0)
+  const welcomeNotification = result.payload.find(
+    (notification: { eventType: string; customerName: string }) =>
+      notification.eventType === "welcome" && notification.customerName === upperCustomerName
+  )
+  assert.match(welcomeNotification.preparedMessage, /auto-login\?token=/)
 
   result = await requestJson(`/v1/admin/customers/${customerId}/points`, {
     method: "POST",
@@ -366,6 +510,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.ok, true)
   const publicCookie = result.response.headers.get("set-cookie")
   assert.ok(publicCookie)
+  assertCookieLifetimeDays(publicCookie, 29, 31)
 
   result = await requestJson("/v1/public/me/dashboard", {
     headers: { Cookie: publicCookie! }
@@ -373,11 +518,17 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.session.customerId, customerId)
   assert.equal(result.payload.session.name, upperCustomerName)
   assert.equal(result.payload.session.publicNameVisible, false)
+  assert.equal(result.payload.adminWhatsappContacts.length, 2)
+  assert.equal(result.payload.adminWhatsappContacts[1].isPrimary, true)
   assert.ok(result.payload.activeOrders.some((order: { orderId: string }) => order.orderId === firstOrderId))
+  const refreshedPublicCookie = result.response.headers.get("set-cookie")
+  assert.ok(refreshedPublicCookie)
+  assertCookieLifetimeDays(refreshedPublicCookie, 29, 31)
 
   result = await requestJson(`/v1/public/status/${firstOrderToken}`)
   assert.equal(result.payload.status, "Active")
   assert.equal("totalLabel" in result.payload, false)
+  assert.equal(result.payload.laundryPhone, "082222222222")
 
   result = await requestJson(`/v1/public/me/orders/${firstOrderId}`, {
     headers: { Cookie: publicCookie! }

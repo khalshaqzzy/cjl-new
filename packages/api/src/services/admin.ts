@@ -5,7 +5,9 @@ import type {
   AdminDashboardResponse,
   ConfirmOrderInput,
   CreateCustomerInput,
+  CreateCustomerResponse,
   CustomerProfile,
+  CustomerMagicLinkResponse,
   DashboardWindow,
   NotificationRecord,
   OrderPreviewResponse,
@@ -15,6 +17,7 @@ import type {
 } from "@cjl/contracts"
 import { getDatabase, withMongoTransaction } from "../db.js"
 import { env } from "../env.js"
+import { sanitizeAdminWhatsappContacts } from "../lib/admin-whatsapp.js"
 import { calculateOrderPreview } from "../lib/calculator.js"
 import { formatCurrency } from "../lib/formatters.js"
 import { createId, createOpaqueToken, createOrderCode } from "../lib/ids.js"
@@ -33,8 +36,10 @@ import type {
 } from "../types.js"
 import {
   buildCustomerSearchFilter,
+  createCustomerMagicLink,
   buildOrderReceiptPdf,
   buildOrderReceipt,
+  getPrimaryAdminWhatsappContact,
   buildPreparedMessage,
   getSettingsDocument,
   insertPointLedger,
@@ -119,7 +124,7 @@ const buildOrderReceiptSnapshot = async (
     totalLabel: formatCurrency(total),
     createdAtLabel: formatDateTime(createdAt),
     laundryName: settings.business.laundryName,
-    laundryPhone: settings.business.publicContactPhone
+    laundryPhone: getPrimaryAdminWhatsappContact(settings).phone
   }
 }
 
@@ -310,7 +315,7 @@ export const listCustomers = async (query?: string) => {
   )
 }
 
-export const createCustomer = async (input: CreateCustomerInput) => {
+export const createCustomer = async (input: CreateCustomerInput): Promise<CreateCustomerResponse> => {
   const normalizedPhone = normalizePhone(input.phone)
   const duplicate = await db().collection<CustomerDocument>("customers").findOne({ normalizedPhone })
   if (duplicate) {
@@ -343,10 +348,12 @@ export const createCustomer = async (input: CreateCustomerInput) => {
     await saveAuditLog("customer.created", "customer", customer._id, { phone: customer.phone }, session)
 
     const settings = await getSettingsDocument(session)
+    const oneTimeLogin = await createCustomerMagicLink(customer._id, "registration_welcome", session)
     const preparedMessage = await buildPreparedMessage("welcome", {
       customerName,
       customerPhone: customer.phone,
-      laundryName: settings.business.laundryName
+      laundryName: settings.business.laundryName,
+      autoLoginUrl: oneTimeLogin.url,
     }, session)
 
     await queueNotification({
@@ -366,9 +373,28 @@ export const createCustomer = async (input: CreateCustomerInput) => {
 
     return {
       customer: mapCustomerSearch(customer, 0),
-      duplicate: false
+      duplicate: false,
+      oneTimeLogin: {
+        url: oneTimeLogin.url,
+      }
     }
   })
+}
+
+export const generateCustomerMagicLink = async (customerId: string): Promise<CustomerMagicLinkResponse> => {
+  const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: customerId })
+  if (!customer) {
+    throw new Error("Pelanggan tidak ditemukan")
+  }
+
+  const oneTimeLogin = await createCustomerMagicLink(customerId, "admin_regenerated")
+  await saveAuditLog("customer.magic_link.created", "customer", customerId, { source: "admin_regenerated" })
+
+  return {
+    oneTimeLogin: {
+      url: oneTimeLogin.url,
+    }
+  }
 }
 
 export const getCustomerDetail = async (customerId: string) => {
@@ -944,11 +970,19 @@ export const getSettings = async (): Promise<SettingsResponse> => {
 }
 
 export const updateSettings = async (payload: SettingsResponse) => {
+  const nextBusiness = {
+    ...payload.business,
+    adminWhatsappContacts: sanitizeAdminWhatsappContacts(payload.business.adminWhatsappContacts, [
+      payload.business.publicContactPhone,
+      payload.business.publicWhatsapp,
+    ]),
+  }
+
   await db().collection<SettingsDocument>("settings").updateOne(
     { _id: "app-settings" },
     {
       $set: {
-        business: payload.business,
+        business: nextBusiness,
         services: payload.services,
         messageTemplates: payload.messageTemplates,
         updatedAt: new Date().toISOString()

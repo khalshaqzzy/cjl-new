@@ -40,7 +40,7 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen">
       <FloatingHeader />
-      <HeroSection />
+      <HeroSection whatsapp={data.laundryInfo.whatsapp || undefined} />
       <MarqueeTrustBar />
       <ServicesSection services={data.services} />
       <HowItWorksSection />

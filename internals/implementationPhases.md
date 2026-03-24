@@ -21,6 +21,11 @@ The repo now has:
 - manual WhatsApp fallback for failed notification sends with admin outbox action support
 - customer-controlled public leaderboard name visibility with masked-by-default display
 - expanded admin dashboard reporting payload and UI
+- multi-contact admin WhatsApp settings with one customer-facing primary contact and legacy-settings backfill
+- landing page and other public contact surfaces now resolve from the primary admin contact with fallback `087780563875`
+- portal dashboard now includes a mobile-friendly `Chat Admin` selector and explicit mobile logout affordance
+- customer registration and customer detail now support one-time magic-login links plus admin QR display flows
+- customer auth now supports manual login plus one-time magic-link redeem with a sliding 30-day customer session while admin remains at 7 days
 - root-level Docker Compose topology for local full-stack runtime
 - backend integration coverage and frontend end-to-end coverage that pass from root test commands
 - branch-based CI and hosted deploy workflows committed in repo
@@ -53,18 +58,21 @@ Status: complete for current scope
 - dashboard, customers, customer detail, active laundry, notifications, settings, and POS are connected to backend
 - customer detail now supports void/cancel flow from UI
 - settings now manage business profile, service prices, and message template blocks
+- settings now also manage ordered admin WhatsApp contacts with exactly one primary customer-facing number
 - admin logout now invalidates backend session instead of only navigating client-side
 - notification outbox UI now follows canonical backend fields and receipt download flow
 - notification outbox now supports manual WhatsApp fallback for failed sends and receipt download visibility beyond failed-only cards
 - admin dashboard now exposes the full PRD metric set plus top-customer visibility
 - customer list/search now relies on backend querying and machine-sort fields instead of brittle client-only filtering
 - POS now surfaces duplicate-phone selection feedback, preview failures, and post-confirmation shortcuts
+- POS and customer-detail flows can now show QR/login-link sheets backed by one-time customer magic links
 
 ### Phase 4: Public Surface Integration
 
 Status: complete for current scope
 
 - landing, login, portal, order history, stamp view, leaderboard, and direct order status pages consume backend APIs
+- landing hero/contact and direct-status contact CTA now follow the primary admin WhatsApp contact instead of hardcoded/public-gateway assumptions
 - portal shell validates backend customer session before rendering protected pages
 - monthly summary UI now surfaces the full non-monetary PRD fields returned by backend
 - public non-landing pages no longer rely on `mock-data` presenter helpers for runtime status rendering
@@ -72,12 +80,15 @@ Status: complete for current scope
 - authenticated portal order detail now exposes receipt-style itemized pricing plus PDF receipt download
 - public leaderboard and landing teaser now respect masked-by-default names with portal-controlled opt-in visibility
 - public login now redirects authenticated customers directly to the portal and protected shells render a visible session-check state
+- portal dashboard now exposes an `Admin 1 / Admin 2 / ...` chat selector and a clearer mobile logout path
+- public `/auto-login` now redeems one-time customer magic links and rejects reuse
 
 ### Phase 5: Post-Integration Stabilization
 
 Status: complete in repo terms
 
 - session cookie secure env parsing fixed so local HTTP sessions work in browser-based flows
+- customer session lifetime now slides 30 days from the latest authenticated request while admin remains fixed at 7 days
 - customer detail admin UI now keeps cancelled orders visible in history instead of silently hiding them
 - non-blocking Next.js config warning for deprecated `eslint` key was removed
 - Turbopack workspace root is now explicit for both frontend apps

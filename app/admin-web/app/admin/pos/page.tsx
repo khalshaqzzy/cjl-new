@@ -7,9 +7,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { adminApi } from "@/lib/api"
+import { CustomerLoginLinkSheet } from "@/components/admin/customer-login-link-sheet"
 import {
   ArrowRight,
   CheckCircle2,
@@ -188,6 +190,10 @@ function StepCustomer({
   const [newPhone, setNewPhone] = useState("")
   const [isCreating, setIsCreating] = useState(false)
   const [createMessage, setCreateMessage] = useState("")
+  const [showQrAfterCreate, setShowQrAfterCreate] = useState(false)
+  const [loginLinkUrl, setLoginLinkUrl] = useState("")
+  const [loginLinkName, setLoginLinkName] = useState("")
+  const [showLoginLinkSheet, setShowLoginLinkSheet] = useState(false)
   const createCustomerKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -230,6 +236,11 @@ function StepCustomer({
       const response = await adminApi.createCustomer(newName, newPhone, createCustomerKeyRef.current)
       onSelect(response.customer)
       setCreateMessage(response.duplicate ? "Nomor HP sudah terdaftar. Pelanggan yang ada dipilih kembali." : "Pelanggan baru berhasil didaftarkan dan dipilih.")
+      if (!response.duplicate && showQrAfterCreate && response.oneTimeLogin) {
+        setLoginLinkUrl(response.oneTimeLogin.url)
+        setLoginLinkName(response.customer.name)
+        setShowLoginLinkSheet(true)
+      }
       setShowNew(false)
       setNewName("")
       setNewPhone("")
@@ -385,6 +396,13 @@ function StepCustomer({
               <label className="text-sm font-medium text-text-body">Nomor HP (WhatsApp)</label>
               <Input data-testid="pos-create-customer-phone" type="tel" placeholder="08xx-xxxx-xxxx" value={newPhone} onChange={(event) => setNewPhone(event.target.value)} className="h-11 rounded-lg border-line-base" />
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-line-base bg-bg-subtle px-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-text-body">Tampilkan QR login setelah daftar</p>
+                <p className="mt-0.5 text-xs text-text-muted">Opsional untuk membantu customer login di tempat.</p>
+              </div>
+              <Switch data-testid="pos-show-qr-after-create" checked={showQrAfterCreate} onCheckedChange={setShowQrAfterCreate} />
+            </div>
           </div>
           <SheetFooter>
             <Button data-testid="pos-create-customer-submit" className="w-full h-11 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold" onClick={handleCreate} disabled={!newName || !newPhone || isCreating}>
@@ -393,6 +411,14 @@ function StepCustomer({
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <CustomerLoginLinkSheet
+        open={showLoginLinkSheet}
+        onOpenChange={setShowLoginLinkSheet}
+        loginUrl={loginLinkUrl}
+        customerName={loginLinkName}
+        title="QR Login Customer Baru"
+      />
     </div>
   )
 }

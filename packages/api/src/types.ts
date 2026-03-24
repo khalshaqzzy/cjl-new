@@ -1,4 +1,5 @@
 import type {
+  AdminWhatsappContact,
   NotificationDeliveryStatus,
   NotificationEventType,
   NotificationRenderStatus,
@@ -160,6 +161,7 @@ export type SettingsDocument = {
     laundryPhone: string
     publicContactPhone: string
     publicWhatsapp: string
+    adminWhatsappContacts: AdminWhatsappContact[]
     address: string
     operatingHours: string
   }
@@ -215,6 +217,17 @@ export type AdminDocument = {
   username: string
   passwordHash: string
   createdAt: string
+}
+
+export type CustomerMagicLinkDocument = {
+  _id: string
+  token: string
+  customerId: string
+  source: "registration_welcome" | "admin_regenerated"
+  createdAt: string
+  usedAt?: string
+  revokedAt?: string
+  revokedReason?: string
 }
 
 export type DirectOrderTokenDocument = {

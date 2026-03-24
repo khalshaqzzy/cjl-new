@@ -173,6 +173,16 @@ export function PortalShell({ children, title, showBack, backHref = '/portal', s
           {showBack && title && (
             <h1 className="flex-1 text-center font-display font-semibold text-text-strong text-sm mr-16">{title}</h1>
           )}
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="ml-auto flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium text-text-muted transition-colors hover:bg-pink-cloud hover:text-pink-hot"
+            data-testid="portal-mobile-logout"
+          >
+            <LogOut className="h-4 w-4" />
+            {isLoggingOut ? "Keluar..." : "Keluar"}
+          </button>
         </div>
       </header>
 

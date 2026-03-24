@@ -1,6 +1,7 @@
 import type {
   CustomerNameVisibilityInput,
   CustomerOrderDetail,
+  CustomerMagicLinkRedeemInput,
   LandingResponse,
   LeaderboardRow,
   PublicDashboardResponse
@@ -11,14 +12,22 @@ import { normalizeName, normalizePhone, normalizeWhatsappPhone } from "../lib/no
 import { formatDateTime, formatWeightLabel, monthKeyFromIso, monthLabel, nowJakarta } from "../lib/time.js"
 import type {
   CustomerDocument,
+  CustomerMagicLinkDocument,
   DirectOrderTokenDocument,
   LeaderboardSnapshotDocument,
   OrderDocument,
   PointLedgerDocument
 } from "../types.js"
-import { buildOrderReceiptPdf, getSettingsDocument, mapCustomerOrderDetail, mapOrderHistory, mapPointLedger } from "./common.js"
+import { buildOrderReceiptPdf, getPrimaryAdminWhatsappContact, getSettingsDocument, mapCustomerOrderDetail, mapOrderHistory, mapPointLedger } from "./common.js"
 
 const db = () => getDatabase()
+
+const mapCustomerSession = (customer: CustomerDocument) => ({
+  customerId: customer._id,
+  name: customer.name,
+  phone: customer.phone,
+  publicNameVisible: customer.publicNameVisible,
+})
 
 const calculateMonthlySummary = async (customerId: string) => {
   const monthKey = nowJakarta().toFormat("yyyy-MM")
@@ -40,6 +49,7 @@ const calculateMonthlySummary = async (customerId: string) => {
 
 export const getLandingData = async (): Promise<LandingResponse> => {
   const settings = await getSettingsDocument()
+  const primaryContact = getPrimaryAdminWhatsappContact(settings)
   const currentMonth = nowJakarta().toFormat("yyyy-MM")
   const leaderboardTeaser = await resolveLeaderboardDisplayRows(
     currentMonth,
@@ -48,8 +58,8 @@ export const getLandingData = async (): Promise<LandingResponse> => {
   return {
     laundryInfo: {
       name: settings.business.laundryName,
-      phone: settings.business.publicContactPhone,
-      whatsapp: normalizeWhatsappPhone(settings.business.publicWhatsapp),
+      phone: primaryContact.phone,
+      whatsapp: normalizeWhatsappPhone(primaryContact.phone),
       address: settings.business.address,
       operatingHours: settings.business.operatingHours
     },
@@ -87,12 +97,40 @@ export const loginCustomer = async (phone: string, name: string) => {
     return null
   }
 
-  return {
-    customerId: customer._id,
-    name: customer.name,
-    phone: customer.phone,
-    publicNameVisible: customer.publicNameVisible
+  return mapCustomerSession(customer)
+}
+
+export const redeemCustomerMagicLink = async (input: CustomerMagicLinkRedeemInput) => {
+  const magicLink = await db().collection<CustomerMagicLinkDocument>("customer_magic_links").findOne({
+    token: input.token,
+    usedAt: { $exists: false },
+    revokedAt: { $exists: false },
+  })
+
+  if (!magicLink) {
+    return null
   }
+
+  const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: magicLink.customerId })
+  if (!customer) {
+    return null
+  }
+
+  return {
+    magicLinkId: magicLink._id,
+    session: mapCustomerSession(customer),
+  }
+}
+
+export const markCustomerMagicLinkUsed = async (magicLinkId: string) => {
+  await db().collection<CustomerMagicLinkDocument>("customer_magic_links").updateOne(
+    { _id: magicLinkId, usedAt: { $exists: false } },
+    {
+      $set: {
+        usedAt: new Date().toISOString(),
+      }
+    }
+  )
 }
 
 export const getPublicDashboard = async (customerId: string): Promise<PublicDashboardResponse> => {
@@ -101,15 +139,14 @@ export const getPublicDashboard = async (customerId: string): Promise<PublicDash
     throw new Error("Pelanggan tidak ditemukan")
   }
 
-  const orders = await db().collection<OrderDocument>("orders").find({ customerId }).sort({ createdAt: -1 }).toArray()
+  const [orders, settings] = await Promise.all([
+    db().collection<OrderDocument>("orders").find({ customerId }).sort({ createdAt: -1 }).toArray(),
+    getSettingsDocument(),
+  ])
   const monthlySummary = await calculateMonthlySummary(customerId)
   return {
-    session: {
-      customerId: customer._id,
-      name: customer.name,
-      phone: customer.phone,
-      publicNameVisible: customer.publicNameVisible
-    },
+    session: mapCustomerSession(customer),
+    adminWhatsappContacts: settings.business.adminWhatsappContacts,
     stampBalance: {
       currentPoints: customer.currentPoints,
       eligibleFreeWashers: Math.floor(customer.currentPoints / 10),
@@ -292,6 +329,7 @@ export const getDirectOrderStatus = async (token: string) => {
   }
 
   const settings = await getSettingsDocument()
+  const primaryContact = getPrimaryAdminWhatsappContact(settings)
   return {
     orderCode: order.orderCode,
     status: order.status === "Voided" ? "Cancelled" : order.status,
@@ -304,6 +342,6 @@ export const getDirectOrderStatus = async (token: string) => {
     earnedStamps: order.earnedStamps,
     redeemedPoints: order.redeemedPoints,
     laundryName: settings.business.laundryName,
-    laundryPhone: settings.business.publicContactPhone
+    laundryPhone: primaryContact.phone
   }
 }

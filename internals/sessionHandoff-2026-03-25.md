@@ -1,61 +1,34 @@
 # Session Handoff 2026-03-25
 
 Document status: Active  
-Purpose: repo snapshot after real WhatsApp gateway implementation plus admin status/inbox integration
+Purpose: repo snapshot after WhatsApp runtime integration plus multi-admin customer contact and magic-login implementation
 
 ## What This Session Completed
 
-- added real WhatsApp transport on top of the existing API-owned outbox flow
-- added new workspace service `packages/whatsapp-gateway`:
-  - `whatsapp-web.js`
-  - `LocalAuth`
-  - internal-token protected HTTP interface
-  - persistent auth directory support
-  - internal event posting back into the API
-- replaced simulated outbox send behavior with real gateway delivery calls when WhatsApp is enabled
-- added PNG receipt media rendering for `order_confirmed` WhatsApp sends while preserving PDF download for admin/public receipt access
-- extended notification records with transport metadata:
-  - `providerMessageId`
-  - `providerChatId`
-  - `providerAck`
-  - `sentAt`
-  - `gatewayErrorCode`
-- added API-owned WhatsApp session/chat/message persistence plus admin endpoints for:
-  - status
-  - pairing code generation
-  - reconnect
-  - mirrored chats
-  - mirrored messages
-- added admin page `/admin/whatsapp` with:
-  - connection status
-  - pairing material
-  - read-only mirrored inbox
-  - open-in-WhatsApp handoff
-- updated local and hosted Compose/runtime envs for:
-  - WhatsApp gateway sidecar
-  - shared auth persistence volume
-  - gateway internal token wiring
-- expanded backend integration coverage to include:
-  - mocked gateway delivery metadata
-  - admin WhatsApp status endpoints
-  - internal event ingestion
-  - mirrored inbox reads
-- upgraded default WhatsApp copy to be more informative and customer-facing:
-  - welcome message now hardcodes `CJ Laundry`, includes website usage, and formats login credentials explicitly
-  - order confirmed message now includes weight, service summary, and total
-  - order done message now explicitly says the laundry is ready for pickup and closes with thanks
-- changed public-facing `orderCode` generation from sequential daily numbering to a non-sequential 3-character hashed suffix:
-  - format remains `CJ-YYYYMMDD-XXX`
-  - suffix derives from hashed `orderId`
-  - retry loop preserves uniqueness without exposing order volume
-- kept existing failed-send manual fallback semantics intact
-- added ADR `docs/adr/0006-whatsapp-gateway-sidecar-and-api-owned-mirroring.md`
+- kept the real WhatsApp gateway/runtime integration and extended the app-facing contracts around customer contact and login
+- added `business.adminWhatsappContacts` as an ordered settings field with legacy backfill and exactly one `isPrimary` contact for customer-facing surfaces
+- preserved `publicWhatsapp` as the bot/gateway number instead of overloading it as the public admin-contact list
+- updated landing and public direct-status/dashboard contact flows to resolve from the primary admin WhatsApp contact with fallback `087780563875`
+- updated admin settings UI to manage multiple WhatsApp contacts, add/remove numbers, and switch the primary public contact
+- added portal `Chat Admin` UI with mobile-first contact picker using `Admin 1 / Admin 2 / ...` labels
+- added explicit mobile logout affordance in the customer portal shell
+- added one-time customer magic-link generation and redeem flow:
+  - create-customer returns `oneTimeLogin.url` for new customers
+  - welcome WA copy now supports `{{autoLoginUrl}}`
+  - admin POS and customer-create flows can optionally open a QR sheet after registration
+  - customer detail can generate additional QR/login links without revoking older unused tokens
+  - public `/auto-login` route redeems a token once, creates a customer session, and rejects reuse
+- split session behavior by actor:
+  - admin remains on a 7-day session
+  - customer gets a 30-day sliding session refreshed on authenticated requests
+- expanded backend integration coverage and frontend E2E coverage for the above flows
+- added ADR `docs/adr/0007-customer-facing-admin-contacts-and-one-time-magic-login.md`
 
 ## Verification Run
 
 - `npm run build`
 - `npm run test:backend`
-- `npm run test:e2e`
+- `npm run test:e2e -- tests/e2e/full-stack.spec.ts --reporter=line`
 
 All passed at session end.
 
@@ -66,11 +39,14 @@ All passed at session end.
 - mirrored WhatsApp inbox data is API-owned and read-only in v1; operators still reply from the real WhatsApp client
 - local and hosted runtimes now require a stable `WHATSAPP_GATEWAY_TOKEN`
 - hosted runtime now depends on a persistent `${SHARED_DIR}/whatsapp-auth` mount for session survival
-- the backend integration suite now uses a mocked gateway over real HTTP, so test failures around WhatsApp should be debuggable without a real paired device
-- `orderCode` no longer reveals approximate daily order counts to customers or operators outside the system of record
+- the gateway-paired WhatsApp number and the customer-facing admin contact list are now intentionally separate settings concepts
+- if legacy settings lack `adminWhatsappContacts`, backend read/update paths backfill from `publicContactPhone`, then `publicWhatsapp`, then fallback `087780563875`
+- one-time customer magic links are stored server-side and deactivated per token only after a successful login session is saved
+- generating a new magic link from customer detail does not revoke older active unused tokens
+- customer session extension is sliding 30 days from the latest authenticated portal request; admin remains fixed at 7 days
 
 ## Recommended Next Start
 
 1. provision/refresh staging secrets and run the first staging deploy with the WhatsApp gateway enabled
-2. pair the real CJ Laundry number through `/admin/whatsapp` on staging and verify session survival across gateway restarts
-3. validate real-device send, inbound mirroring, reconnect, and manual fallback behavior before touching production
+2. validate real-device welcome WA plus magic-link open/scan behavior, including repeated portal use refreshing the 30-day customer session
+3. verify the distinction between bot-paired WhatsApp number and customer-facing admin contact numbers on staging before touching production

@@ -27,6 +27,9 @@ Gunakan data berikut untuk login:
 Nomor HP: {{customerPhone}}
 Nama: {{customerName}}
 
+Login otomatis sekali pakai:
+{{autoLoginUrl}}
+
 Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.`,
   orderConfirmed: `Halo {{customerName}}!
 
@@ -71,6 +74,13 @@ export const defaultSettings = (): SettingsDocument => ({
     laundryPhone: "+62 812-3456-7890",
     publicContactPhone: "+62 812-3456-7890",
     publicWhatsapp: "6281234567890",
+    adminWhatsappContacts: [
+      {
+        id: "admin-contact-1",
+        phone: "081234567890",
+        isPrimary: true,
+      }
+    ],
     address: "Jl. Raya Sejahtera No. 123, Jakarta",
     operatingHours: "Senin - Minggu, 07:00 - 22:00"
   },

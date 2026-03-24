@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import {
   Sheet,
   SheetContent,
@@ -28,6 +29,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { adminApi } from "@/lib/api"
+import { CustomerLoginLinkSheet } from "@/components/admin/customer-login-link-sheet"
 
 type FilterOption = "all" | "recent" | "high_points" | "active_orders"
 
@@ -96,6 +98,10 @@ export default function PelangganPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [createMessage, setCreateMessage] = useState("")
+  const [showQrAfterCreate, setShowQrAfterCreate] = useState(false)
+  const [loginLinkUrl, setLoginLinkUrl] = useState("")
+  const [loginLinkName, setLoginLinkName] = useState("")
+  const [showLoginLinkSheet, setShowLoginLinkSheet] = useState(false)
   const createCustomerKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -161,6 +167,11 @@ export default function PelangganPage() {
       const result = await adminApi.createCustomer(newCustomerName, newCustomerPhone, createCustomerKeyRef.current)
       setCustomers((prev) => [result.customer, ...prev.filter((item) => item.customerId !== result.customer.customerId)])
       setCreateMessage(result.duplicate ? "Nomor HP sudah terdaftar. Pelanggan yang ada dipilih kembali." : "Pelanggan baru berhasil didaftarkan.")
+      if (!result.duplicate && showQrAfterCreate && result.oneTimeLogin) {
+        setLoginLinkUrl(result.oneTimeLogin.url)
+        setLoginLinkName(result.customer.name)
+        setShowLoginLinkSheet(true)
+      }
       setShowNewCustomer(false)
       setNewCustomerName("")
       setNewCustomerPhone("")
@@ -298,6 +309,13 @@ export default function PelangganPage() {
                 Nomor HP akan dinormalisasi ke format +62
               </p>
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-line-base bg-bg-subtle px-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-text-body">Tampilkan QR login setelah daftar</p>
+                <p className="mt-0.5 text-xs text-text-muted">Admin bisa langsung scan-kan login sekali pakai ke customer.</p>
+              </div>
+              <Switch data-testid="customers-show-qr-after-create" checked={showQrAfterCreate} onCheckedChange={setShowQrAfterCreate} />
+            </div>
           </div>
           <SheetFooter className="gap-2">
             <SheetClose asChild>
@@ -325,6 +343,14 @@ export default function PelangganPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <CustomerLoginLinkSheet
+        open={showLoginLinkSheet}
+        onOpenChange={setShowLoginLinkSheet}
+        loginUrl={loginLinkUrl}
+        customerName={loginLinkName}
+        title="QR Login Customer Baru"
+      />
     </AdminShell>
   )
 }

@@ -1,7 +1,9 @@
 "use client"
 
 import type {
+  CreateCustomerResponse,
   AdminDashboardResponse,
+  CustomerMagicLinkResponse,
   ConfirmOrderInput,
   CustomerSearchResult,
   NotificationRecord,
@@ -72,10 +74,15 @@ export const adminApi = {
   listCustomers: (search = "") =>
     apiFetch<CustomerSearchResult[]>(`/v1/admin/customers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
   createCustomer: (name: string, phone: string, idempotencyKey?: string) =>
-    apiFetch<{ customer: CustomerSearchResult; duplicate: boolean }>("/v1/admin/customers", {
+    apiFetch<CreateCustomerResponse>("/v1/admin/customers", {
       method: "POST",
       headers: { "Idempotency-Key": resolveIdempotencyKey(idempotencyKey) },
       body: JSON.stringify({ name, phone })
+    }),
+  generateCustomerMagicLink: (customerId: string) =>
+    apiFetch<CustomerMagicLinkResponse>(`/v1/admin/customers/${customerId}/magic-link`, {
+      method: "POST",
+      body: JSON.stringify({})
     }),
   getCustomerDetail: (customerId: string) =>
     apiFetch<{

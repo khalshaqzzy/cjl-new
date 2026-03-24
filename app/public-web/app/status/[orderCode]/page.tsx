@@ -95,6 +95,13 @@ export default function DirectOrderStatusPage({ params }: Props) {
     return null
   }
 
+  const whatsappDigits = (() => {
+    const digits = order.laundryPhone.replace(/\D/g, '')
+    if (digits.startsWith('62')) return digits
+    if (digits.startsWith('0')) return `62${digits.slice(1)}`
+    return `62${digits}`
+  })()
+
   return (
     <div className="min-h-screen bg-bg-soft">
       <FloatingHeader />
@@ -233,7 +240,7 @@ export default function DirectOrderStatusPage({ params }: Props) {
                 <p className="text-sm font-semibold text-white mt-1">{order.laundryPhone}</p>
               </div>
               <Button size="sm" className="bg-white text-pink-hot hover:bg-white/90 font-semibold flex-shrink-0 gap-2" asChild>
-                <a href={`https://wa.me/${order.laundryPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
+                <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noopener noreferrer">
                   <MessageCircle className="w-4 h-4" />
                   Chat
                 </a>
