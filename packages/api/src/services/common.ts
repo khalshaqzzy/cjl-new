@@ -10,10 +10,12 @@ import { env } from "../env.js"
 import { getDatabase } from "../db.js"
 import { createId } from "../lib/ids.js"
 import { formatCurrency } from "../lib/formatters.js"
-import { buildReceiptText, compileTemplate, shouldForceNotificationFailure } from "../lib/notifications.js"
+import { compileTemplate, shouldForceNotificationFailure } from "../lib/notifications.js"
+import { renderReceiptImageBase64 } from "../lib/receipt-image.js"
 import { formatCustomerName, normalizeName } from "../lib/normalization.js"
 import { renderReceiptPdf } from "../lib/receipts.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel } from "../lib/time.js"
+import { sendNotificationToWhatsapp } from "./whatsapp.js"
 import type {
   AuditLogDocument,
   CustomerDocument,
@@ -96,7 +98,12 @@ export const mapNotification = (notification: NotificationDocument): Notificatio
   receiptAvailable:
     notification.eventType === "order_confirmed" &&
     (notification.renderStatus === "ready" || Boolean(notification.renderedReceipt)),
-  manualWhatsappAvailable: canManualWhatsappFallback(notification)
+  manualWhatsappAvailable: canManualWhatsappFallback(notification),
+  providerMessageId: notification.providerMessageId,
+  providerChatId: notification.providerChatId,
+  providerAck: notification.providerAck,
+  sentAt: notification.sentAt ? formatDateTime(notification.sentAt) : undefined,
+  gatewayErrorCode: notification.gatewayErrorCode,
 })
 
 export const mapOrderHistory = (order: OrderDocument): OrderHistoryItem => ({
@@ -205,7 +212,7 @@ const createRenderedReceipt = async (notification: NotificationDocument) => {
     throw new Error("Order receipt tidak ditemukan")
   }
 
-  return buildReceiptText(order.receiptSnapshot)
+  return renderReceiptImageBase64(order.receiptSnapshot)
 }
 
 const markNotificationFailed = async (
@@ -229,7 +236,7 @@ const markNotificationFailed = async (
 }
 
 export const processNotification = async (notificationId: string) => {
-  const notification = await notificationsCollection().findOne({ _id: notificationId })
+  let notification = await notificationsCollection().findOne({ _id: notificationId })
   if (!notification) {
     return
   }
@@ -274,29 +281,65 @@ export const processNotification = async (notificationId: string) => {
     if (!refreshed || refreshed.renderStatus !== "ready") {
       return
     }
+
+    notification = refreshed
   }
 
   if (shouldForceNotificationFailure(notification.eventType)) {
     await markNotificationFailed(notificationId, "Simulasi kegagalan WhatsApp aktif", {
-      deliveryStatus: "failed"
+      deliveryStatus: "failed",
+      gatewayErrorCode: "forced_failure",
     })
     return
   }
 
-  await notificationsCollection().updateOne(
-    { _id: notificationId },
-    {
-      $set: {
-        deliveryStatus: "sent",
-        lastAttemptAt: now,
-        updatedAt: now
-      },
-      $unset: {
-        latestFailureReason: ""
-      },
-      $inc: { attemptCount: 1 }
-    }
-  )
+  try {
+    const delivery = await sendNotificationToWhatsapp(
+      notification,
+      notification.preparedMessage,
+      notification.eventType === "order_confirmed" && notification.renderedReceipt
+        ? {
+            mimeType: "image/png",
+            filename: `${notification.orderCode ?? notification._id}-receipt.png`,
+            base64Data: notification.renderedReceipt,
+          }
+        : undefined
+    )
+
+    await notificationsCollection().updateOne(
+      { _id: notificationId },
+      {
+        $set: {
+          deliveryStatus: "sent",
+          lastAttemptAt: now,
+          updatedAt: now,
+          providerMessageId: delivery.providerMessageId,
+          providerChatId: delivery.providerChatId,
+          providerAck: delivery.providerAck,
+          sentAt: delivery.sentAt,
+        },
+        $unset: {
+          latestFailureReason: "",
+          gatewayErrorCode: "",
+        },
+        $inc: { attemptCount: 1 }
+      }
+    )
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "Gagal mengirim WhatsApp"
+    const gatewayErrorCode =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      typeof (error as { code?: unknown }).code === "string"
+        ? ((error as { code: string }).code)
+        : undefined
+
+    await markNotificationFailed(notificationId, reason, {
+      deliveryStatus: "failed",
+      ...(gatewayErrorCode ? { gatewayErrorCode } : {}),
+    })
+  }
 }
 
 const processQueuedNotifications = async () => {
@@ -379,14 +422,24 @@ export const markNotificationForRetry = async (notificationId: string) => {
               latestFailureReason: "",
               manualResolutionNote: "",
               manualResolvedAt: "",
-              renderedReceipt: ""
+              renderedReceipt: "",
+              providerMessageId: "",
+              providerChatId: "",
+              providerAck: "",
+              sentAt: "",
+              gatewayErrorCode: "",
             }
           }
         : {
             $unset: {
               latestFailureReason: "",
               manualResolutionNote: "",
-              manualResolvedAt: ""
+              manualResolvedAt: "",
+              providerMessageId: "",
+              providerChatId: "",
+              providerAck: "",
+              sentAt: "",
+              gatewayErrorCode: "",
             }
           })
     }

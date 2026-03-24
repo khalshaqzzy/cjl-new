@@ -29,7 +29,8 @@ mkdir -p \
   "${BASE_DIR}/shared" \
   "${BASE_DIR}/shared/caddy-data" \
   "${BASE_DIR}/shared/caddy-config" \
-  "${BASE_DIR}/shared/mongo-data"
+  "${BASE_DIR}/shared/mongo-data" \
+  "${BASE_DIR}/shared/whatsapp-auth"
 
 docker compose \
   --project-name "cjl-${APP_ENV}" \

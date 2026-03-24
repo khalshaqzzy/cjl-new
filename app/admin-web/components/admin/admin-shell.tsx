@@ -10,6 +10,7 @@ import {
   Shirt,
   Users,
   Bell,
+  Smartphone,
   Settings,
   LogOut,
   Menu,
@@ -35,6 +36,7 @@ const navItems = [
 
 const moreItems = [
   { href: "/admin/notifikasi", label: "Notifikasi", icon: Bell },
+  { href: "/admin/whatsapp", label: "WhatsApp", icon: Smartphone },
   { href: "/admin/settings", label: "Pengaturan", icon: Settings },
 ]
 

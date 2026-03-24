@@ -1,7 +1,7 @@
 # CJ Laundry Deployment Guide
 
 Document status: Active  
-Last updated: 2026-03-21  
+Last updated: 2026-03-25  
 Scope: full setup and deployment runbook for local, staging, and production
 
 This is the canonical step-by-step deployment guide for CJ Laundry. It is written for a junior-level developer who needs to set the project up from scratch, understand where every value goes, and deploy safely without guessing.
@@ -33,7 +33,7 @@ If you follow this file from top to bottom, you should end with:
 - changing business logic
 - live traffic migration strategy beyond the repo baseline
 - advanced host hardening beyond the repo baseline
-- WhatsApp bot runtime persistence, because that runtime is not implemented in this repo yet
+- operator-level phone pairing steps beyond the repo baseline admin status flow
 
 ### How to use this guide
 
@@ -69,6 +69,7 @@ Important architecture rules already frozen in the repo:
 - GitHub Actions does not build deployment images
 - GitHub Actions only ships the selected git release to the VM over SSH
 - the VM builds images locally from the shipped release
+- the VM also persists WhatsApp auth state in a shared bind mount so the linked-device session survives container restarts
 
 ## 3. Where Each Env Value Goes
 
@@ -106,6 +107,7 @@ Use GitHub environment secrets for:
 - Mongo hosted credentials
 - `MONGO_REPLICA_KEY`
 - session secret
+- WhatsApp gateway internal token
 - bootstrap admin credentials
 - known_hosts
 - Caddy ACME email
@@ -491,6 +493,7 @@ Open the `staging` environment, then use `Add secret` for each value below.
 | `STAGING_MONGO_DATABASE` | usually `cjlaundry` |
 | `STAGING_MONGO_REPLICA_KEY` | long alphanumeric or base64-safe internal Mongo replica-set key |
 | `STAGING_SESSION_SECRET` | long random secret |
+| `STAGING_WHATSAPP_GATEWAY_TOKEN` | shared internal token for API <-> WhatsApp gateway auth |
 | `STAGING_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
 | `STAGING_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the first admin password |
 
@@ -511,6 +514,7 @@ Open the `production` environment and add:
 | `PRODUCTION_MONGO_DATABASE` | usually `cjlaundry` |
 | `PRODUCTION_MONGO_REPLICA_KEY` | long alphanumeric or base64-safe internal Mongo replica-set key |
 | `PRODUCTION_SESSION_SECRET` | long random secret |
+| `PRODUCTION_WHATSAPP_GATEWAY_TOKEN` | shared internal token for API <-> WhatsApp gateway auth |
 | `PRODUCTION_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
 | `PRODUCTION_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the first admin password |
 
@@ -736,6 +740,9 @@ The most important variables are:
 | `MONGO_*` | Mongo credentials and database |
 | `MONGO_REPLICA_KEY` | internal Mongo replica-set keyfile source used when auth is enabled |
 | `SESSION_SECRET` | session-signing secret |
+| `WHATSAPP_ENABLED` | turns the real WhatsApp gateway integration on or off |
+| `WHATSAPP_GATEWAY_TOKEN` | shared internal auth token between API and WhatsApp gateway |
+| `WHATSAPP_AUTH_DIR` | runtime path mounted into the WhatsApp gateway for persistent auth state |
 | `ADMIN_BOOTSTRAP_*` | first admin seed |
 | `WA_FAIL_MODE` | failure simulation mode; keep `never` in hosted envs |
 

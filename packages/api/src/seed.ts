@@ -37,11 +37,16 @@ export const ensureSeedData = async () => {
   await db.collection("notifications").createIndex({ businessKey: 1 }, { unique: true })
   await db.collection("notifications").createIndex({ deliveryStatus: 1, createdAt: 1 })
   await db.collection("notifications").createIndex({ eventType: 1, renderStatus: 1, createdAt: 1 })
+  await db.collection("notifications").createIndex({ providerMessageId: 1 }, { sparse: true })
   await db.collection("idempotency_keys").createIndex({ scope: 1, key: 1 }, { unique: true })
   await db.collection("point_ledgers").createIndex({ customerId: 1, createdAt: -1 })
   await db.collection("point_ledgers").createIndex({ orderId: 1 })
   await db.collection("leaderboard_snapshots").createIndex({ monthKey: 1, version: -1 }, { unique: true })
   await db.collection("audit_logs").createIndex({ entityType: 1, entityId: 1, createdAt: -1 })
+  await db.collection("whatsapp_chats").createIndex({ lastMessageAt: -1, updatedAt: -1 })
+  await db.collection("whatsapp_chats").createIndex({ phone: 1 }, { sparse: true })
+  await db.collection("whatsapp_messages").createIndex({ chatId: 1, timestampIso: 1 })
+  await db.collection("whatsapp_messages").createIndex({ phone: 1 }, { sparse: true })
 
   const customers = await db.collection("customers").find({}).toArray()
 

@@ -24,6 +24,7 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
 - services:
   - `mongo`
   - `api`
+  - `whatsapp-gateway`
   - `admin-web`
   - `public-web`
 - intended use:
@@ -36,6 +37,7 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
   - command: `npm run test:backend`
   - database: `mongodb-memory-server` replica set
   - API exercised over real HTTP on test port
+  - WhatsApp transport exercised through a mocked gateway over real HTTP
 - frontend e2e tests:
   - command: `npm run test:e2e`
   - admin/public frontends started from local workspace scripts
@@ -50,7 +52,8 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
   - Caddy reverse proxy with host-based routing
   - MongoDB container on the internal Docker network in single-node replica-set mode
   - MongoDB internal replica-set keyfile rendered from `MONGO_REPLICA_KEY`
-  - API, admin, and public services built locally on the VM
+  - API, WhatsApp gateway, admin, and public services built locally on the VM
+  - persistent WhatsApp auth bind-mount at `${SHARED_DIR}/whatsapp-auth`
 
 ## Deployment Orchestration
 

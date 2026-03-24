@@ -15,7 +15,7 @@ This script:
   - installs the provided SSH public key into authorized_keys
   - adds the deployment user to the docker group
   - creates the /opt/cjl/<env> directory structure expected by the workflows
-  - creates shared bind-mount directories for Caddy and Mongo
+  - creates shared bind-mount directories for Caddy, Mongo, and WhatsApp auth state
   - enables a basic UFW policy for SSH, HTTP, and HTTPS when UFW is available
 EOF
 }
@@ -83,7 +83,8 @@ install -d -m 755 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" \
   "${BASE_DIR}/shared" \
   "${BASE_DIR}/shared/caddy-data" \
   "${BASE_DIR}/shared/caddy-config" \
-  "${BASE_DIR}/shared/mongo-data"
+  "${BASE_DIR}/shared/mongo-data" \
+  "${BASE_DIR}/shared/whatsapp-auth"
 
 if command -v ufw >/dev/null 2>&1; then
   ufw allow OpenSSH

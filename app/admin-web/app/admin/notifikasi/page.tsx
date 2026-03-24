@@ -182,11 +182,23 @@ function NotificationCard({
             <span>Dibuat: {notification.createdAtLabel}</span>
             <span>Percobaan: {notification.attemptCount}x</span>
           </div>
+          {notification.sentAt && (
+            <div>Terkirim: {notification.sentAt}</div>
+          )}
           {notification.lastAttemptAt && (
             <div>Terakhir dicoba: {notification.lastAttemptAt}</div>
           )}
           {notification.manualResolvedAt && (
             <div>Diselesaikan manual: {notification.manualResolvedAt}</div>
+          )}
+          {notification.providerAck !== undefined && (
+            <div>Ack Provider: {notification.providerAck}</div>
+          )}
+          {notification.providerMessageId && (
+            <div className="truncate">Provider Msg: {notification.providerMessageId}</div>
+          )}
+          {notification.gatewayErrorCode && (
+            <div>Kode Gateway: {notification.gatewayErrorCode}</div>
           )}
         </div>
 

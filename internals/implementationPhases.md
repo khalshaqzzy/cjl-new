@@ -14,6 +14,8 @@ The repo now has:
 - primary admin and public product flows wired to backend APIs
 - transaction-backed core admin mutations for customer create, order confirm, order done, and void flows
 - in-process outbox worker with separate receipt render vs delivery state for confirmation notifications
+- real WhatsApp delivery via dedicated gateway sidecar with persistent auth volume
+- admin WhatsApp status page plus read-only mirrored inbox backed by API-owned chat/message records
 - uppercase customer-name normalization plus repo-safe startup backfill for legacy customer/order/notification name snapshots
 - PDF receipt downloads for admin notification fallback and authenticated portal order detail
 - manual WhatsApp fallback for failed notification sends with admin outbox action support
@@ -23,6 +25,7 @@ The repo now has:
 - backend integration coverage and frontend end-to-end coverage that pass from root test commands
 - branch-based CI and hosted deploy workflows committed in repo
 - remote deploy assets for Caddy, Compose, release shipping, smoke checks, and rollback
+- hosted and local runtime env contracts updated for WhatsApp gateway auth and persistence
 
 ## Phase Snapshot
 
@@ -108,7 +111,7 @@ Focus:
 
 - run the first real staging rollout on GCP and validate the runbook against reality
 - verify Caddy TLS issuance, DNS, and VM sizing under real deployment conditions
-- add operational hardening for backups, log access, and WhatsApp session persistence when the real adapter is implemented
+- validate WhatsApp sidecar pairing, session persistence, reconnect behavior, and mirrored inbox data on staging
 - decide whether the in-process outbox should remain monolith-local or evolve into a separate queue when hosted scale/operability requires it
 
 ## Important Notes
@@ -116,3 +119,4 @@ Focus:
 - live deployment implementation is now prepared in repo terms, but still requires real cloud provisioning and first rollout validation
 - automated testing is now in scope for local repo verification and is implemented
 - multiple lockfiles still exist in the monorepo, but explicit Turbopack root removed the earlier workspace-root warning blocker
+- hosted rollout is now blocked more by real-device validation than by missing WhatsApp implementation code

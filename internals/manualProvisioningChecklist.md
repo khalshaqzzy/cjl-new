@@ -43,7 +43,9 @@ Purpose: short external checklist for provisioning staging and production before
 - add staging `known_hosts`
 - add production `known_hosts`
 - add all staging Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
+- add all staging WhatsApp secrets including `WHATSAPP_GATEWAY_TOKEN`
 - add all production Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
+- add all production WhatsApp secrets including `WHATSAPP_GATEWAY_TOKEN`
 
 ## Validation
 
@@ -51,4 +53,5 @@ Purpose: short external checklist for provisioning staging and production before
 - `CI` succeeds on branch `staging`
 - `Deploy Staging` reaches green
 - staging smoke URLs respond
+- staging WhatsApp status page can generate pairing material
 - staging business flow is validated manually before touching `main`

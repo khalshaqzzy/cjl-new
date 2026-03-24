@@ -6,12 +6,14 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @cjl/contracts && npm run build --workspace @cjl/api && npm run build --workspace @cjl/admin-web && npm run build --workspace @cjl/public-web",
+    "build": "npm run build --workspace @cjl/contracts && npm run build --workspace @cjl/api && npm run build --workspace @cjl/whatsapp-gateway && npm run build --workspace @cjl/admin-web && npm run build --workspace @cjl/public-web",
     "build:contracts": "npm run build --workspace @cjl/contracts",
     "build:api": "npm run build --workspace @cjl/api",
+    "build:whatsapp": "npm run build --workspace @cjl/whatsapp-gateway",
     "build:admin": "npm run build --workspace @cjl/admin-web",
     "build:public": "npm run build --workspace @cjl/public-web",
     "dev:api": "npm run dev --workspace @cjl/api",
+    "dev:whatsapp": "npm run dev --workspace @cjl/whatsapp-gateway",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down -v --remove-orphans",

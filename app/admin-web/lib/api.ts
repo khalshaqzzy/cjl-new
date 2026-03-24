@@ -7,7 +7,10 @@ import type {
   NotificationRecord,
   OrderHistoryItem,
   OrderPreviewResponse,
-  SettingsResponse
+  SettingsResponse,
+  WhatsappChatSummary,
+  WhatsappConnectionStatus,
+  WhatsappMessageItem,
 } from "@cjl/contracts"
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"
@@ -144,5 +147,13 @@ export const adminApi = {
     apiFetch<SettingsResponse>("/v1/admin/settings", {
       method: "PUT",
       body: JSON.stringify(payload)
-    })
+    }),
+  getWhatsappStatus: () => apiFetch<WhatsappConnectionStatus>("/v1/admin/whatsapp/status"),
+  requestWhatsappPairingCode: () =>
+    apiFetch<WhatsappConnectionStatus>("/v1/admin/whatsapp/pairing-code", { method: "POST" }),
+  reconnectWhatsapp: () =>
+    apiFetch<WhatsappConnectionStatus>("/v1/admin/whatsapp/reconnect", { method: "POST" }),
+  listWhatsappChats: () => apiFetch<WhatsappChatSummary[]>("/v1/admin/whatsapp/chats"),
+  listWhatsappMessages: (chatId: string) =>
+    apiFetch<WhatsappMessageItem[]>(`/v1/admin/whatsapp/chats/${encodeURIComponent(chatId)}/messages`),
 }

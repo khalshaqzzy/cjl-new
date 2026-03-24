@@ -1,16 +1,116 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import type { Server } from "node:http"
+import { createServer, type Server } from "node:http"
 import { DateTime } from "luxon"
 import { MongoMemoryReplSet } from "mongodb-memory-server"
 
 const baseUrl = "http://127.0.0.1:4105"
+const gatewayUrl = "http://127.0.0.1:4115"
 
 let mongo: MongoMemoryReplSet
 let server: Server
+let gatewayServer: Server
 let getDatabase: (typeof import("../src/db.ts"))["getDatabase"]
 let disconnectDatabase: (typeof import("../src/db.ts"))["disconnectDatabase"]
 let stopBackgroundWork: (() => Promise<void>) | undefined
+
+const gatewayState = {
+  state: "connected",
+  connected: true,
+  currentPhone: "+6281234567890",
+  wid: "6281234567890@c.us",
+  profileName: "CJ Laundry",
+  qrCodeValue: undefined as string | undefined,
+  qrCodeDataUrl: undefined as string | undefined,
+  pairingCode: undefined as string | undefined,
+  observedAt: new Date().toISOString(),
+}
+
+const startGatewayServer = async () => {
+  gatewayServer = createServer(async (req, res) => {
+    const sendJson = (statusCode: number, payload: unknown) => {
+      res.statusCode = statusCode
+      res.setHeader("Content-Type", "application/json")
+      res.end(JSON.stringify(payload))
+    }
+
+    if (req.headers.authorization !== "Bearer integration-test-whatsapp-token") {
+      sendJson(401, { message: "Unauthorized", code: "unauthorized" })
+      return
+    }
+
+    if (req.method === "GET" && req.url === "/internal/status") {
+      sendJson(200, gatewayState)
+      return
+    }
+
+    if (req.method === "POST" && req.url === "/internal/pairing-code") {
+      gatewayState.state = "pairing"
+      gatewayState.connected = false
+      gatewayState.pairingCode = "PAIR-1234-5678"
+      gatewayState.qrCodeValue = "qr-integration-value"
+      gatewayState.qrCodeDataUrl = "data:image/png;base64,ZmFrZQ=="
+      gatewayState.observedAt = new Date().toISOString()
+      sendJson(200, gatewayState)
+      return
+    }
+
+    if (req.method === "POST" && req.url === "/internal/reconnect") {
+      gatewayState.state = "connected"
+      gatewayState.connected = true
+      gatewayState.pairingCode = undefined
+      gatewayState.qrCodeValue = undefined
+      gatewayState.qrCodeDataUrl = undefined
+      gatewayState.observedAt = new Date().toISOString()
+      sendJson(200, gatewayState)
+      return
+    }
+
+    if (req.method === "POST" && req.url === "/internal/send") {
+      let requestBody = ""
+      req.on("data", (chunk) => {
+        requestBody += chunk.toString()
+      })
+
+      req.on("end", () => {
+        const payload = JSON.parse(requestBody || "{}") as {
+          toPhone?: string
+          notificationId?: string
+        }
+
+        if (!gatewayState.connected) {
+          sendJson(503, {
+            message: "WhatsApp belum siap mengirim pesan",
+            code: "session_not_ready",
+          })
+          return
+        }
+
+        if (payload.toPhone?.includes("00000")) {
+          sendJson(400, {
+            message: "Nomor tujuan belum terdaftar di WhatsApp",
+            code: "unregistered_number",
+          })
+          return
+        }
+
+        sendJson(200, {
+          providerMessageId: `provider:${payload.notificationId ?? Date.now().toString()}`,
+          providerChatId: `${payload.toPhone?.replace(/\D/g, "")}@c.us`,
+          providerAck: 1,
+          sentAt: new Date().toISOString(),
+        })
+      })
+      return
+    }
+
+    sendJson(404, { message: "Not found" })
+  })
+
+  await new Promise<void>((resolve) => {
+    gatewayServer.listen(4115, () => resolve())
+  })
+}
 
 const requestJson = async (
   path: string,
@@ -53,6 +153,8 @@ test.before(async () => {
     replSet: { count: 1, storageEngine: "wiredTiger" }
   })
 
+  await startGatewayServer()
+
   process.env.PORT = "4105"
   process.env.APP_ENV = "test"
   process.env.MONGODB_URI = mongo.getUri("cjlaundry_api_test")
@@ -64,6 +166,9 @@ test.before(async () => {
   process.env.ADMIN_ORIGIN = "http://127.0.0.1:3101"
   process.env.PUBLIC_ORIGIN = "http://127.0.0.1:3100"
   process.env.API_ORIGIN = "http://127.0.0.1:4100"
+  process.env.WHATSAPP_ENABLED = "true"
+  process.env.WHATSAPP_GATEWAY_URL = gatewayUrl
+  process.env.WHATSAPP_GATEWAY_TOKEN = "integration-test-whatsapp-token"
   process.env.WA_FAIL_MODE = "never"
 
   const dbModule = await import("../src/db.ts")
@@ -78,19 +183,33 @@ test.before(async () => {
 })
 
 test.after(async () => {
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error)
-        return
-      }
+  if (server) {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error)
+          return
+        }
 
-      resolve()
+        resolve()
+      })
     })
-  })
+  }
 
   await stopBackgroundWork?.()
   await disconnectDatabase()
+  if (gatewayServer) {
+    await new Promise<void>((resolve, reject) => {
+      gatewayServer.close((error) => {
+        if (error) {
+          reject(error)
+          return
+        }
+
+        resolve()
+      })
+    })
+  }
   await mongo.stop()
 })
 
@@ -147,10 +266,16 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
     () => requestJson("/v1/admin/notifications", { headers: { Cookie: adminCookie! } }),
     (value) =>
       value.payload.some(
-        (notification: { eventType: string; customerName: string; deliveryStatus: string }) =>
+        (notification: {
+          eventType: string
+          customerName: string
+          deliveryStatus: string
+          providerMessageId?: string
+        }) =>
           notification.eventType === "welcome" &&
           notification.customerName === upperCustomerName &&
-          notification.deliveryStatus === "sent"
+          notification.deliveryStatus === "sent" &&
+          Boolean(notification.providerMessageId)
       )
   )
   assert.ok(result.payload.length > 0)
@@ -279,12 +404,18 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
           deliveryStatus: string
           receiptAvailable: boolean
           manualWhatsappAvailable: boolean
+          providerMessageId?: string
+          providerChatId?: string
+          sentAt?: string
         }) =>
           notification.eventType === "order_confirmed" &&
           notification.orderCode === confirmFirst.payload.order.orderCode &&
           notification.deliveryStatus === "sent" &&
           notification.receiptAvailable === true &&
-          notification.manualWhatsappAvailable === false
+          notification.manualWhatsappAvailable === false &&
+          Boolean(notification.providerMessageId) &&
+          Boolean(notification.providerChatId) &&
+          Boolean(notification.sentAt)
       )
   )
   const confirmNotification = result.payload.find(
@@ -319,6 +450,119 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.rows[0].rank, 1)
   assert.equal(result.payload.rows[0].displayName, upperCustomerName)
   assert.equal(result.payload.rows[0].isMasked, false)
+
+  result = await requestJson("/v1/admin/whatsapp/status", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.gatewayReachable, true)
+  assert.equal(result.payload.state, "connected")
+  assert.equal(result.payload.connected, true)
+
+  result = await requestJson("/v1/admin/whatsapp/pairing-code", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.state, "pairing")
+  assert.equal(result.payload.connected, false)
+  assert.equal(result.payload.pairingCode, "PAIR-1234-5678")
+  assert.match(result.payload.qrCodeDataUrl, /^data:image\/png;base64,/)
+
+  result = await requestJson("/v1/admin/whatsapp/reconnect", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.state, "connected")
+  assert.equal(result.payload.connected, true)
+
+  result = await requestJson("/v1/admin/whatsapp/chats", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.length, 0)
+
+  result = await requestJson("/v1/internal/whatsapp/events", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer integration-test-whatsapp-token",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      type: "message_upserted",
+      providerMessageId: `whatsapp_in_${uniqueSuffix}`,
+      chatId: `${customerPhone.replace(/^0/, "62")}@c.us`,
+      direction: "inbound",
+      messageType: "chat",
+      body: "Halo, saya cek status cucian",
+      timestampIso: new Date().toISOString(),
+      phone: `+62${customerPhone.slice(1)}`,
+      displayName: upperCustomerName,
+      hasMedia: false
+    })
+  })
+  assert.equal(result.payload.ok, true)
+
+  result = await requestJson("/v1/internal/whatsapp/events", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer integration-test-whatsapp-token",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      type: "message_upserted",
+      providerMessageId: `whatsapp_out_${uniqueSuffix}`,
+      chatId: `${customerPhone.replace(/^0/, "62")}@c.us`,
+      direction: "outbound",
+      messageType: "image",
+      caption: "Order confirmed mirror",
+      timestampIso: new Date().toISOString(),
+      phone: `+62${customerPhone.slice(1)}`,
+      displayName: upperCustomerName,
+      providerAck: 1,
+      hasMedia: true,
+      mediaMimeType: "image/png",
+      mediaName: "receipt.png",
+      notificationId: confirmNotification.notificationId,
+      orderCode: confirmFirst.payload.order.orderCode
+    })
+  })
+  assert.equal(result.payload.ok, true)
+
+  result = await requestJson("/v1/internal/whatsapp/events", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer integration-test-whatsapp-token",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      type: "message_ack_changed",
+      providerMessageId: `whatsapp_out_${uniqueSuffix}`,
+      providerAck: 2,
+      observedAt: new Date().toISOString()
+    })
+  })
+  assert.equal(result.payload.ok, true)
+
+  result = await requestJson("/v1/admin/whatsapp/chats", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.length, 1)
+  assert.equal(result.payload[0].customerName, upperCustomerName)
+  assert.match(result.payload[0].openWhatsappUrl, /wa\.me/)
+
+  result = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`${customerPhone.replace(/^0/, "62")}@c.us`)}/messages`, {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.length, 2)
+  assert.equal(result.payload[0].direction, "inbound")
+  assert.equal(result.payload[1].providerAck, 2)
+  assert.equal(result.payload[1].notificationId, confirmNotification.notificationId)
 
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_conflict_${uniqueSuffix}`,

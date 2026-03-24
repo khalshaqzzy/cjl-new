@@ -3,7 +3,9 @@ import type {
   NotificationEventType,
   NotificationRenderStatus,
   ServiceCode,
-  ServiceSetting
+  ServiceSetting,
+  WhatsappConnectionState,
+  WhatsappMessageDirection
 } from "@cjl/contracts"
 
 export type CustomerDocument = {
@@ -91,7 +93,62 @@ export type NotificationDocument = {
   manualResolutionNote?: string
   manualResolvedAt?: string
   renderedReceipt?: string
+  providerMessageId?: string
+  providerChatId?: string
+  providerAck?: number
+  sentAt?: string
+  gatewayErrorCode?: string
   businessKey: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type WhatsappSessionDocument = {
+  _id: "primary"
+  state: WhatsappConnectionState
+  connected: boolean
+  currentPhone?: string
+  wid?: string
+  profileName?: string
+  lastReadyAt?: string
+  lastDisconnectAt?: string
+  lastDisconnectReason?: string
+  lastAuthFailureAt?: string
+  lastAuthFailureReason?: string
+  updatedAt: string
+}
+
+export type WhatsappChatDocument = {
+  _id: string
+  title: string
+  phone?: string
+  customerId?: string
+  customerName?: string
+  unreadCount: number
+  lastMessagePreview: string
+  lastMessageDirection?: WhatsappMessageDirection
+  lastMessageAt?: string
+  updatedAt: string
+}
+
+export type WhatsappMessageDocument = {
+  _id: string
+  chatId: string
+  phone?: string
+  customerId?: string
+  customerName?: string
+  direction: WhatsappMessageDirection
+  messageType: string
+  body?: string
+  caption?: string
+  textPreview: string
+  timestampIso: string
+  providerAck?: number
+  hasMedia: boolean
+  mediaMimeType?: string
+  mediaName?: string
+  notificationId?: string
+  orderCode?: string
   createdAt: string
   updatedAt: string
 }

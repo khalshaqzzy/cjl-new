@@ -14,7 +14,8 @@ import {
   manualPointAdjustmentInputSchema,
   settingsResponseSchema,
   updateCustomerInputSchema,
-  voidOrderInputSchema
+  voidOrderInputSchema,
+  whatsappInternalEventSchema,
 } from "@cjl/contracts"
 import { env } from "./env.js"
 import { mongoClient } from "./db.js"
@@ -63,6 +64,14 @@ import {
   getCustomerOrderDetail,
   updateCustomerNameVisibility
 } from "./services/public.js"
+import {
+  getWhatsappStatus,
+  ingestWhatsappInternalEvent,
+  listWhatsappChats,
+  listWhatsappMessages,
+  reconnectWhatsapp,
+  requestWhatsappPairingCode,
+} from "./services/whatsapp.js"
 import type { AdminDocument, SettingsDocument } from "./types.js"
 
 declare module "express-session" {
@@ -91,6 +100,16 @@ const requireCustomer = (req: express.Request, res: express.Response, next: expr
     res.status(401).json({ message: "Unauthorized" })
     return
   }
+  next()
+}
+
+const requireInternal = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const authorization = req.header("Authorization")
+  if (authorization !== `Bearer ${env.WHATSAPP_GATEWAY_TOKEN}`) {
+    res.status(401).json({ message: "Unauthorized" })
+    return
+  }
+
   next()
 }
 
@@ -367,6 +386,32 @@ export const createApp = () => {
   app.put("/v1/admin/settings", requireAdmin, asyncRoute(async (req, res) => {
     const body = settingsResponseSchema.parse(req.body)
     res.json(await updateSettings(body))
+  }))
+
+  app.get("/v1/admin/whatsapp/status", requireAdmin, asyncRoute(async (_req, res) => {
+    res.json(await getWhatsappStatus())
+  }))
+
+  app.post("/v1/admin/whatsapp/pairing-code", requireAdmin, asyncRoute(async (_req, res) => {
+    res.json(await requestWhatsappPairingCode())
+  }))
+
+  app.post("/v1/admin/whatsapp/reconnect", requireAdmin, asyncRoute(async (_req, res) => {
+    res.json(await reconnectWhatsapp())
+  }))
+
+  app.get("/v1/admin/whatsapp/chats", requireAdmin, asyncRoute(async (_req, res) => {
+    res.json(await listWhatsappChats())
+  }))
+
+  app.get("/v1/admin/whatsapp/chats/:chatId/messages", requireAdmin, asyncRoute(async (req, res) => {
+    res.json(await listWhatsappMessages(getParam(req.params.chatId)))
+  }))
+
+  app.post("/v1/internal/whatsapp/events", requireInternal, asyncRoute(async (req, res) => {
+    const body = whatsappInternalEventSchema.parse(req.body)
+    await ingestWhatsappInternalEvent(body)
+    res.json({ ok: true })
   }))
 
   app.get("/v1/public/landing", asyncRoute(async (_req, res) => {

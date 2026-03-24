@@ -48,6 +48,11 @@ const envSchema = z.object({
   ADMIN_ORIGIN: z.string().default("http://localhost:3001"),
   PUBLIC_ORIGIN: z.string().default("http://localhost:3000"),
   API_ORIGIN: z.string().default("http://localhost:4000"),
+  WHATSAPP_ENABLED: booleanLikeSchema.default(false),
+  WHATSAPP_GATEWAY_URL: z.string().default("http://127.0.0.1:4100"),
+  WHATSAPP_GATEWAY_TOKEN: z.string().default("cjlaundry-whatsapp-internal-token"),
+  WHATSAPP_AUTH_DIR: z.string().default("./.whatsapp-auth"),
+  WHATSAPP_CHROMIUM_EXECUTABLE_PATH: z.string().optional(),
   WA_FAIL_MODE: z.enum(["never", "confirm-only", "all"]).default("never"),
   OUTBOX_POLL_MS: z.coerce.number().int().positive().default(250)
 })
