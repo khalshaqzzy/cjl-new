@@ -10,7 +10,8 @@ export const ensureSeedData = async () => {
   const db = getDatabase()
   const settingsCollection = db.collection<SettingsDocument>("settings")
   const adminCollection = db.collection<AdminDocument>("admins")
-  const previousDefaultWelcomeTemplate = `Halo {{customerName}}!
+  // Keep the previous `.site` template so existing seeded settings can be upgraded to the new `.com` default.
+  const previousSiteWelcomeTemplate = `Halo {{customerName}}!
 
 Selamat datang di CJ Laundry. Akun pelanggan Anda sudah berhasil terdaftar.
 
@@ -43,7 +44,7 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
 
     const shouldUpgradeWelcomeTemplate =
       isLegacyMessageTemplate ||
-      existingSettings.messageTemplates.welcome === previousDefaultWelcomeTemplate
+      existingSettings.messageTemplates.welcome === previousSiteWelcomeTemplate
 
     const nextAdminWhatsappContacts = sanitizeAdminWhatsappContacts(
       existingSettings.business.adminWhatsappContacts,

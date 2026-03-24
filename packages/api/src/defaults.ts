@@ -14,7 +14,7 @@ export const defaultMessageTemplates = {
 Selamat datang di CJ Laundry. Akun pelanggan Anda sudah berhasil terdaftar.
 
 Website CJ Laundry:
-https://cjlaundry.site
+https://cjlaundry.com
 
 Di website tersebut Anda bisa:
 - login ke customer portal

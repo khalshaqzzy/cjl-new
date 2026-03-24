@@ -27,12 +27,12 @@ Purpose: short external checklist for provisioning staging and production before
 
 ## DNS
 
-- point `api-staging.cjlaundry.site` to the staging VM
-- point `admin-staging.cjlaundry.site` to the staging VM
-- point `staging.cjlaundry.site` to the staging VM
-- point `api.cjlaundry.site` to the production VM
-- point `admin.cjlaundry.site` to the production VM
-- point `cjlaundry.site` to the production VM
+- point `api-staging.cjlaundry.com` to the staging VM
+- point `admin-staging.cjlaundry.com` to the staging VM
+- point `staging.cjlaundry.com` to the staging VM
+- point `api.cjlaundry.com` to the production VM
+- point `admin.cjlaundry.com` to the production VM
+- point `cjlaundry.com` to the production VM
 
 ## GitHub
 

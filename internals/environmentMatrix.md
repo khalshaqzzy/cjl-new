@@ -7,8 +7,8 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
 | Environment | Public web | Admin web | API | Runtime target | Build location | Data store |
 | --- | --- | --- | --- | --- | --- | --- |
 | `local` | `http://localhost:3000` | `http://localhost:3001` | `http://localhost:4000` | local machine | local machine | local MongoDB single-node replica set |
-| `staging` | `https://staging.cjlaundry.site` | `https://admin-staging.cjlaundry.site` | `https://api-staging.cjlaundry.site` | one GCP VM | built on staging VM | MongoDB container single-node replica set on staging VM |
-| `production` | `https://cjlaundry.site` | `https://admin.cjlaundry.site` | `https://api.cjlaundry.site` | one GCP VM | built on production VM | MongoDB container single-node replica set on production VM |
+| `staging` | `https://staging.cjlaundry.com` | `https://admin-staging.cjlaundry.com` | `https://api-staging.cjlaundry.com` | one GCP VM | built on staging VM | MongoDB container single-node replica set on staging VM |
+| `production` | `https://cjlaundry.com` | `https://admin.cjlaundry.com` | `https://api.cjlaundry.com` | one GCP VM | built on production VM | MongoDB container single-node replica set on production VM |
 
 ## Local Workspace Runtime
 

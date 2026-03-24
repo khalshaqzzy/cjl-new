@@ -33,9 +33,9 @@ jobs:
       REMOTE_HOST: ${{ secrets.STAGING_VM_HOST }}
       REMOTE_USER: ${{ secrets.STAGING_VM_USER }}
       REMOTE_PORT: ${{ secrets.STAGING_VM_SSH_PORT != '' && secrets.STAGING_VM_SSH_PORT || '22' }}
-      ADMIN_DOMAIN: admin-staging.cjlaundry.site
-      PUBLIC_DOMAIN: staging.cjlaundry.site
-      API_DOMAIN: api-staging.cjlaundry.site
+      ADMIN_DOMAIN: admin-staging.cjlaundry.com
+      PUBLIC_DOMAIN: staging.cjlaundry.com
+      API_DOMAIN: api-staging.cjlaundry.com
 
     steps:
       - name: Checkout
@@ -86,6 +86,9 @@ jobs:
           SESSION_SECRET=${{ secrets.STAGING_SESSION_SECRET }}
           ADMIN_BOOTSTRAP_USERNAME=${{ secrets.STAGING_ADMIN_BOOTSTRAP_USERNAME }}
           ADMIN_BOOTSTRAP_PASSWORD_HASH=${{ secrets.STAGING_ADMIN_BOOTSTRAP_PASSWORD_HASH }}
+          WHATSAPP_ENABLED=true
+          WHATSAPP_GATEWAY_TOKEN=${{ secrets.STAGING_WHATSAPP_GATEWAY_TOKEN }}
+          WHATSAPP_AUTH_DIR=/data/auth
           WA_FAIL_MODE=never
           EOF
 

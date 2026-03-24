@@ -30,7 +30,7 @@ The repo now contains:
 ## Recommended First Tasks
 
 1. Provision the real staging VM in GCP.
-2. Set DNS for `staging.cjlaundry.site`, `admin-staging.cjlaundry.site`, and `api-staging.cjlaundry.site`.
+2. Set DNS for `staging.cjlaundry.com`, `admin-staging.cjlaundry.com`, and `api-staging.cjlaundry.com`.
 3. Populate the GitHub `staging` environment secrets exactly as documented.
 4. Push a known-good commit to branch `staging` and observe the first deploy end to end.
 5. Update the deployment docs immediately with any real-world drift discovered during the first rollout.

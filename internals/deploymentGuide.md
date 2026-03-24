@@ -57,8 +57,8 @@ Do not skip straight to production. Staging is the safety checkpoint.
 | Environment | Public web | Admin web | API | Runtime target | Deployment trigger |
 | --- | --- | --- | --- | --- | --- |
 | `local` | `http://localhost:3000` | `http://localhost:3001` | `http://localhost:4000` | local machine | manual |
-| `staging` | `https://staging.cjlaundry.site` | `https://admin-staging.cjlaundry.site` | `https://api-staging.cjlaundry.site` | one GCP VM + Docker Compose + Caddy | push to `staging` after CI success |
-| `production` | `https://cjlaundry.site` | `https://admin.cjlaundry.site` | `https://api.cjlaundry.site` | one GCP VM + Docker Compose + Caddy | push to `main` after CI success |
+| `staging` | `https://staging.cjlaundry.com` | `https://admin-staging.cjlaundry.com` | `https://api-staging.cjlaundry.com` | one GCP VM + Docker Compose + Caddy | push to `staging` after CI success |
+| `production` | `https://cjlaundry.com` | `https://admin.cjlaundry.com` | `https://api.cjlaundry.com` | one GCP VM + Docker Compose + Caddy | push to `main` after CI success |
 
 Important architecture rules already frozen in the repo:
 
@@ -434,17 +434,17 @@ All hosted domains for one environment point to the same VM. Caddy routes traffi
 
 Point these names to the staging VM static IP:
 
-- `api-staging.cjlaundry.site`
-- `admin-staging.cjlaundry.site`
-- `staging.cjlaundry.site`
+- `api-staging.cjlaundry.com`
+- `admin-staging.cjlaundry.com`
+- `staging.cjlaundry.com`
 
 ### 9.2 Production DNS records
 
 Point these names to the production VM static IP:
 
-- `api.cjlaundry.site`
-- `admin.cjlaundry.site`
-- `cjlaundry.site`
+- `api.cjlaundry.com`
+- `admin.cjlaundry.com`
+- `cjlaundry.com`
 
 After saving DNS, wait for propagation before debugging TLS.
 
@@ -639,10 +639,10 @@ This is useful later for debugging and rollback.
 
 After the staging workflow succeeds, verify:
 
-- `https://api-staging.cjlaundry.site/health`
-- `https://api-staging.cjlaundry.site/ready`
-- `https://admin-staging.cjlaundry.site`
-- `https://staging.cjlaundry.site`
+- `https://api-staging.cjlaundry.com/health`
+- `https://api-staging.cjlaundry.com/ready`
+- `https://admin-staging.cjlaundry.com`
+- `https://staging.cjlaundry.com`
 
 ### 13.1 API checks
 
@@ -712,10 +712,10 @@ You may also trigger `Deploy Production` manually with `workflow_dispatch` and a
 
 Check:
 
-- `https://api.cjlaundry.site/health`
-- `https://api.cjlaundry.site/ready`
-- `https://admin.cjlaundry.site`
-- `https://cjlaundry.site`
+- `https://api.cjlaundry.com/health`
+- `https://api.cjlaundry.com/ready`
+- `https://admin.cjlaundry.com`
+- `https://cjlaundry.com`
 
 Then repeat the same business smoke checks you used in staging.
 

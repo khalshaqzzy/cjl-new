@@ -39,6 +39,8 @@ All passed at session end.
 - mirrored WhatsApp inbox data is API-owned and read-only in v1; operators still reply from the real WhatsApp client
 - local and hosted runtimes now require a stable `WHATSAPP_GATEWAY_TOKEN`
 - hosted runtime now depends on a persistent `${SHARED_DIR}/whatsapp-auth` mount for session survival
+- hosted staging and production domains are now canonical on `cjlaundry.com`, not `cjlaundry.site`
+- deploy workflows now render hosted WhatsApp runtime vars so first VM rollout includes `WHATSAPP_ENABLED=true` and the gateway token
 - the gateway-paired WhatsApp number and the customer-facing admin contact list are now intentionally separate settings concepts
 - if legacy settings lack `adminWhatsappContacts`, backend read/update paths backfill from `publicContactPhone`, then `publicWhatsapp`, then fallback `087780563875`
 - one-time customer magic links are stored server-side and deactivated per token only after a successful login session is saved

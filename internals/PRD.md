@@ -10,9 +10,9 @@ Scope type: MVP that is implementation-ready
 
 CJ Laundry membutuhkan web app POS dengan dua surface utama:
 
-1. `admin.cjlaundry.site`
+1. `admin.cjlaundry.com`
    Untuk operasional laundry harian: registrasi customer, pembuatan order, pencatatan berat dan item layanan, auto-calculation harga, loyalty stamp/point, notifikasi WhatsApp, pemantauan laundry aktif, penyelesaian order, histori customer, penambahan poin manual, dan dashboard laporan.
-2. `cjlaundry.site`
+2. `cjlaundry.com`
    Untuk customer: landing page brand yang informatif, login ringan tanpa password, pengecekan status laundry, stamp/poin, riwayat cuci, riwayat penukaran stamp, ringkasan aktivitas bulanan tanpa nominal uang, dan leaderboard publik.
 
 Seluruh aplikasi v1 di-deploy sebagai satu monolith pada VM per environment. Runtime backend menggunakan Express.js, admin/public frontend dirilis bersama dari deployment yang sama, dan MongoDB berjalan di Docker Compose pada VM tersebut. Semua mutasi data bisnis harus melalui backend API/server layer. Public client tidak boleh memiliki akses langsung ke database.
@@ -203,7 +203,7 @@ Rules:
 
 ### 10.1 Admin login
 
-1. Admin opens `admin.cjlaundry.site`.
+1. Admin opens `admin.cjlaundry.com`.
 2. Admin enters username and password.
 3. Backend validates credentials.
 4. On success, backend issues secure admin session and redirects to dashboard.
@@ -353,7 +353,7 @@ Customer identity edit rules:
 
 ### 10.8 Public customer login
 
-1. Customer opens `cjlaundry.site`.
+1. Customer opens `cjlaundry.com`.
 2. Customer navigates to login.
 3. Customer enters registered phone and name.
 4. Backend normalizes phone and name.
@@ -1102,9 +1102,9 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 
 ### 21.1 Domains
 
-- Admin frontend: `https://admin.cjlaundry.site`
-- Public frontend: `https://cjlaundry.site`
-- Backend API: `https://api.cjlaundry.site`
+- Admin frontend: `https://admin.cjlaundry.com`
+- Public frontend: `https://cjlaundry.com`
+- Backend API: `https://api.cjlaundry.com`
 
 ### 21.2 Hosting
 
