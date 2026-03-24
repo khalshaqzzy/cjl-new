@@ -112,6 +112,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
 
   const uniqueSuffix = Date.now().toString().slice(-6)
   const customerName = `Budi Integration ${uniqueSuffix}`
+  const upperCustomerName = customerName.toUpperCase()
   const customerPhone = `08123${uniqueSuffix}`
 
   const createCustomerKey = `create-${uniqueSuffix}`
@@ -126,7 +127,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   })
 
   assert.equal(result.payload.duplicate, false)
-  assert.equal(result.payload.customer.name, customerName)
+  assert.equal(result.payload.customer.name, upperCustomerName)
   assert.equal(result.payload.customer.phone, `+62${customerPhone.slice(1)}`)
 
   const createCustomerReplay = await requestJson("/v1/admin/customers", {
@@ -148,7 +149,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       value.payload.some(
         (notification: { eventType: string; customerName: string; deliveryStatus: string }) =>
           notification.eventType === "welcome" &&
-          notification.customerName === customerName &&
+          notification.customerName === upperCustomerName &&
           notification.deliveryStatus === "sent"
       )
   )
@@ -245,14 +246,83 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
     headers: { Cookie: publicCookie! }
   })
   assert.equal(result.payload.session.customerId, customerId)
+  assert.equal(result.payload.session.name, upperCustomerName)
+  assert.equal(result.payload.session.publicNameVisible, false)
   assert.ok(result.payload.activeOrders.some((order: { orderId: string }) => order.orderId === firstOrderId))
 
   result = await requestJson(`/v1/public/status/${firstOrderToken}`)
   assert.equal(result.payload.status, "Active")
+  assert.equal("totalLabel" in result.payload, false)
+
+  result = await requestJson(`/v1/public/me/orders/${firstOrderId}`, {
+    headers: { Cookie: publicCookie! }
+  })
+  assert.equal(result.payload.status, "Active")
+  assert.match(result.payload.totalLabel, /30\.000/)
+  assert.equal(result.payload.items.length, 2)
+  assert.equal(result.payload.items[0].unitPriceLabel.startsWith("Rp"), true)
+
+  let receiptResponse = await fetch(`${baseUrl}/v1/public/me/orders/${firstOrderId}/receipt`, {
+    headers: { Cookie: publicCookie! }
+  })
+  assert.equal(receiptResponse.status, 200)
+  assert.match(receiptResponse.headers.get("content-type") ?? "", /application\/pdf/)
+  assert.ok((await receiptResponse.arrayBuffer()).byteLength > 0)
+
+  result = await waitFor(
+    () => requestJson("/v1/admin/notifications", { headers: { Cookie: adminCookie! } }),
+    (value) =>
+      value.payload.some(
+        (notification: {
+          eventType: string
+          orderCode?: string
+          deliveryStatus: string
+          receiptAvailable: boolean
+          manualWhatsappAvailable: boolean
+        }) =>
+          notification.eventType === "order_confirmed" &&
+          notification.orderCode === confirmFirst.payload.order.orderCode &&
+          notification.deliveryStatus === "sent" &&
+          notification.receiptAvailable === true &&
+          notification.manualWhatsappAvailable === false
+      )
+  )
+  const confirmNotification = result.payload.find(
+    (notification: { eventType: string; orderCode?: string }) =>
+      notification.eventType === "order_confirmed" &&
+      notification.orderCode === confirmFirst.payload.order.orderCode
+  )
+  assert.ok(confirmNotification)
+
+  receiptResponse = await fetch(`${baseUrl}/v1/admin/notifications/${confirmNotification.notificationId}/receipt`, {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(receiptResponse.status, 200)
+  assert.match(receiptResponse.headers.get("content-type") ?? "", /application\/pdf/)
+  assert.ok((await receiptResponse.arrayBuffer()).byteLength > 0)
+
+  result = await requestJson("/v1/public/leaderboard")
+  assert.equal(result.payload.rows[0].isMasked, true)
+  assert.notEqual(result.payload.rows[0].displayName, upperCustomerName)
+
+  result = await requestJson("/v1/public/me/preferences/name-visibility", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: publicCookie!
+    },
+    body: JSON.stringify({ publicNameVisible: true })
+  })
+  assert.equal(result.payload.session.publicNameVisible, true)
+
+  result = await requestJson("/v1/public/leaderboard")
+  assert.equal(result.payload.rows[0].rank, 1)
+  assert.equal(result.payload.rows[0].displayName, upperCustomerName)
+  assert.equal(result.payload.rows[0].isMasked, false)
 
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_conflict_${uniqueSuffix}`,
-    customerName,
+    customerName: upperCustomerName,
     destinationPhone: `+62${customerPhone.slice(1)}`,
     orderId: firstOrderId,
     orderCode: confirmFirst.payload.order.orderCode,
@@ -300,6 +370,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
     headers: { Cookie: publicCookie! }
   })
   assert.equal(result.payload.status, "Done")
+  assert.match(result.payload.totalLabel, /30\.000/)
 
   const archivedOrderPayload = {
     customerId,
@@ -348,6 +419,8 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   result = await requestJson(`/v1/public/leaderboard?month=${previousMonthKey}`)
   assert.equal(result.payload.rows.length, 1)
   assert.equal(result.payload.rows[0].earnedStamps, 1)
+  assert.equal(result.payload.rows[0].rank, 1)
+  assert.equal(result.payload.rows[0].displayName, upperCustomerName)
 
   let snapshots = await getDatabase()
     .collection("leaderboard_snapshots")
@@ -420,7 +493,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
 
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_render_failure_${uniqueSuffix}`,
-    customerName,
+    customerName: upperCustomerName,
     destinationPhone: `+62${customerPhone.slice(1)}`,
     orderCode: "BROKEN",
     eventType: "order_confirmed",
@@ -439,9 +512,47 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   )
   assert.match(renderFailedNotification?.latestFailureReason ?? "", /receipt|Receipt|Order/)
 
+  const blockedManualWhatsapp = await requestJson(`/v1/admin/notifications/notification_render_failure_${uniqueSuffix}/manual-whatsapp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    expectedStatus: 400
+  })
+  assert.match(blockedManualWhatsapp.payload.message, /Receipt/)
+
+  await getDatabase().collection("notifications").insertOne({
+    _id: `notification_done_failed_${uniqueSuffix}`,
+    customerName: upperCustomerName,
+    destinationPhone: `+62${customerPhone.slice(1)}`,
+    orderId: firstOrderId,
+    orderCode: confirmFirst.payload.order.orderCode,
+    eventType: "order_done",
+    renderStatus: "not_required",
+    deliveryStatus: "failed",
+    latestFailureReason: "Bot disconnect",
+    attemptCount: 1,
+    preparedMessage: "done fallback",
+    businessKey: `manual-done-fallback:${uniqueSuffix}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  })
+
+  result = await requestJson(`/v1/admin/notifications/notification_done_failed_${uniqueSuffix}/manual-whatsapp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    }
+  })
+  assert.equal(result.payload.notification.deliveryStatus, "manual_resolved")
+  assert.equal(result.payload.notification.manualWhatsappAvailable, false)
+  assert.match(result.payload.whatsappUrl, /wa\.me/)
+
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_manual_${uniqueSuffix}`,
-    customerName,
+    customerName: upperCustomerName,
     destinationPhone: `+62${customerPhone.slice(1)}`,
     eventType: "welcome",
     renderStatus: "not_required",

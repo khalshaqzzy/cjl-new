@@ -32,7 +32,8 @@ test.describe.configure({ mode: "serial" })
 
 test("admin and public frontends stay fully integrated through the backend", async ({ browser, page }) => {
   const uniqueSuffix = Date.now().toString().slice(-6)
-  const customerName = `E2E Customer ${uniqueSuffix}`
+  const customerName = `E2e Customer ${uniqueSuffix}`
+  const upperCustomerName = customerName.toUpperCase()
   const customerPhone = `08123${uniqueSuffix}`
 
   await page.goto("http://127.0.0.1:3101/")
@@ -48,6 +49,7 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await page.getByTestId("pos-create-customer-name").fill(customerName)
   await page.getByTestId("pos-create-customer-phone").fill(customerPhone)
   await page.getByTestId("pos-create-customer-submit").click()
+  await expect(page.getByText(upperCustomerName)).toBeVisible()
   await page.getByTestId("pos-next-to-services").click()
 
   await page.getByTestId("pos-weight-input").fill("3")
@@ -88,16 +90,63 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await publicPage.getByText(orderCode).click()
   await expect(publicPage.getByRole("heading", { name: "Detail Order" }).first()).toBeVisible()
   await expect(publicPage.getByText("Aktif")).toBeVisible()
+  await expect(publicPage.getByText("Rincian Receipt")).toBeVisible()
+  await expect(publicPage.getByText("Subtotal")).toBeVisible()
+  await expect(publicPage.getByText("Total", { exact: true })).toBeVisible()
+  const receiptDownload = publicPage.waitForEvent("download")
+  await publicPage.getByRole("button", { name: "Download Receipt" }).click()
+  const receiptFile = await receiptDownload
+  expect(receiptFile.suggestedFilename()).toContain(".pdf")
 
   await publicPage.goto("http://127.0.0.1:3100/portal")
   await expect(publicPage.getByRole("heading", { name: "Ringkasan Bulan Ini" })).toBeVisible()
   await expect(publicPage.getByText("Stamp diperoleh", { exact: true }).last()).toBeVisible()
   await expect(publicPage.getByText("Poin ditukar", { exact: true })).toBeVisible()
 
+  await publicPage.goto("http://127.0.0.1:3100/portal/leaderboard")
+  await expect(publicPage.locator("main").getByText(upperCustomerName)).not.toBeVisible()
+  await publicPage.getByRole("switch").click()
+  await expect(publicPage.locator("main").getByText(upperCustomerName)).toBeVisible()
+  await publicPage.getByRole("switch").click()
+  await expect(publicPage.locator("main").getByText(upperCustomerName)).not.toBeVisible()
+
   const directStatusPage = await browser.newPage()
   await directStatusPage.goto(`http://127.0.0.1:3100/status/${order.directToken}`)
   await expect(directStatusPage.getByTestId("direct-status-order-code")).toContainText(orderCode)
   await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Aktif")
+  await expect(directStatusPage.getByText("Rincian Receipt")).not.toBeVisible()
+
+  const client = new MongoClient(mongoUri)
+  await client.connect()
+  try {
+    const database = client.db()
+    await database.collection("notifications").insertOne({
+      _id: `notification_manual_done_${uniqueSuffix}`,
+      customerName: upperCustomerName,
+      destinationPhone: customer.phone,
+      orderId: order._id,
+      orderCode,
+      eventType: "order_done",
+      renderStatus: "not_required",
+      deliveryStatus: "failed",
+      latestFailureReason: "Simulasi gagal kirim bot",
+      attemptCount: 1,
+      preparedMessage: `Halo ${upperCustomerName}, order ${orderCode} sudah selesai.`,
+      businessKey: `e2e-manual-done:${uniqueSuffix}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+  } finally {
+    await client.close()
+  }
+
+  await page.goto("http://127.0.0.1:3101/admin/notifikasi")
+  await expect(page.getByText("Simulasi gagal kirim bot")).toBeVisible()
+  const whatsappPopup = page.waitForEvent("popup")
+  await page.getByRole("button", { name: "WhatsApp" }).first().click()
+  const popup = await whatsappPopup
+  await expect(popup).toHaveURL(/wa\.me|api\.whatsapp\.com/)
+  await expect(page.getByText("Fallback WhatsApp manual dibuka oleh admin.")).toBeVisible()
 
   await page.goto(`http://127.0.0.1:3101/admin/pelanggan/${customer?._id}`)
   await page.getByTestId(`void-order-${order._id}`).click()

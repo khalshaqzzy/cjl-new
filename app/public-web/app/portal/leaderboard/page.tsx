@@ -5,14 +5,23 @@ import type { LeaderboardRow } from '@cjl/contracts'
 import { PortalShell } from '@/components/public/portal-shell'
 import { publicApi } from '@/lib/api'
 import { Award, Crown, Medal, Star } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+
+type PortalSession = {
+  customerId: string
+  name: string
+  phone: string
+  publicNameVisible: boolean
+}
 
 export default function PortalLeaderboardPage() {
   const [rows, setRows] = useState<LeaderboardRow[]>([])
   const [months, setMonths] = useState<Array<{ key: string; label: string; isCurrent: boolean }>>([])
   const [selectedMonth, setSelectedMonth] = useState('')
-  const [session, setSession] = useState<{ customerId: string; name: string; phone: string } | null>(null)
+  const [session, setSession] = useState<PortalSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false)
 
   useEffect(() => {
     setIsLoading(true)
@@ -36,6 +45,24 @@ export default function PortalLeaderboardPage() {
   const top3 = rows.slice(0, 3)
   const selectedMonthMeta = months.find((month) => month.key === selectedMonth)
 
+  const handleVisibilityChange = async (checked: boolean) => {
+    setIsUpdatingVisibility(true)
+    try {
+      const [sessionPayload, leaderboardPayload] = await Promise.all([
+        publicApi.updateNameVisibility(checked),
+        publicApi.getLeaderboard(selectedMonth || undefined),
+      ])
+      setSession(sessionPayload.session)
+      setRows(leaderboardPayload.rows)
+      setMonths(leaderboardPayload.availableMonths)
+      setLoadError('')
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Gagal memperbarui preferensi nama publik')
+    } finally {
+      setIsUpdatingVisibility(false)
+    }
+  }
+
   return (
     <PortalShell title="Leaderboard" session={session}>
       <div className="min-h-screen bg-bg-soft px-4 md:px-6 py-6 space-y-6">
@@ -56,6 +83,22 @@ export default function PortalLeaderboardPage() {
           </div>
         )}
 
+        <div className="rounded-2xl border border-line-soft bg-white px-4 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-display text-base font-bold text-text-strong">Tampilkan Nama di Leaderboard</h2>
+              <p className="mt-1 text-sm text-text-muted">
+                Secara default nama Anda disamarkan. Aktifkan agar nama uppercase Anda tampil di leaderboard publik.
+              </p>
+            </div>
+            <Switch
+              checked={session?.publicNameVisible ?? false}
+              disabled={!session || isUpdatingVisibility}
+              onCheckedChange={handleVisibilityChange}
+            />
+          </div>
+        </div>
+
         <div className="flex gap-2 flex-wrap">
           {months.map((month) => (
             <button
@@ -74,7 +117,7 @@ export default function PortalLeaderboardPage() {
               <div className="w-12 h-12 rounded-full bg-pink-cloud flex items-center justify-center mx-auto mb-4">
                 <Icon className="w-6 h-6 text-pink-hot" />
               </div>
-              <p className="font-display text-lg font-bold">{top3[index]?.maskedAlias ?? '-'}</p>
+              <p className="font-display text-lg font-bold">{top3[index]?.displayName ?? '-'}</p>
               <p className={`text-sm mt-1 ${index === 0 ? 'text-white/70' : 'text-text-muted'}`}>{top3[index]?.earnedStamps ?? 0} stamp</p>
             </div>
           ))}
@@ -95,7 +138,7 @@ export default function PortalLeaderboardPage() {
               <div key={`${row.rank}-${row.monthKey}`} className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-4">
                   <span className="w-10 h-10 rounded-full bg-pink-cloud flex items-center justify-center text-sm font-semibold text-pink-hot">{row.rank}</span>
-                  <span className="font-medium text-text-strong">{row.maskedAlias}</span>
+                  <span className="font-medium text-text-strong">{row.displayName}</span>
                 </div>
                 <div className="flex items-center gap-1 text-text-muted">
                   <Star className="w-4 h-4" />

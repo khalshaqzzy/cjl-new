@@ -129,9 +129,9 @@ Customer laundry yang:
 - Satuan berat disimpan minimal 2 digit desimal, tetapi UI default menampilkan 1 digit desimal.
 - Berat order wajib diisi untuk semua order, meskipun tidak semua layanan menggunakan harga per kg.
 - Harga `Setrika` dihitung dari berat order yang sama.
-- Receipt image dikirim melalui WhatsApp, tetapi backend hanya menyimpan receipt source snapshot di MongoDB dan merender output final saat dibutuhkan.
+- Receipt dikirim melalui WhatsApp dan dapat diunduh sebagai PDF dari surface yang diizinkan; backend hanya menyimpan receipt source snapshot di MongoDB dan merender output final saat dibutuhkan.
 - Public portal tidak menampilkan nominal uang pada monthly summary.
-- Untuk menjaga privasi akibat login yang lemah, public portal default juga tidak perlu menonjolkan nominal uang pada halaman akun customer; nominal resmi tetap tersedia di receipt WhatsApp dan admin.
+- Untuk menjaga privasi akibat login yang lemah, public portal default tetap tidak menonjolkan nominal uang pada dashboard/list views; nominal resmi tersedia pada halaman detail order terautentikasi dan PDF receipt, bukan pada direct status token page.
 - Void/cancel didukung lintas bulan; jika koreksi menyentuh bulan leaderboard yang sudah diarsipkan, sistem harus meregenerasi snapshot bulan terkait dengan audit trail yang jelas.
 - Order yang di-void memakai state internal `Voided`, tetapi customer-facing status atau halaman order harus tampil sebagai `Cancelled`, bukan `Voided`.
 - Minggu laporan dimulai Senin 00:00 dan berakhir Minggu 23:59:59 Asia/Jakarta.
@@ -270,13 +270,13 @@ Rules:
    - notification stays visible in admin outbox as pending or failed,
    - admin can resend via bot,
   - admin can download a rendered receipt on demand,
-   - admin can copy prepared message text and send manually,
+   - admin can open fallback WhatsApp manual setelah delivery gagal; untuk order confirmation fallback ini hanya tersedia jika receipt sudah siap diunduh,
    - admin can mark the notification as manually resolved with note after operational handling.
 12. Successful WhatsApp confirmation message includes:
    - customer-friendly message,
    - order code,
    - order created timestamp,
-  - receipt image rendered on demand,
+  - receipt rendered on demand and downloadable as PDF from authorized surfaces,
    - points earned,
    - points redeemed if any,
    - current point balance,
@@ -298,6 +298,7 @@ Rules:
    - order code,
    - timestamp pesanan masuk,
    - timestamp pesanan selesai.
+6. Jika delivery WA `order_done` gagal, order tetap `Done` dan admin outbox menyediakan fallback WhatsApp manual tanpa mengubah ulang business state order.
 
 ### 10.6 Void/cancel confirmed order
 
@@ -393,7 +394,8 @@ Public leaderboard supports:
 - current month top 50 customers,
 - archived top 20 customers for each completed month,
 - month selector for past completed months,
-- privacy-safe customer aliases instead of full PII.
+- privacy-safe customer aliases by default,
+- customer opt-in untuk menampilkan nama uppercase penuh mereka pada leaderboard publik.
 
 ## 11. Landing Page Requirements
 
@@ -465,8 +467,8 @@ Content goals:
 - Outbox lists queued, sent, failed, and manually resolved notification records.
 - Failed order-confirmation notifications must expose:
   - resend via bot,
-- download rendered receipt,
-  - copy prepared message text for manual sending,
+  - download rendered receipt,
+  - manual WhatsApp fallback setelah delivery gagal dan receipt siap,
   - latest failure reason,
   - timestamps of attempts.
 - Orders remain valid business records even if notification delivery is pending or failed.
@@ -536,6 +538,7 @@ Notes:
 - `phone_normalized` is the unique business key.
 - `current_points_balance` is a derived but stored convenience field backed by ledger.
 - Customer identity changes must preserve the same `customer_id`.
+- Customer stores a `public_name_visible` preference that controls leaderboard display only.
 
 ### 13.2 Service catalog item
 
@@ -692,7 +695,7 @@ Core fields:
 - Trim leading/trailing whitespace.
 - Collapse repeated spaces.
 - Case-insensitive comparison for login matching.
-- Stored display name remains exactly as entered by admin after trimming.
+- Stored display name uses trimmed uppercase formatting.
 
 ### 14.3 Order code
 
@@ -793,9 +796,9 @@ Tie-break order:
 ### 14.11 Public leaderboard privacy rules
 
 - Public leaderboard must not show phone numbers.
-- Public leaderboard should not show fully exposed customer identity.
-- Use a privacy-safe alias, for example first name plus masked remainder or initial.
-- Alias generation must be deterministic per month snapshot.
+- Public leaderboard should hide customer identity by default.
+- Use a privacy-safe alias, for example first name plus masked remainder or initial, unless the customer has explicitly opted in to show their uppercase name.
+- Rank and earned-stamp ordering remain snapshot-backed; display name may resolve from live customer preference at read time.
 
 ### 14.12 Void rules
 
@@ -835,12 +838,13 @@ Must include:
 - new current point balance,
 - direct status link,
 - receipt image rendered on demand.
+- receipt PDF downloadable from authenticated portal order detail and admin notification surfaces.
 
 Failure handling:
 
 - If receipt rendering or media delivery fails after order confirmation, the order remains valid and stays `Active`.
 - The related notification must enter a visible pending/failed outbox state for operator follow-up.
-- Admin must be able to resend via bot, download the rendered receipt on demand, copy prepared message text, and mark the case manually resolved with note.
+- Admin must be able to resend via bot, download the rendered receipt on demand, open a manual WhatsApp fallback when delivery has failed, and mark the case manually resolved with note.
 
 ### 15.3 Order done WA
 
@@ -861,7 +865,7 @@ Must include:
 - Message status must be trackable as `queued`, `sent`, `failed`, or equivalent.
 - Receipt render status and message delivery status must be tracked separately for order-confirmed notifications.
 - Failed or pending confirmation notifications must remain visible in admin outbox until successfully sent or manually resolved.
-- Admin outbox must support resend via bot, download rendered receipt, copy prepared message text, and manual resolution note.
+- Admin outbox must support resend via bot, download rendered receipt, manual WhatsApp fallback on failed sends, and manual resolution note.
 - Order business state must not roll back only because notification rendering or delivery failed.
 - WhatsApp session disconnect should surface operationally in admin monitoring/logs.
 - Session/auth artifacts for the WhatsApp bot must be persisted outside ephemeral container storage.
@@ -914,9 +918,9 @@ Must include:
 ### 16.7 Data exposure policy
 
 - Public customer portal must avoid exposing unrelated customer data.
-- Leaderboards must use masked aliases.
+- Leaderboards must use masked aliases by default, with explicit customer opt-in required before a full uppercase name may be shown publicly.
 - Monthly summary must not contain money values.
-- Receipt source snapshots must remain backend-only and must not be exposed directly to public clients.
+- Receipt source snapshots must remain backend-only; only rendered PDF output for authorized order detail views may be exposed to public clients.
 
 ## 17. Reporting and Analytics Requirements
 
@@ -990,6 +994,8 @@ Order history should prioritize:
 
 Money values in portal are optional and should remain deprioritized in v1 because customer auth is intentionally weak. Official monetary proof is the receipt snapshot delivered by WhatsApp and the admin system of record.
 
+Authenticated portal order detail may still present itemized prices, subtotal, discount, total, and PDF receipt download for the customer’s own order. Direct status token pages remain non-monetary summary views.
+
 ## 19. Operational Edge Cases
 
 ### 19.1 Duplicate registration attempt
@@ -1035,7 +1041,7 @@ Money values in portal are optional and should remain deprioritized in v1 becaus
 - Business transaction remains committed if order creation succeeded.
 - Notification record is marked pending/failed in outbox and remains retryable.
 - Admin should be able to identify whether failure happened at receipt render or delivery stage.
-- Admin must have resend, download receipt, copy message, and manual resolution options.
+- Admin must have resend, download receipt, manual WhatsApp fallback, and manual resolution options.
 
 ### 19.10 Order done after month changes
 
@@ -1155,6 +1161,7 @@ Money values in portal are optional and should remain deprioritized in v1 becaus
 - Customer can login with normalized phone + name.
 - Customer sees only their own points, orders, and history.
 - Monthly summary contains no money values.
+- Authenticated order detail shows itemized prices/totals and supports PDF receipt download for the customer’s own order.
 - Direct order link shows only the targeted order.
 - Cancelled/voided orders are shown to customers as `Cancelled`, never `Voided`.
 
@@ -1163,7 +1170,7 @@ Money values in portal are optional and should remain deprioritized in v1 becaus
 - Current month leaderboard shows top 50 by earned stamps.
 - Completed months show archived top 20.
 - Admin adjustments and redemption deductions do not affect leaderboard scores.
-- Leaderboard identity is privacy-safe.
+- Leaderboard identity is privacy-safe by default and only shows full uppercase customer names after explicit opt-in.
 
 ### 22.7 Security
 
@@ -1203,7 +1210,7 @@ The implementation must explicitly cover at minimum:
 12. WhatsApp retry/idempotency so duplicate sends do not create duplicate business events.
 13. Login abuse throttling and generic error handling.
 14. Cross-month void on an archived leaderboard month triggers snapshot rebuild with audit/version trail.
-15. Receipt render failure or WhatsApp media send failure appears in outbox with resend, download receipt, copy message, and manual resolve fallback.
+15. Receipt render failure or WhatsApp media send failure appears in outbox with resend, download receipt, manual WhatsApp fallback, and manual resolve fallback.
 16. Customer identity edit preserves history, enforces unique normalized phone, and resends updated account-information WA.
 
 ## 24. Suggested Implementation Notes

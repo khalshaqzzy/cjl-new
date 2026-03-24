@@ -64,11 +64,9 @@ export function LeaderboardTeaser({ rows }: LeaderboardTeaserProps) {
 
   return (
     <section id="leaderboard" className="py-28 bg-bg-soft relative overflow-hidden">
-      {/* Subtle background blobs */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[300px] bg-pink-hot/5 blur-[120px] rounded-full pointer-events-none" />
 
       <div className="container mx-auto px-6 lg:px-12 relative z-10">
-        {/* Header */}
         <div className="text-center mb-16" ref={headerRef}>
           <div className={cn('reveal inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-pink-soft bg-pink-cloud text-pink-hot text-xs font-semibold uppercase tracking-wider mb-6', headerVisible && 'visible')}>
             <Flame className="w-3 h-3" />
@@ -84,7 +82,6 @@ export function LeaderboardTeaser({ rows }: LeaderboardTeaserProps) {
           </p>
         </div>
 
-        {/* Podium */}
         <div className="max-w-3xl mx-auto" ref={podiumRef}>
           <div className="flex items-end justify-center gap-4 mb-10">
             {podiumConfig.map((config) => {
@@ -100,7 +97,7 @@ export function LeaderboardTeaser({ rows }: LeaderboardTeaserProps) {
                       <IconComp className={`w-5 h-5 ${config.iconColor}`} />
                     </div>
                     <p className={`font-display font-bold text-xl ${config.nameColor} leading-tight`}>
-                      {entry?.maskedAlias ?? '—'}
+                      {entry?.displayName ?? '-'}
                     </p>
                     <p className={`text-sm mt-1 ${config.subColor}`}>
                       {entry?.earnedStamps ?? 0} stamp
@@ -115,18 +112,17 @@ export function LeaderboardTeaser({ rows }: LeaderboardTeaserProps) {
             })}
           </div>
 
-          {/* Remaining top list */}
           <div className="bg-white border border-line-soft rounded-3xl overflow-hidden mb-8 shadow-sm">
-            {rows.slice(3, 8).map((entry, i) => (
+            {rows.slice(3, 8).map((entry, index) => (
               <div
-                key={entry.maskedAlias}
+                key={`${entry.monthKey}-${entry.rank}`}
                 className="flex items-center gap-4 px-6 py-4 border-b border-line-soft last:border-0 hover:bg-pink-cloud/40 transition-colors"
               >
                 <span className="font-display font-bold text-text-muted w-8 text-center text-sm">
-                  #{i + 4}
+                  #{index + 4}
                 </span>
                 <div className="flex-1">
-                  <p className="font-semibold text-text-strong text-sm">{entry.maskedAlias}</p>
+                  <p className="font-semibold text-text-strong text-sm">{entry.displayName}</p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Trophy className="w-3.5 h-3.5 text-pink-hot" />

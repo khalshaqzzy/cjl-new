@@ -8,6 +8,7 @@ import {
   adminLoginInputSchema,
   confirmOrderInputSchema,
   createCustomerInputSchema,
+  customerNameVisibilityInputSchema,
   customerLoginInputSchema,
   dashboardWindowSchema,
   manualPointAdjustmentInputSchema,
@@ -39,6 +40,7 @@ import {
   listNotifications,
   markNotificationManualResolved,
   markOrderDone,
+  openManualWhatsappFallback,
   resendNotification,
   updateCustomerIdentity,
   updateSettings,
@@ -53,11 +55,13 @@ import {
   getLandingData,
   getLeaderboardByMonth,
   getPublicDashboard,
+  getCustomerOrderReceipt,
   listCustomerOrders,
   listCustomerPointLedger,
   listCustomerRedemptions,
   loginCustomer,
-  getCustomerOrderDetail
+  getCustomerOrderDetail,
+  updateCustomerNameVisibility
 } from "./services/public.js"
 import type { AdminDocument, SettingsDocument } from "./types.js"
 
@@ -69,6 +73,7 @@ declare module "express-session" {
       customerId: string
       name: string
       phone: string
+      publicNameVisible: boolean
     }
   }
 }
@@ -341,9 +346,13 @@ export const createApp = () => {
     res.json(await markNotificationManualResolved(getParam(req.params.id), note))
   }))
 
+  app.post("/v1/admin/notifications/:id/manual-whatsapp", requireAdmin, asyncRoute(async (req, res) => {
+    res.json(await openManualWhatsappFallback(getParam(req.params.id)))
+  }))
+
   app.get("/v1/admin/notifications/:id/receipt", requireAdmin, asyncRoute(async (req, res) => {
-    res.setHeader("Content-Type", "text/plain; charset=utf-8")
-    res.setHeader("Content-Disposition", `attachment; filename="receipt-${getParam(req.params.id)}.txt"`)
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `attachment; filename="receipt-${getParam(req.params.id)}.pdf"`)
     res.send(await downloadNotificationReceipt(getParam(req.params.id)))
   }))
 
@@ -400,6 +409,13 @@ export const createApp = () => {
     res.json(await getCustomerOrderDetail(req.session.customerUserId!, getParam(req.params.id)))
   }))
 
+  app.get("/v1/public/me/orders/:id/receipt", requireCustomer, asyncRoute(async (req, res) => {
+    const orderId = getParam(req.params.id)
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `attachment; filename="receipt-${orderId}.pdf"`)
+    res.send(await getCustomerOrderReceipt(req.session.customerUserId!, orderId))
+  }))
+
   app.get("/v1/public/me/points", requireCustomer, asyncRoute(async (req, res) => {
     res.json(await listCustomerPointLedger(req.session.customerUserId!))
   }))
@@ -411,6 +427,13 @@ export const createApp = () => {
   app.get("/v1/public/me/monthly-summary", requireCustomer, asyncRoute(async (req, res) => {
     const dashboard = await getPublicDashboard(req.session.customerUserId!)
     res.json(dashboard.monthlySummary)
+  }))
+
+  app.patch("/v1/public/me/preferences/name-visibility", requireCustomer, asyncRoute(async (req, res) => {
+    const body = customerNameVisibilityInputSchema.parse(req.body)
+    const session = await updateCustomerNameVisibility(req.session.customerUserId!, body)
+    req.session.customerProfile = session
+    res.json({ session })
   }))
 
   app.get("/v1/public/leaderboard", asyncRoute(async (req, res) => {

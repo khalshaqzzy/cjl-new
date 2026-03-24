@@ -82,7 +82,7 @@ export default function PublicLeaderboardPage() {
                 <div className="w-12 h-12 rounded-full bg-pink-cloud flex items-center justify-center mx-auto mb-4">
                   <Icon className="w-6 h-6 text-pink-hot" />
                 </div>
-                <p className="font-display text-xl font-bold">{top3[index]?.maskedAlias ?? '-'}</p>
+                <p className="font-display text-xl font-bold">{top3[index]?.displayName ?? '-'}</p>
                 <p className={`text-sm mt-1 ${index === 0 ? 'text-white/70' : 'text-text-muted'}`}>{top3[index]?.earnedStamps ?? 0} stamp</p>
               </div>
             ))}
@@ -107,7 +107,7 @@ export default function PublicLeaderboardPage() {
                   <div key={`${row.rank}-${row.monthKey}`} className="flex items-center justify-between p-4 hover:bg-bg-soft transition-colors">
                     <div className="flex items-center gap-4">
                       <span className="w-10 h-10 rounded-full bg-pink-cloud flex items-center justify-center text-sm font-semibold text-pink-hot">{row.rank}</span>
-                      <span className="font-medium text-text-strong">{row.maskedAlias}</span>
+                      <span className="font-medium text-text-strong">{row.displayName}</span>
                     </div>
                     <div className="flex items-center gap-1 text-text-muted">
                       <Star className="w-4 h-4" />

@@ -17,6 +17,7 @@ interface PortalShellProps {
     customerId: string
     name: string
     phone: string
+    publicNameVisible?: boolean
   } | null
 }
 

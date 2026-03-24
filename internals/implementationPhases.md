@@ -14,6 +14,10 @@ The repo now has:
 - primary admin and public product flows wired to backend APIs
 - transaction-backed core admin mutations for customer create, order confirm, order done, and void flows
 - in-process outbox worker with separate receipt render vs delivery state for confirmation notifications
+- uppercase customer-name normalization plus repo-safe startup backfill for legacy customer/order/notification name snapshots
+- PDF receipt downloads for admin notification fallback and authenticated portal order detail
+- manual WhatsApp fallback for failed notification sends with admin outbox action support
+- customer-controlled public leaderboard name visibility with masked-by-default display
 - expanded admin dashboard reporting payload and UI
 - root-level Docker Compose topology for local full-stack runtime
 - backend integration coverage and frontend end-to-end coverage that pass from root test commands
@@ -48,6 +52,7 @@ Status: complete for current scope
 - settings now manage business profile, service prices, and message template blocks
 - admin logout now invalidates backend session instead of only navigating client-side
 - notification outbox UI now follows canonical backend fields and receipt download flow
+- notification outbox now supports manual WhatsApp fallback for failed sends and receipt download visibility beyond failed-only cards
 - admin dashboard now exposes the full PRD metric set plus top-customer visibility
 - customer list/search now relies on backend querying and machine-sort fields instead of brittle client-only filtering
 - POS now surfaces duplicate-phone selection feedback, preview failures, and post-confirmation shortcuts
@@ -61,6 +66,8 @@ Status: complete for current scope
 - monthly summary UI now surfaces the full non-monetary PRD fields returned by backend
 - public non-landing pages no longer rely on `mock-data` presenter helpers for runtime status rendering
 - portal and direct-status order detail flows now surface cancellation timestamp and cancellation reason when relevant
+- authenticated portal order detail now exposes receipt-style itemized pricing plus PDF receipt download
+- public leaderboard and landing teaser now respect masked-by-default names with portal-controlled opt-in visibility
 - public login now redirects authenticated customers directly to the portal and protected shells render a visible session-check state
 
 ### Phase 5: Post-Integration Stabilization

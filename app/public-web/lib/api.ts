@@ -1,6 +1,7 @@
 "use client"
 
 import type {
+  CustomerOrderDetail,
   DirectOrderStatus,
   LandingResponse,
   LeaderboardRow,
@@ -30,6 +31,26 @@ const apiFetch = async <T>(path: string, init?: RequestInit) => {
   return (await response.json()) as T
 }
 
+const apiFetchBlob = async (path: string, init?: RequestInit) => {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: {
+      ...(init?.headers ?? {})
+    }
+  })
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null
+    throw new Error(payload?.message ?? "Request gagal")
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: response.headers.get("content-disposition")?.match(/filename=\"?([^"]+)\"?/)?.[1] ?? "receipt.pdf"
+  }
+}
+
 export const publicApi = {
   getLanding: () => apiFetch<LandingResponse>("/v1/public/landing"),
   login: (phone: string, name: string) =>
@@ -41,11 +62,12 @@ export const publicApi = {
   getSession: () =>
     apiFetch<{
       authenticated: boolean
-      session: { customerId: string; name: string; phone: string } | null
+      session: { customerId: string; name: string; phone: string; publicNameVisible: boolean } | null
     }>("/v1/public/auth/session"),
   getDashboard: () => apiFetch<PublicDashboardResponse>("/v1/public/me/dashboard"),
   listOrders: () => apiFetch<OrderHistoryItem[]>("/v1/public/me/orders"),
-  getOrderDetail: (orderId: string) => apiFetch<OrderHistoryItem>(`/v1/public/me/orders/${orderId}`),
+  getOrderDetail: (orderId: string) => apiFetch<CustomerOrderDetail>(`/v1/public/me/orders/${orderId}`),
+  getOrderReceipt: (orderId: string) => apiFetchBlob(`/v1/public/me/orders/${orderId}/receipt`),
   listPoints: () => apiFetch<PointLedgerItem[]>("/v1/public/me/points"),
   listRedemptions: () =>
     apiFetch<Array<{ entryId: string; redeemedPoints: number; freeWasherUnits: number; createdAtLabel: string; relatedOrderCode?: string }>>("/v1/public/me/redemptions"),
@@ -53,6 +75,14 @@ export const publicApi = {
   getLeaderboard: (month?: string) =>
     apiFetch<{ rows: LeaderboardRow[]; availableMonths: Array<{ key: string; label: string; isCurrent: boolean }> }>(
       `/v1/public/leaderboard${month ? `?month=${encodeURIComponent(month)}` : ""}`
+    ),
+  updateNameVisibility: (publicNameVisible: boolean) =>
+    apiFetch<{ session: { customerId: string; name: string; phone: string; publicNameVisible: boolean } }>(
+      "/v1/public/me/preferences/name-visibility",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ publicNameVisible })
+      }
     ),
   getDirectStatus: (token: string) => apiFetch<DirectOrderStatus>(`/v1/public/status/${token}`)
 }

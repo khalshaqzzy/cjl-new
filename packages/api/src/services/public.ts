@@ -1,4 +1,6 @@
 import type {
+  CustomerNameVisibilityInput,
+  CustomerOrderDetail,
   LandingResponse,
   LeaderboardRow,
   PublicDashboardResponse
@@ -14,7 +16,7 @@ import type {
   OrderDocument,
   PointLedgerDocument
 } from "../types.js"
-import { getSettingsDocument, mapOrderHistory, mapPointLedger } from "./common.js"
+import { buildOrderReceiptPdf, getSettingsDocument, mapCustomerOrderDetail, mapOrderHistory, mapPointLedger } from "./common.js"
 
 const db = () => getDatabase()
 
@@ -39,7 +41,10 @@ const calculateMonthlySummary = async (customerId: string) => {
 export const getLandingData = async (): Promise<LandingResponse> => {
   const settings = await getSettingsDocument()
   const currentMonth = nowJakarta().toFormat("yyyy-MM")
-  const leaderboardTeaser = await computeLeaderboardRows(currentMonth, 5)
+  const leaderboardTeaser = await resolveLeaderboardDisplayRows(
+    currentMonth,
+    await computeLeaderboardRows(currentMonth, 5)
+  )
   return {
     laundryInfo: {
       name: settings.business.laundryName,
@@ -69,12 +74,7 @@ export const getLandingData = async (): Promise<LandingResponse> => {
         answer: "Bisa, lewat link status order khusus yang dikirim via WhatsApp."
       }
     ],
-    leaderboardTeaser: leaderboardTeaser.map((row) => ({
-      rank: row.rank,
-      maskedAlias: row.maskedAlias,
-      earnedStamps: row.earnedStamps,
-      monthKey: currentMonth
-    }))
+    leaderboardTeaser
   }
 }
 
@@ -90,7 +90,8 @@ export const loginCustomer = async (phone: string, name: string) => {
   return {
     customerId: customer._id,
     name: customer.name,
-    phone: customer.phone
+    phone: customer.phone,
+    publicNameVisible: customer.publicNameVisible
   }
 }
 
@@ -106,7 +107,8 @@ export const getPublicDashboard = async (customerId: string): Promise<PublicDash
     session: {
       customerId: customer._id,
       name: customer.name,
-      phone: customer.phone
+      phone: customer.phone,
+      publicNameVisible: customer.publicNameVisible
     },
     stampBalance: {
       currentPoints: customer.currentPoints,
@@ -162,7 +164,16 @@ export const getCustomerOrderDetail = async (customerId: string, orderId: string
   if (!order) {
     throw new Error("Order tidak ditemukan")
   }
-  return mapOrderHistory(order)
+  return mapCustomerOrderDetail(order)
+}
+
+export const getCustomerOrderReceipt = async (customerId: string, orderId: string) => {
+  const order = await db().collection<OrderDocument>("orders").findOne({ _id: orderId, customerId })
+  if (!order) {
+    throw new Error("Order tidak ditemukan")
+  }
+
+  return buildOrderReceiptPdf(orderId)
 }
 
 export const listCustomerPointLedger = async (customerId: string) => {
@@ -184,13 +195,42 @@ export const listCustomerRedemptions = async (customerId: string) => {
   }))
 }
 
+const resolveLeaderboardDisplayRows = async (
+  monthKey: string,
+  rows: Array<{
+    rank: number
+    customerId: string
+    maskedAlias: string
+    earnedStamps: number
+  }>
+): Promise<LeaderboardRow[]> => {
+  const customerIds = rows.map((row) => row.customerId)
+  const customers = customerIds.length > 0
+    ? await db().collection<CustomerDocument>("customers").find({
+        _id: { $in: customerIds }
+      }).toArray()
+    : []
+
+  const customerMap = new Map(customers.map((customer) => [customer._id, customer]))
+
+  return rows.map((row) => {
+    const customer = customerMap.get(row.customerId)
+    const showName = customer?.publicNameVisible === true && Boolean(customer.name)
+    return {
+      rank: row.rank,
+      displayName: showName ? customer!.name : row.maskedAlias,
+      isMasked: !showName,
+      earnedStamps: row.earnedStamps,
+      monthKey
+    }
+  })
+}
+
 export const getLeaderboardByMonth = async (monthKey: string): Promise<LeaderboardRow[]> =>
-  (await computeLeaderboardRows(monthKey, monthKey === nowJakarta().toFormat("yyyy-MM") ? 50 : 20)).map((row) => ({
-    rank: row.rank,
-    maskedAlias: row.maskedAlias,
-    earnedStamps: row.earnedStamps,
-    monthKey
-  }))
+  resolveLeaderboardDisplayRows(
+    monthKey,
+    await computeLeaderboardRows(monthKey, monthKey === nowJakarta().toFormat("yyyy-MM") ? 50 : 20)
+  )
 
 export const getAvailableLeaderboardMonths = async () => {
   const [orders, snapshots] = await Promise.all([
@@ -208,6 +248,33 @@ export const getAvailableLeaderboardMonths = async () => {
     label: monthLabel(key),
     isCurrent: key === nowJakarta().toFormat("yyyy-MM")
   }))
+}
+
+export const updateCustomerNameVisibility = async (
+  customerId: string,
+  input: CustomerNameVisibilityInput
+) => {
+  await db().collection<CustomerDocument>("customers").updateOne(
+    { _id: customerId },
+    {
+      $set: {
+        publicNameVisible: input.publicNameVisible,
+        updatedAt: new Date().toISOString()
+      }
+    }
+  )
+
+  const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: customerId })
+  if (!customer) {
+    throw new Error("Pelanggan tidak ditemukan")
+  }
+
+  return {
+    customerId: customer._id,
+    name: customer.name,
+    phone: customer.phone,
+    publicNameVisible: customer.publicNameVisible
+  }
 }
 
 export const getDirectOrderStatus = async (token: string) => {

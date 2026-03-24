@@ -19,7 +19,7 @@ import { calculateOrderPreview } from "../lib/calculator.js"
 import { formatCurrency } from "../lib/formatters.js"
 import { createId, createOpaqueToken, createOrderCode } from "../lib/ids.js"
 import { buildMaskedAlias, rebuildArchivedLeaderboard } from "../lib/leaderboard.js"
-import { normalizeName, normalizePhone } from "../lib/normalization.js"
+import { normalizeName, normalizePhone, normalizeWhatsappPhone } from "../lib/normalization.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel, monthKeyFromIso, nowJakarta } from "../lib/time.js"
 import type {
   AdminDocument,
@@ -34,6 +34,7 @@ import type {
 } from "../types.js"
 import {
   buildCustomerSearchFilter,
+  buildOrderReceiptPdf,
   buildOrderReceipt,
   buildPreparedMessage,
   getSettingsDocument,
@@ -45,6 +46,7 @@ import {
   mapPointLedger,
   markNotificationForRetry,
   markNotificationManualResolved as markNotificationManualResolvedRecord,
+  mapCustomerOrderDetail,
   queueNotification,
   saveAuditLog
 } from "./common.js"
@@ -320,13 +322,15 @@ export const createCustomer = async (input: CreateCustomerInput) => {
 
   return withMongoTransaction(async (session) => {
     const now = new Date().toISOString()
+    const customerName = input.name.trim().toUpperCase()
     const customer: CustomerDocument = {
       _id: createId("customer"),
-      name: input.name.trim(),
+      name: customerName,
       normalizedName: normalizeName(input.name),
       phone: normalizedPhone,
       normalizedPhone,
       phoneDigits: phoneDigits(input.phone),
+      publicNameVisible: false,
       currentPoints: 0,
       createdAt: now,
       updatedAt: now
@@ -337,7 +341,7 @@ export const createCustomer = async (input: CreateCustomerInput) => {
 
     const settings = await getSettingsDocument(session)
     const preparedMessage = await buildPreparedMessage("welcome", {
-      customerName: customer.name,
+      customerName,
       customerPhone: customer.phone,
       laundryName: settings.business.laundryName
     }, session)
@@ -407,11 +411,12 @@ export const updateCustomerIdentity = async (customerId: string, input: UpdateCu
 
   await withMongoTransaction(async (session) => {
     const updatedAt = new Date().toISOString()
+    const customerName = input.name.trim().toUpperCase()
     await db().collection<CustomerDocument>("customers").updateOne(
       { _id: customerId },
       {
         $set: {
-          name: input.name.trim(),
+          name: customerName,
           normalizedName: normalizeName(input.name),
           phone: normalizedPhone,
           normalizedPhone,
@@ -426,7 +431,7 @@ export const updateCustomerIdentity = async (customerId: string, input: UpdateCu
 
     const settings = await getSettingsDocument(session)
     const preparedMessage = await buildPreparedMessage("account_info", {
-      customerName: input.name.trim(),
+      customerName,
       customerPhone: normalizedPhone,
       laundryName: settings.business.laundryName
     }, session)
@@ -434,7 +439,7 @@ export const updateCustomerIdentity = async (customerId: string, input: UpdateCu
     await queueNotification({
       _id: createId("notification"),
       customerId,
-      customerName: input.name.trim(),
+      customerName,
       destinationPhone: normalizedPhone,
       eventType: "account_info",
       renderStatus: "not_required",
@@ -866,7 +871,54 @@ export const markNotificationManualResolved = async (notificationId: string, not
   return mapNotification(notification)
 }
 
-export const downloadNotificationReceipt = buildOrderReceipt
+export const downloadNotificationReceipt = async (notificationId: string) => {
+  const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
+  if (!notification) {
+    throw new Error("Notifikasi tidak ditemukan")
+  }
+
+  if (notification.eventType !== "order_confirmed" || !notification.orderId) {
+    throw new Error("Receipt tidak tersedia")
+  }
+
+  return buildOrderReceiptPdf(notification.orderId)
+}
+
+export const openManualWhatsappFallback = async (notificationId: string) => {
+  const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
+  if (!notification) {
+    throw new Error("Notifikasi tidak ditemukan")
+  }
+
+  if (notification.deliveryStatus !== "failed") {
+    throw new Error("Manual WhatsApp hanya tersedia untuk notifikasi gagal")
+  }
+
+  if (notification.eventType !== "order_done" && notification.eventType !== "order_confirmed") {
+    throw new Error("Manual WhatsApp tidak tersedia untuk notifikasi ini")
+  }
+
+  if (notification.eventType === "order_confirmed" && notification.renderStatus !== "ready") {
+    throw new Error("Receipt belum siap untuk fallback WhatsApp manual")
+  }
+
+  const note = "Fallback WhatsApp manual dibuka oleh admin."
+  await markNotificationManualResolvedRecord(notificationId, note)
+  await saveAuditLog("notification.manual_whatsapp_opened", "notification", notificationId, {
+    eventType: notification.eventType,
+    orderCode: notification.orderCode
+  })
+
+  const updated = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
+  if (!updated) {
+    throw new Error("Notifikasi tidak ditemukan")
+  }
+
+  return {
+    notification: mapNotification(updated),
+    whatsappUrl: `https://wa.me/${normalizeWhatsappPhone(updated.destinationPhone)}?text=${encodeURIComponent(updated.preparedMessage)}`
+  }
+}
 
 export const getNotificationPreparedMessage = async (notificationId: string) => {
   const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })

@@ -30,6 +30,7 @@ import {
   Phone,
   User,
   MessageSquare,
+  MessageCircle,
   FileImage,
 } from "lucide-react"
 import { adminApi } from "@/lib/api"
@@ -78,6 +79,7 @@ function NotificationCard({
   onDownload,
   onCopy,
   onPreview,
+  onManualWhatsapp,
   onManualResolve,
   busyAction,
 }: {
@@ -86,8 +88,9 @@ function NotificationCard({
   onDownload: () => void
   onCopy: () => void
   onPreview: () => void
+  onManualWhatsapp: () => void
   onManualResolve: () => void
-  busyAction: "resend" | "download" | "copy" | "preview" | "manual" | null
+  busyAction: "resend" | "download" | "copy" | "preview" | "whatsapp" | "manual" | null
 }) {
   const status = statusConfig[notification.deliveryStatus]
   const StatusIcon = status.icon
@@ -187,6 +190,21 @@ function NotificationCard({
           )}
         </div>
 
+        {notification.receiptAvailable && notification.deliveryStatus !== "failed" && (
+          <div className="mb-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl w-full"
+              onClick={onDownload}
+              disabled={busyAction !== null}
+            >
+              {busyAction === "download" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+              {busyAction === "download" ? "Menyiapkan..." : "Download Receipt"}
+            </Button>
+          </div>
+        )}
+
         {/* Actions */}
         {notification.deliveryStatus === "failed" && (
           <div className="flex flex-wrap gap-2">
@@ -200,7 +218,7 @@ function NotificationCard({
               {busyAction === "resend" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
               {busyAction === "resend" ? "Memproses..." : "Kirim Ulang"}
             </Button>
-            {notification.renderStatus === "ready" && (
+            {notification.receiptAvailable && (
               <Button
                 variant="outline"
                 size="sm"
@@ -209,6 +227,18 @@ function NotificationCard({
                 disabled={busyAction !== null}
               >
                 {busyAction === "download" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              </Button>
+            )}
+            {notification.manualWhatsappAvailable && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl flex-1"
+                onClick={onManualWhatsapp}
+                disabled={busyAction !== null}
+              >
+                {busyAction === "whatsapp" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <MessageCircle className="h-4 w-4 mr-1" />}
+                {busyAction === "whatsapp" ? "Membuka..." : "WhatsApp"}
               </Button>
             )}
             <Button
@@ -318,7 +348,7 @@ export default function NotifikasiPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [activeAction, setActiveAction] = useState<{
     notificationId: string
-    action: "resend" | "download" | "copy" | "preview" | "manual"
+    action: "resend" | "download" | "copy" | "preview" | "whatsapp" | "manual"
   } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -413,6 +443,21 @@ export default function NotifikasiPage() {
     }
   }
 
+  const handleManualWhatsapp = async (notification: NotificationRecord) => {
+    setActiveAction({ notificationId: notification.notificationId, action: "whatsapp" })
+    try {
+      const payload = await adminApi.openManualWhatsappFallback(notification.notificationId)
+      setNotifications((prev) =>
+        prev.map((current) =>
+          current.notificationId === notification.notificationId ? payload.notification : current
+        )
+      )
+      window.open(payload.whatsappUrl, "_blank", "noopener,noreferrer")
+    } finally {
+      setActiveAction(null)
+    }
+  }
+
   return (
     <AdminShell
       title="Notifikasi"
@@ -484,6 +529,7 @@ export default function NotifikasiPage() {
                     onDownload={() => handleDownload(notification)}
                     onCopy={() => handleCopy(notification)}
                     onPreview={() => handlePreviewMessage(notification)}
+                    onManualWhatsapp={() => handleManualWhatsapp(notification)}
                     onManualResolve={() => {
                       setSelectedNotification(notification)
                       setShowManualResolveSheet(true)

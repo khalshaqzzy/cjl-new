@@ -1,5 +1,6 @@
 import type { ClientSession, Filter } from "mongodb"
 import type {
+  CustomerOrderDetail,
   CustomerProfile,
   NotificationRecord,
   OrderHistoryItem,
@@ -10,7 +11,8 @@ import { getDatabase } from "../db.js"
 import { createId } from "../lib/ids.js"
 import { formatCurrency } from "../lib/formatters.js"
 import { buildReceiptText, compileTemplate, shouldForceNotificationFailure } from "../lib/notifications.js"
-import { normalizeName } from "../lib/normalization.js"
+import { formatCustomerName, normalizeName } from "../lib/normalization.js"
+import { renderReceiptPdf } from "../lib/receipts.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel } from "../lib/time.js"
 import type {
   AuditLogDocument,
@@ -28,6 +30,22 @@ let outboxTickActive = false
 let outboxEnabled = false
 
 const notificationsCollection = () => db().collection<NotificationDocument>("notifications")
+
+const canManualWhatsappFallback = (notification: NotificationDocument) => {
+  if (notification.deliveryStatus !== "failed") {
+    return false
+  }
+
+  if (notification.eventType === "order_done") {
+    return true
+  }
+
+  if (notification.eventType === "order_confirmed") {
+    return notification.renderStatus === "ready"
+  }
+
+  return false
+}
 
 export const getSettingsDocument = async (session?: ClientSession) => {
   const settings = await db()
@@ -74,7 +92,11 @@ export const mapNotification = (notification: NotificationDocument): Notificatio
   lastAttemptAt: notification.lastAttemptAt ? formatRelativeLabel(notification.lastAttemptAt) : undefined,
   preparedMessage: notification.preparedMessage,
   manualResolutionNote: notification.manualResolutionNote,
-  manualResolvedAt: notification.manualResolvedAt ? formatDateTime(notification.manualResolvedAt) : undefined
+  manualResolvedAt: notification.manualResolvedAt ? formatDateTime(notification.manualResolvedAt) : undefined,
+  receiptAvailable:
+    notification.eventType === "order_confirmed" &&
+    (notification.renderStatus === "ready" || Boolean(notification.renderedReceipt)),
+  manualWhatsappAvailable: canManualWhatsappFallback(notification)
 })
 
 export const mapOrderHistory = (order: OrderDocument): OrderHistoryItem => ({
@@ -112,9 +134,40 @@ export const mapCustomerProfile = (
   name: customer.name,
   phone: customer.phone,
   currentPoints: customer.currentPoints,
+  publicNameVisible: customer.publicNameVisible,
   activeOrderCount,
   totalOrders: orderCount,
   lastActivityAt
+})
+
+export const mapCustomerOrderDetail = (order: OrderDocument): CustomerOrderDetail => ({
+  orderId: order._id,
+  orderCode: order.orderCode,
+  status: order.status === "Voided" ? "Cancelled" : order.status,
+  createdAtLabel: formatDateTime(order.createdAt),
+  completedAtLabel: order.completedAt ? formatDateTime(order.completedAt) : undefined,
+  cancelledAtLabel: order.voidedAt ? formatDateTime(order.voidedAt) : undefined,
+  cancellationSummary: order.voidReason,
+  weightKgLabel: formatWeightLabel(order.weightKg),
+  serviceSummary: order.items.map((item) => `${item.quantity}x ${item.serviceLabel}`).join(", "),
+  earnedStamps: order.earnedStamps,
+  redeemedPoints: order.redeemedPoints,
+  subtotal: order.subtotal,
+  subtotalLabel: formatCurrency(order.subtotal),
+  discount: order.discount,
+  discountLabel: order.discount > 0 ? `-${formatCurrency(order.discount)}` : formatCurrency(0),
+  total: order.total,
+  totalLabel: formatCurrency(order.total),
+  items: order.items.map((item) => ({
+    serviceCode: item.serviceCode,
+    serviceLabel: item.serviceLabel,
+    quantity: item.quantity,
+    quantityLabel: item.pricingModel === "per_kg" ? formatWeightLabel(item.quantity) : `${item.quantity} unit`,
+    unitPrice: item.unitPrice,
+    unitPriceLabel: formatCurrency(item.unitPrice),
+    lineTotal: item.lineTotal,
+    lineTotalLabel: formatCurrency(item.lineTotal)
+  }))
 })
 
 export const buildPreparedMessage = async (
@@ -371,6 +424,41 @@ export const buildOrderReceipt = async (notificationId: string) => {
 
   return createRenderedReceipt(notification)
 }
+
+export const buildOrderReceiptPdf = async (orderId: string) => {
+  const [order, settings] = await Promise.all([
+    db().collection<OrderDocument>("orders").findOne({ _id: orderId }),
+    getSettingsDocument()
+  ])
+
+  if (!order) {
+    throw new Error("Order tidak ditemukan")
+  }
+
+  return renderReceiptPdf(
+    {
+      orderCode: order.orderCode,
+      customerName: order.customerName,
+      createdAtLabel: formatDateTime(order.createdAt),
+      weightKgLabel: formatWeightLabel(order.weightKg),
+      subtotal: order.subtotal,
+      discount: order.discount,
+      total: order.total,
+      items: order.items.map((item) => ({
+        serviceLabel: item.serviceLabel,
+        quantityLabel: item.pricingModel === "per_kg" ? formatWeightLabel(item.quantity) : `${item.quantity} unit`,
+        unitPriceLabel: formatCurrency(item.unitPrice),
+        lineTotalLabel: formatCurrency(item.lineTotal)
+      }))
+    },
+    {
+      laundryName: settings.business.laundryName,
+      laundryPhone: settings.business.publicContactPhone
+    }
+  )
+}
+
+export const toCustomerName = (value: string) => formatCustomerName(value)
 
 export const mapCustomerSearch = (
   customer: CustomerDocument,

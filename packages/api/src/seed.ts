@@ -3,7 +3,7 @@ import type { AdminDocument, SettingsDocument } from "./types.js"
 import { getDatabase } from "./db.js"
 import { defaultSettings } from "./defaults.js"
 import { env } from "./env.js"
-import { normalizePhone } from "./lib/normalization.js"
+import { formatCustomerName, normalizeName, normalizePhone } from "./lib/normalization.js"
 
 export const ensureSeedData = async () => {
   const db = getDatabase()
@@ -43,21 +43,72 @@ export const ensureSeedData = async () => {
   await db.collection("leaderboard_snapshots").createIndex({ monthKey: 1, version: -1 }, { unique: true })
   await db.collection("audit_logs").createIndex({ entityType: 1, entityId: 1, createdAt: -1 })
 
-  const customers = await db.collection("customers").find({
-    $or: [
-      { phoneDigits: { $exists: false } },
-      { phoneDigits: "" }
-    ]
-  }).toArray()
+  const customers = await db.collection("customers").find({}).toArray()
 
   for (const customer of customers) {
+    const formattedName = formatCustomerName(customer.name)
+    const normalizedCustomerName = normalizeName(customer.name)
+    const nextPhoneDigits = normalizePhone(customer.phone).replace(/\D/g, "")
+    const nextPublicNameVisible = customer.publicNameVisible ?? false
+    if (
+      customer.name === formattedName &&
+      customer.normalizedName === normalizedCustomerName &&
+      customer.phoneDigits === nextPhoneDigits &&
+      customer.publicNameVisible === nextPublicNameVisible
+    ) {
+      continue
+    }
+
     await db.collection("customers").updateOne(
       { _id: customer._id },
       {
         $set: {
-          phoneDigits: normalizePhone(customer.phone).replace(/\D/g, "")
+          name: formattedName,
+          normalizedName: normalizedCustomerName,
+          phoneDigits: nextPhoneDigits,
+          publicNameVisible: nextPublicNameVisible
         }
       }
+    )
+  }
+
+  await db.collection("customers").updateMany(
+    { publicNameVisible: { $exists: false } },
+    { $set: { publicNameVisible: false } }
+  )
+
+  const orders = await db.collection("orders").find({}).toArray()
+  for (const order of orders) {
+    const customerName = formatCustomerName(order.customerName)
+    const receiptCustomerName = formatCustomerName(order.receiptSnapshot?.customerName ?? order.customerName)
+    if (
+      customerName === order.customerName &&
+      receiptCustomerName === order.receiptSnapshot?.customerName
+    ) {
+      continue
+    }
+
+    await db.collection("orders").updateOne(
+      { _id: order._id },
+      {
+        $set: {
+          customerName,
+          "receiptSnapshot.customerName": receiptCustomerName
+        }
+      }
+    )
+  }
+
+  const notifications = await db.collection("notifications").find({}).toArray()
+  for (const notification of notifications) {
+    const customerName = formatCustomerName(notification.customerName)
+    if (customerName === notification.customerName) {
+      continue
+    }
+
+    await db.collection("notifications").updateOne(
+      { _id: notification._id },
+      { $set: { customerName } }
     )
   }
 }

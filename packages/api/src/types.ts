@@ -13,6 +13,7 @@ export type CustomerDocument = {
   phone: string
   normalizedPhone: string
   phoneDigits: string
+  publicNameVisible: boolean
   currentPoints: number
   createdAt: string
   updatedAt: string

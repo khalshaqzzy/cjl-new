@@ -87,6 +87,7 @@ export const customerProfileSchema = z.object({
   name: z.string(),
   phone: z.string(),
   currentPoints: z.number().int(),
+  publicNameVisible: z.boolean(),
   activeOrderCount: z.number().int(),
   totalOrders: z.number().int(),
   lastActivityAt: z.string().optional(),
@@ -173,11 +174,14 @@ export const notificationRecordSchema = z.object({
   preparedMessage: z.string(),
   manualResolutionNote: z.string().optional(),
   manualResolvedAt: z.string().optional(),
+  receiptAvailable: z.boolean(),
+  manualWhatsappAvailable: z.boolean(),
 })
 
 export const leaderboardRowSchema = z.object({
   rank: z.number().int(),
-  maskedAlias: z.string(),
+  displayName: z.string(),
+  isMasked: z.boolean(),
   earnedStamps: z.number().int(),
   monthKey: z.string(),
 })
@@ -198,6 +202,7 @@ export const publicDashboardResponseSchema = z.object({
     customerId: z.string(),
     name: z.string(),
     phone: z.string(),
+    publicNameVisible: z.boolean(),
   }),
   stampBalance: z.object({
     currentPoints: z.number().int(),
@@ -265,6 +270,42 @@ export const directOrderStatusSchema = z.object({
   redeemedPoints: z.number().int(),
   laundryName: z.string(),
   laundryPhone: z.string(),
+})
+
+export const customerOrderDetailItemSchema = z.object({
+  serviceCode: serviceCodeSchema,
+  serviceLabel: z.string(),
+  quantity: z.number(),
+  quantityLabel: z.string(),
+  unitPrice: z.number().int().nonnegative(),
+  unitPriceLabel: z.string(),
+  lineTotal: z.number().int().nonnegative(),
+  lineTotalLabel: z.string(),
+})
+
+export const customerOrderDetailSchema = z.object({
+  orderId: z.string(),
+  orderCode: z.string(),
+  status: publicOrderStatusSchema,
+  createdAtLabel: z.string(),
+  completedAtLabel: z.string().optional(),
+  cancelledAtLabel: z.string().optional(),
+  cancellationSummary: z.string().optional(),
+  weightKgLabel: z.string(),
+  serviceSummary: z.string(),
+  earnedStamps: z.number().int(),
+  redeemedPoints: z.number().int(),
+  subtotal: z.number().int(),
+  subtotalLabel: z.string(),
+  discount: z.number().int(),
+  discountLabel: z.string(),
+  total: z.number().int(),
+  totalLabel: z.string(),
+  items: z.array(customerOrderDetailItemSchema),
+})
+
+export const customerNameVisibilityInputSchema = z.object({
+  publicNameVisible: z.boolean(),
 })
 
 export const adminDashboardResponseSchema = z.object({
@@ -380,6 +421,7 @@ export type MonthlySummary = z.infer<typeof monthlySummarySchema>
 export type PublicDashboardResponse = z.infer<typeof publicDashboardResponseSchema>
 export type LandingResponse = z.infer<typeof landingResponseSchema>
 export type DirectOrderStatus = z.infer<typeof directOrderStatusSchema>
+export type CustomerOrderDetail = z.infer<typeof customerOrderDetailSchema>
 export type AdminDashboardResponse = z.infer<typeof adminDashboardResponseSchema>
 export type CreateCustomerInput = z.infer<typeof createCustomerInputSchema>
 export type UpdateCustomerInput = z.infer<typeof updateCustomerInputSchema>
@@ -389,3 +431,4 @@ export type ConfirmOrderInput = z.infer<typeof confirmOrderInputSchema>
 export type VoidOrderInput = z.infer<typeof voidOrderInputSchema>
 export type CustomerLoginInput = z.infer<typeof customerLoginInputSchema>
 export type AdminLoginInput = z.infer<typeof adminLoginInputSchema>
+export type CustomerNameVisibilityInput = z.infer<typeof customerNameVisibilityInputSchema>

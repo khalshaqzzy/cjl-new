@@ -74,7 +74,8 @@ export interface RedemptionHistoryItemVM {
 
 export interface LeaderboardRowVM {
   rank: number
-  maskedAlias: string
+  displayName: string
+  isMasked: boolean
   earnedStamps: number
   monthKey: string
 }
@@ -386,47 +387,47 @@ export const mockRedemptionHistory: RedemptionHistoryItemVM[] = [
 ]
 
 export const mockLeaderboardCurrent: LeaderboardRowVM[] = [
-  { rank: 1, maskedAlias: 'An***ra', earnedStamps: 48, monthKey: '2026-03' },
-  { rank: 2, maskedAlias: 'Bu***di', earnedStamps: 42, monthKey: '2026-03' },
-  { rank: 3, maskedAlias: 'Ci***ta', earnedStamps: 38, monthKey: '2026-03' },
-  { rank: 4, maskedAlias: 'De***wi', earnedStamps: 35, monthKey: '2026-03' },
-  { rank: 5, maskedAlias: 'Ek***ko', earnedStamps: 32, monthKey: '2026-03' },
-  { rank: 6, maskedAlias: 'Fa***ri', earnedStamps: 30, monthKey: '2026-03' },
-  { rank: 7, maskedAlias: 'Gi***ta', earnedStamps: 28, monthKey: '2026-03' },
-  { rank: 8, maskedAlias: 'Ha***di', earnedStamps: 26, monthKey: '2026-03' },
-  { rank: 9, maskedAlias: 'In***ra', earnedStamps: 24, monthKey: '2026-03' },
-  { rank: 10, maskedAlias: 'Ja***ti', earnedStamps: 22, monthKey: '2026-03' },
-  { rank: 11, maskedAlias: 'Ka***la', earnedStamps: 20, monthKey: '2026-03' },
-  { rank: 12, maskedAlias: 'Li***na', earnedStamps: 18, monthKey: '2026-03' },
-  { rank: 13, maskedAlias: 'Ma***ya', earnedStamps: 17, monthKey: '2026-03' },
-  { rank: 14, maskedAlias: 'Nu***ri', earnedStamps: 16, monthKey: '2026-03' },
-  { rank: 15, maskedAlias: 'Ok***to', earnedStamps: 15, monthKey: '2026-03' },
+  { rank: 1, displayName: 'An***ra', isMasked: true, earnedStamps: 48, monthKey: '2026-03' },
+  { rank: 2, displayName: 'Bu***di', isMasked: true, earnedStamps: 42, monthKey: '2026-03' },
+  { rank: 3, displayName: 'Ci***ta', isMasked: true, earnedStamps: 38, monthKey: '2026-03' },
+  { rank: 4, displayName: 'De***wi', isMasked: true, earnedStamps: 35, monthKey: '2026-03' },
+  { rank: 5, displayName: 'Ek***ko', isMasked: true, earnedStamps: 32, monthKey: '2026-03' },
+  { rank: 6, displayName: 'Fa***ri', isMasked: true, earnedStamps: 30, monthKey: '2026-03' },
+  { rank: 7, displayName: 'Gi***ta', isMasked: true, earnedStamps: 28, monthKey: '2026-03' },
+  { rank: 8, displayName: 'Ha***di', isMasked: true, earnedStamps: 26, monthKey: '2026-03' },
+  { rank: 9, displayName: 'In***ra', isMasked: true, earnedStamps: 24, monthKey: '2026-03' },
+  { rank: 10, displayName: 'Ja***ti', isMasked: true, earnedStamps: 22, monthKey: '2026-03' },
+  { rank: 11, displayName: 'Ka***la', isMasked: true, earnedStamps: 20, monthKey: '2026-03' },
+  { rank: 12, displayName: 'Li***na', isMasked: true, earnedStamps: 18, monthKey: '2026-03' },
+  { rank: 13, displayName: 'Ma***ya', isMasked: true, earnedStamps: 17, monthKey: '2026-03' },
+  { rank: 14, displayName: 'Nu***ri', isMasked: true, earnedStamps: 16, monthKey: '2026-03' },
+  { rank: 15, displayName: 'Ok***to', isMasked: true, earnedStamps: 15, monthKey: '2026-03' },
 ]
 
 export const mockLeaderboardArchive: Record<string, LeaderboardRowVM[]> = {
   '2026-02': [
-    { rank: 1, maskedAlias: 'Ri***na', earnedStamps: 52, monthKey: '2026-02' },
-    { rank: 2, maskedAlias: 'Bu***di', earnedStamps: 45, monthKey: '2026-02' },
-    { rank: 3, maskedAlias: 'An***ra', earnedStamps: 40, monthKey: '2026-02' },
-    { rank: 4, maskedAlias: 'Su***to', earnedStamps: 38, monthKey: '2026-02' },
-    { rank: 5, maskedAlias: 'Wi***ni', earnedStamps: 35, monthKey: '2026-02' },
-    { rank: 6, maskedAlias: 'Fa***ri', earnedStamps: 33, monthKey: '2026-02' },
-    { rank: 7, maskedAlias: 'De***wi', earnedStamps: 30, monthKey: '2026-02' },
-    { rank: 8, maskedAlias: 'Ek***ko', earnedStamps: 28, monthKey: '2026-02' },
-    { rank: 9, maskedAlias: 'Ha***di', earnedStamps: 25, monthKey: '2026-02' },
-    { rank: 10, maskedAlias: 'In***ra', earnedStamps: 22, monthKey: '2026-02' },
+    { rank: 1, displayName: 'Ri***na', isMasked: true, earnedStamps: 52, monthKey: '2026-02' },
+    { rank: 2, displayName: 'Bu***di', isMasked: true, earnedStamps: 45, monthKey: '2026-02' },
+    { rank: 3, displayName: 'An***ra', isMasked: true, earnedStamps: 40, monthKey: '2026-02' },
+    { rank: 4, displayName: 'Su***to', isMasked: true, earnedStamps: 38, monthKey: '2026-02' },
+    { rank: 5, displayName: 'Wi***ni', isMasked: true, earnedStamps: 35, monthKey: '2026-02' },
+    { rank: 6, displayName: 'Fa***ri', isMasked: true, earnedStamps: 33, monthKey: '2026-02' },
+    { rank: 7, displayName: 'De***wi', isMasked: true, earnedStamps: 30, monthKey: '2026-02' },
+    { rank: 8, displayName: 'Ek***ko', isMasked: true, earnedStamps: 28, monthKey: '2026-02' },
+    { rank: 9, displayName: 'Ha***di', isMasked: true, earnedStamps: 25, monthKey: '2026-02' },
+    { rank: 10, displayName: 'In***ra', isMasked: true, earnedStamps: 22, monthKey: '2026-02' },
   ],
   '2026-01': [
-    { rank: 1, maskedAlias: 'Su***to', earnedStamps: 58, monthKey: '2026-01' },
-    { rank: 2, maskedAlias: 'Ri***na', earnedStamps: 50, monthKey: '2026-01' },
-    { rank: 3, maskedAlias: 'Bu***di', earnedStamps: 48, monthKey: '2026-01' },
-    { rank: 4, maskedAlias: 'An***ra', earnedStamps: 42, monthKey: '2026-01' },
-    { rank: 5, maskedAlias: 'Wi***ni', earnedStamps: 40, monthKey: '2026-01' },
-    { rank: 6, maskedAlias: 'Ci***ta', earnedStamps: 36, monthKey: '2026-01' },
-    { rank: 7, maskedAlias: 'Fa***ri', earnedStamps: 32, monthKey: '2026-01' },
-    { rank: 8, maskedAlias: 'De***wi', earnedStamps: 28, monthKey: '2026-01' },
-    { rank: 9, maskedAlias: 'Gi***ta', earnedStamps: 26, monthKey: '2026-01' },
-    { rank: 10, maskedAlias: 'Ha***di', earnedStamps: 24, monthKey: '2026-01' },
+    { rank: 1, displayName: 'Su***to', isMasked: true, earnedStamps: 58, monthKey: '2026-01' },
+    { rank: 2, displayName: 'Ri***na', isMasked: true, earnedStamps: 50, monthKey: '2026-01' },
+    { rank: 3, displayName: 'Bu***di', isMasked: true, earnedStamps: 48, monthKey: '2026-01' },
+    { rank: 4, displayName: 'An***ra', isMasked: true, earnedStamps: 42, monthKey: '2026-01' },
+    { rank: 5, displayName: 'Wi***ni', isMasked: true, earnedStamps: 40, monthKey: '2026-01' },
+    { rank: 6, displayName: 'Ci***ta', isMasked: true, earnedStamps: 36, monthKey: '2026-01' },
+    { rank: 7, displayName: 'Fa***ri', isMasked: true, earnedStamps: 32, monthKey: '2026-01' },
+    { rank: 8, displayName: 'De***wi', isMasked: true, earnedStamps: 28, monthKey: '2026-01' },
+    { rank: 9, displayName: 'Gi***ta', isMasked: true, earnedStamps: 26, monthKey: '2026-01' },
+    { rank: 10, displayName: 'Ha***di', isMasked: true, earnedStamps: 24, monthKey: '2026-01' },
   ],
 }
 

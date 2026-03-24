@@ -1,3 +1,6 @@
+export const formatCustomerName = (value: string) =>
+  value.trim().replace(/\s+/g, " ").toUpperCase()
+
 export const normalizeName = (value: string) =>
   value.trim().replace(/\s+/g, " ").toLowerCase()
 
