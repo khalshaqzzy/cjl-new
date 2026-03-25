@@ -37,9 +37,9 @@ import type {
   SettingsDocument
 } from "../types.js"
 import {
+  buildOrderReceipt,
   buildCustomerSearchFilter,
   createCustomerMagicLink,
-  buildOrderReceiptPdf,
   getPrimaryAdminWhatsappContact,
   buildPreparedMessage,
   getSettingsDocument,
@@ -913,7 +913,7 @@ export const downloadNotificationReceipt = async (notificationId: string) => {
     throw new ValidationError("Receipt tidak tersedia")
   }
 
-  return buildOrderReceiptPdf(notification.orderId)
+  return Buffer.from(await buildOrderReceipt(notificationId, { preferCached: false }), "base64")
 }
 
 export const openManualWhatsappFallback = async (notificationId: string) => {
@@ -926,12 +926,8 @@ export const openManualWhatsappFallback = async (notificationId: string) => {
     throw new ConflictError("Manual WhatsApp hanya tersedia untuk notifikasi gagal")
   }
 
-  if (notification.eventType !== "order_done" && notification.eventType !== "order_confirmed") {
-    throw new ValidationError("Manual WhatsApp tidak tersedia untuk notifikasi ini")
-  }
-
-  if (notification.eventType === "order_confirmed" && notification.renderStatus !== "ready") {
-    throw new ConflictError("Receipt belum siap untuk fallback WhatsApp manual")
+  if (!notification.preparedMessage.trim()) {
+    throw new ValidationError("Pesan fallback tidak tersedia untuk notifikasi ini")
   }
 
   const note = "Fallback WhatsApp manual dibuka oleh admin."

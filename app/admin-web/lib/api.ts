@@ -85,7 +85,7 @@ const apiFetchBlob = async (path: string, init?: RequestInit) => {
 
   return {
     blob: await response.blob(),
-    filename: response.headers.get("content-disposition")?.match(/filename="?([^"]+)"?/)?.[1] ?? "receipt.txt"
+    filename: response.headers.get("content-disposition")?.match(/filename="?([^"]+)"?/)?.[1] ?? "receipt.png"
   }
 }
 

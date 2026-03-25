@@ -654,8 +654,8 @@ export const createApp = () => {
   }))
 
   app.get("/v1/admin/notifications/:id/receipt", requireAdmin, asyncRoute(async (req, res) => {
-    res.setHeader("Content-Type", "application/pdf")
-    res.setHeader("Content-Disposition", `attachment; filename="receipt-${getParam(req.params.id)}.pdf"`)
+    res.setHeader("Content-Type", "image/png")
+    res.setHeader("Content-Disposition", `attachment; filename="receipt-${getParam(req.params.id)}.png"`)
     res.send(await downloadNotificationReceipt(getParam(req.params.id)))
   }))
 

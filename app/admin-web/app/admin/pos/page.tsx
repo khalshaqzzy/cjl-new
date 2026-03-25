@@ -251,6 +251,11 @@ function StepCustomer({
     }
   }
 
+  const handleContinueAfterQr = () => {
+    setShowLoginLinkSheet(false)
+    onNext()
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 px-4 py-5 space-y-4">
@@ -417,6 +422,11 @@ function StepCustomer({
         loginUrl={loginLinkUrl}
         customerName={loginLinkName}
         title="QR Login Customer Baru"
+        continueAction={{
+          label: "Lanjutkan ke POS",
+          onClick: handleContinueAfterQr,
+          testId: "pos-continue-after-qr",
+        }}
       />
     </div>
   )

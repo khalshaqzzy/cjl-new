@@ -18,7 +18,7 @@ The repo now has:
 - admin WhatsApp status page plus read-only mirrored inbox backed by API-owned chat/message records
 - admin WhatsApp controls now distinguish QR vs pairing-code state, surface gateway control errors, and support session reset for stuck auth state
 - uppercase customer-name normalization plus repo-safe startup backfill for legacy customer/order/notification name snapshots
-- PDF receipt downloads for admin notification fallback and authenticated portal order detail
+- PDF receipt downloads for authenticated portal order detail and PNG receipt fallback downloads for failed admin order-confirmed notifications
 - manual WhatsApp fallback for failed notification sends with admin outbox action support
 - customer-controlled public leaderboard name visibility with masked-by-default display
 - expanded admin dashboard reporting payload and UI
@@ -67,11 +67,12 @@ Status: complete for current scope
 - settings now also manage ordered admin WhatsApp contacts with exactly one primary customer-facing number
 - admin logout now invalidates backend session instead of only navigating client-side
 - notification outbox UI now follows canonical backend fields and receipt download flow
-- notification outbox now supports manual WhatsApp fallback for failed sends and receipt download visibility beyond failed-only cards
+- notification outbox now follows a focused fallback UX: failed order-confirmed cards prioritize `Download Receipt` plus `Send Message`, while failed non-receipt cards prioritize `Send Message` plus `Kirim Ulang`
 - admin dashboard now exposes the full PRD metric set plus top-customer visibility
 - customer list/search now relies on backend querying and machine-sort fields instead of brittle client-only filtering
 - POS now surfaces duplicate-phone selection feedback, preview failures, and post-confirmation shortcuts
 - POS and customer-detail flows can now show QR/login-link sheets backed by one-time customer magic links
+- POS QR registration flow now includes an explicit continue CTA so the cashier can proceed straight into service selection after showing the customer QR/login link
 
 ### Phase 4: Public Surface Integration
 
@@ -83,7 +84,7 @@ Status: complete for current scope
 - monthly summary UI now surfaces the full non-monetary PRD fields returned by backend
 - public non-landing pages no longer rely on `mock-data` presenter helpers for runtime status rendering
 - portal and direct-status order detail flows now surface cancellation timestamp and cancellation reason when relevant
-- authenticated portal order detail now exposes receipt-style itemized pricing plus PDF receipt download
+- authenticated portal order detail now exposes receipt-style itemized pricing plus refreshed PDF receipt download
 - public leaderboard and landing teaser now respect masked-by-default names with portal-controlled opt-in visibility
 - public login now redirects authenticated customers directly to the portal and protected shells render a visible session-check state
 - portal dashboard now exposes an `Admin 1 / Admin 2 / ...` chat selector and a clearer mobile logout path
@@ -99,6 +100,7 @@ Status: complete in repo terms
 - non-blocking Next.js config warning for deprecated `eslint` key was removed
 - Turbopack workspace root is now explicit for both frontend apps
 - runtime mock initialization has been removed from key admin/settings/customer detail flows
+- receipt renderers now share one backend view model so PNG WhatsApp/admin fallback receipts and portal PDFs stay aligned in content hierarchy while using the latest business contact/address settings at render time
 
 ### Phase 6: Local Containerization and Test Automation
 

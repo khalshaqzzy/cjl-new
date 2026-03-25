@@ -7,20 +7,10 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetFooter,
-  SheetClose,
-} from "@/components/ui/sheet"
-import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import {
   Send,
   Download,
-  Copy,
   CheckCircle2,
   XCircle,
   Clock,
@@ -29,9 +19,9 @@ import {
   Loader2,
   Phone,
   User,
-  MessageSquare,
   MessageCircle,
   FileImage,
+  MessageSquare,
 } from "lucide-react"
 import { adminApi } from "@/lib/api"
 
@@ -77,26 +67,28 @@ function NotificationCard({
   notification,
   onResend,
   onDownload,
-  onCopy,
-  onPreview,
   onManualWhatsapp,
-  onManualResolve,
   busyAction,
 }: {
   notification: NotificationRecord
   onResend: () => void
   onDownload: () => void
-  onCopy: () => void
-  onPreview: () => void
   onManualWhatsapp: () => void
-  onManualResolve: () => void
-  busyAction: "resend" | "download" | "copy" | "preview" | "whatsapp" | "manual" | null
+  busyAction: "resend" | "download" | "whatsapp" | null
 }) {
   const status = statusConfig[notification.deliveryStatus]
   const StatusIcon = status.icon
   const isFailedConfirmation =
     notification.eventType === "order_confirmed" &&
     notification.deliveryStatus === "failed"
+  const isFailed = notification.deliveryStatus === "failed"
+  const showFallbackReceipt =
+    notification.eventType === "order_confirmed" &&
+    notification.receiptAvailable
+  const showResend =
+    isFailed &&
+    notification.eventType !== "order_confirmed"
+  const showSendMessage = isFailed && notification.manualWhatsappAvailable
 
   return (
     <Card
@@ -218,69 +210,47 @@ function NotificationCard({
         )}
 
         {/* Actions */}
-        {notification.deliveryStatus === "failed" && (
+        {isFailed && (
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl flex-1"
-              onClick={onResend}
-              disabled={busyAction !== null}
-            >
-              {busyAction === "resend" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-              {busyAction === "resend" ? "Memproses..." : "Kirim Ulang"}
-            </Button>
-            {notification.receiptAvailable && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-xl"
-                onClick={onDownload}
-                disabled={busyAction !== null}
-              >
-                {busyAction === "download" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              </Button>
-            )}
-            {notification.manualWhatsappAvailable && (
+            {showFallbackReceipt && (
               <Button
                 variant="outline"
                 size="sm"
                 className="rounded-xl flex-1"
+                onClick={onDownload}
+                disabled={busyAction !== null}
+              >
+                {busyAction === "download" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+                {busyAction === "download" ? "Menyiapkan..." : "Download Receipt"}
+              </Button>
+            )}
+            {showSendMessage && (
+              <Button
+                size="sm"
+                className={cn(
+                  "rounded-xl font-semibold text-white",
+                  showFallbackReceipt || showResend ? "flex-1" : "w-full",
+                  "bg-rose-600 hover:bg-rose-500"
+                )}
                 onClick={onManualWhatsapp}
                 disabled={busyAction !== null}
               >
                 {busyAction === "whatsapp" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <MessageCircle className="h-4 w-4 mr-1" />}
-                {busyAction === "whatsapp" ? "Membuka..." : "WhatsApp"}
+                {busyAction === "whatsapp" ? "Membuka..." : "Send Message"}
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl"
-              onClick={onPreview}
-              disabled={busyAction !== null}
-            >
-              {busyAction === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl"
-              onClick={onCopy}
-              disabled={busyAction !== null}
-            >
-              {busyAction === "copy" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl flex-1"
-              onClick={onManualResolve}
-              disabled={busyAction !== null}
-            >
-              {busyAction === "manual" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
-              {busyAction === "manual" ? "Memproses..." : "Manual"}
-            </Button>
+            {showResend && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl flex-1"
+                onClick={onResend}
+                disabled={busyAction !== null}
+              >
+                {busyAction === "resend" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                {busyAction === "resend" ? "Memproses..." : "Kirim Ulang"}
+              </Button>
+            )}
           </div>
         )}
 
@@ -352,15 +322,9 @@ function SummaryBanner({ notifications }: { notifications: NotificationRecord[] 
 export default function NotifikasiPage() {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([])
   const [activeTab, setActiveTab] = useState("all")
-  const [selectedNotification, setSelectedNotification] = useState<NotificationRecord | null>(null)
-  const [showManualResolveSheet, setShowManualResolveSheet] = useState(false)
-  const [showMessagePreviewSheet, setShowMessagePreviewSheet] = useState(false)
-  const [manualNote, setManualNote] = useState("")
-  const [messagePreview, setMessagePreview] = useState("")
-  const [isProcessing, setIsProcessing] = useState(false)
   const [activeAction, setActiveAction] = useState<{
     notificationId: string
-    action: "resend" | "download" | "copy" | "preview" | "whatsapp" | "manual"
+    action: "resend" | "download" | "whatsapp"
   } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -395,46 +359,6 @@ export default function NotifikasiPage() {
       setNotifications((prev) =>
         prev.map((n) => (n.notificationId === notification.notificationId ? (updated as NotificationRecord) : n))
       )
-    } finally {
-      setActiveAction(null)
-    }
-  }
-
-  const handleManualResolve = async () => {
-    if (!selectedNotification || !manualNote) return
-    setIsProcessing(true)
-    setActiveAction({ notificationId: selectedNotification.notificationId, action: "manual" })
-    try {
-      const updated = await adminApi.manualResolveNotification(selectedNotification.notificationId, manualNote)
-      setNotifications((prev) =>
-        prev.map((n) => (n.notificationId === selectedNotification.notificationId ? (updated as NotificationRecord) : n))
-      )
-      setShowManualResolveSheet(false)
-      setManualNote("")
-      setSelectedNotification(null)
-    } finally {
-      setIsProcessing(false)
-      setActiveAction(null)
-    }
-  }
-
-  const handlePreviewMessage = async (notification: NotificationRecord) => {
-    setActiveAction({ notificationId: notification.notificationId, action: "preview" })
-    try {
-      const payload = await adminApi.getNotificationMessage(notification.notificationId)
-      setSelectedNotification(notification)
-      setMessagePreview(payload.message)
-      setShowMessagePreviewSheet(true)
-    } finally {
-      setActiveAction(null)
-    }
-  }
-
-  const handleCopy = async (notification: NotificationRecord) => {
-    setActiveAction({ notificationId: notification.notificationId, action: "copy" })
-    try {
-      const payload = await adminApi.getNotificationMessage(notification.notificationId)
-      await navigator.clipboard.writeText(payload.message)
     } finally {
       setActiveAction(null)
     }
@@ -539,13 +463,7 @@ export default function NotifikasiPage() {
                     notification={notification}
                     onResend={() => handleResend(notification)}
                     onDownload={() => handleDownload(notification)}
-                    onCopy={() => handleCopy(notification)}
-                    onPreview={() => handlePreviewMessage(notification)}
                     onManualWhatsapp={() => handleManualWhatsapp(notification)}
-                    onManualResolve={() => {
-                      setSelectedNotification(notification)
-                      setShowManualResolveSheet(true)
-                    }}
                     busyAction={activeAction?.notificationId === notification.notificationId ? activeAction.action : null}
                   />
                 ))}
@@ -566,132 +484,6 @@ export default function NotifikasiPage() {
           </TabsContent>
         </Tabs>
       </div>
-
-      {/* Manual Resolve Sheet */}
-      <Sheet open={showManualResolveSheet} onOpenChange={setShowManualResolveSheet}>
-        <SheetContent side="bottom" className="rounded-t-2xl" aria-describedby={undefined}>
-          <SheetHeader className="pb-4 border-b border-line-base">
-            <SheetTitle className="text-base font-semibold text-text-strong">
-              Tandai Manual Terselesaikan
-            </SheetTitle>
-          </SheetHeader>
-          <div className="py-6 space-y-4">
-            {selectedNotification && (
-              <Card className="rounded-xl border-line-base bg-bg-subtle">
-                <CardContent className="p-4">
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-text-muted">Pelanggan</span>
-                      <span className="font-medium text-text-strong">
-                        {selectedNotification.customerName}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-muted">Nomor HP</span>
-                      <span className="text-text-body">
-                        {selectedNotification.destinationPhone}
-                      </span>
-                    </div>
-                    {selectedNotification.orderCode && (
-                      <div className="flex justify-between">
-                        <span className="text-text-muted">Order</span>
-                      <span className="font-mono text-xs font-semibold text-rose-600">
-                        {selectedNotification.orderCode}
-                      </span>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-text-body">
-                Catatan Penyelesaian *
-              </label>
-              <Textarea
-                placeholder="Contoh: Sudah dikirim manual via WhatsApp pribadi"
-                value={manualNote}
-                onChange={(e) => setManualNote(e.target.value)}
-                className="rounded-xl border-line-soft resize-none"
-                rows={3}
-              />
-              <p className="text-xs text-text-muted">
-                Catatan ini akan disimpan sebagai audit trail
-              </p>
-            </div>
-          </div>
-          <SheetFooter className="gap-2">
-            <SheetClose asChild>
-              <Button variant="outline" className="flex-1 rounded-xl">
-                Batal
-              </Button>
-            </SheetClose>
-              <Button
-              className="flex-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold"
-              onClick={handleManualResolve}
-              disabled={!manualNote || isProcessing}
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Memproses...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Tandai Selesai
-                </>
-              )}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-
-      <Sheet open={showMessagePreviewSheet} onOpenChange={setShowMessagePreviewSheet}>
-        <SheetContent side="bottom" className="rounded-t-2xl" aria-describedby={undefined}>
-          <SheetHeader className="pb-4 border-b border-line-base">
-            <SheetTitle className="text-base font-semibold text-text-strong">
-              Preview Pesan WhatsApp
-            </SheetTitle>
-          </SheetHeader>
-          <div className="py-6 space-y-4">
-            {selectedNotification && (
-              <Card className="rounded-xl border-line-base bg-bg-subtle">
-                <CardContent className="p-4 text-sm">
-                  <div className="flex justify-between gap-3">
-                    <span className="text-text-muted">Tujuan</span>
-                    <span className="font-medium text-text-strong">{selectedNotification.customerName}</span>
-                  </div>
-                  <div className="mt-2 flex justify-between gap-3">
-                    <span className="text-text-muted">Nomor HP</span>
-                    <span className="text-text-body">{selectedNotification.destinationPhone}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-text-body">Isi Pesan</label>
-              <Textarea value={messagePreview} readOnly className="min-h-40 rounded-xl border-line-soft resize-none bg-bg-subtle" />
-            </div>
-          </div>
-          <SheetFooter className="gap-2">
-            <SheetClose asChild>
-              <Button variant="outline" className="flex-1 rounded-xl">
-                Tutup
-              </Button>
-            </SheetClose>
-            <Button
-              className="flex-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold"
-              onClick={() => {
-                void navigator.clipboard.writeText(messagePreview)
-              }}
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Salin Pesan
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
     </AdminShell>
   )
 }

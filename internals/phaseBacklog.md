@@ -9,10 +9,14 @@ Purpose: condensed next-work inventory after deployment workflow implementation
 2. Validate hosted replica-set initialization, including correct `MONGO_REPLICA_KEY`, `WHATSAPP_GATEWAY_TOKEN`, deploy reset token wiring, `/ready`, TLS issuance, and branch-based deploy behavior on staging before touching production.
 3. Pair the real CJ Laundry number through the admin WhatsApp status page on staging and verify `Generate Pairing Code`, `Reset Session`, and reconnect behavior against a real device.
 4. Confirm GitHub Actions logs show the same `WHATSAPP_GATEWAY_TOKEN` fingerprint for `api` and `whatsapp-gateway` during staging deploys before spending time on pairing triage.
-5. Verify settings persistence on staging with `08...` input across laundry phone, public contact, public WhatsApp, admin contacts, and address, then confirm landing and portal reflect the saved values immediately.
-6. Validate the new customer magic-link flow on real devices: welcome WA link open, one-time redeem behavior, QR scan usability, and sliding 30-day session refresh after repeated portal usage.
-7. Execute the full `productionReadinessChecklist.md` on staging before allowing the first production push.
-8. Decide whether the v1 in-process outbox remains sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
+5. Verify settings persistence on staging with `08...` input across laundry phone, public contact, public WhatsApp, admin contacts, and address, then confirm landing, portal, portal PDF receipt, and admin fallback PNG receipt all reflect the saved values correctly.
+6. Validate the new customer magic-link flow on real devices: welcome WA link open, one-time redeem behavior, QR scan usability, and the POS `Lanjutkan ke POS` transition after QR display.
+7. Validate failed-notification operator recovery on staging:
+   - failed `order_confirmed` shows `Download Receipt` plus `Send Message`
+   - failed non-receipt notifications show `Send Message` plus `Kirim Ulang`
+   - `Send Message` opens a valid prefilled `wa.me` link
+8. Execute the full `productionReadinessChecklist.md` on staging before allowing the first production push.
+9. Decide whether the v1 in-process outbox remains sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
 
 ## Lower Priority Follow-Ups
 
