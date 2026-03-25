@@ -7,6 +7,9 @@ import type {
 } from "@cjl/contracts"
 import { env } from "../env.js"
 import { getDatabase } from "../db.js"
+import { DependencyError, ValidationError } from "../errors.js"
+import { logger, serializeError } from "../logger.js"
+import { maskPhone } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel } from "../lib/time.js"
 import { normalizePhone, normalizeWhatsappPhone } from "../lib/normalization.js"
 import type {
@@ -223,7 +226,11 @@ export const getWhatsappStatus = async (): Promise<WhatsappConnectionStatus> => 
   try {
     const live = await gatewayFetch<GatewayStatusResponse>("/internal/status")
     return mergeStatus(persisted, live, true)
-  } catch {
+  } catch (error) {
+    logger.warn({
+      event: "whatsapp.status.gateway_unreachable",
+      error: serializeError(error),
+    })
     return mergeStatus(persisted, null, false)
   }
 }
@@ -238,15 +245,20 @@ export const requestWhatsappPairingCode = async (): Promise<WhatsappConnectionSt
     .findOne({ _id: "app-settings" })
 
   if (!settings?.business.publicWhatsapp) {
-    throw new Error("Nomor WhatsApp publik belum diatur")
+    throw new ValidationError("Nomor WhatsApp publik belum diatur")
   }
 
-  const live = await gatewayFetch<GatewayRequestPairingCodeResponse>("/internal/pairing-code", {
-    method: "POST",
-    body: JSON.stringify({
-      phoneNumber: settings.business.publicWhatsapp,
-    }),
-  })
+  let live: GatewayRequestPairingCodeResponse
+  try {
+    live = await gatewayFetch<GatewayRequestPairingCodeResponse>("/internal/pairing-code", {
+      method: "POST",
+      body: JSON.stringify({
+        phoneNumber: settings.business.publicWhatsapp,
+      }),
+    })
+  } catch (error) {
+    throw new DependencyError("Gateway WhatsApp tidak tersedia untuk pairing code", error)
+  }
 
   const persisted = (await getSessionCollection().findOne({ _id: "primary" })) ?? defaultSession()
   return mergeStatus(persisted, live, true)
@@ -257,10 +269,15 @@ export const reconnectWhatsapp = async (): Promise<WhatsappConnectionStatus> => 
     return getWhatsappStatus()
   }
 
-  const live = await gatewayFetch<GatewayStatusResponse>("/internal/reconnect", {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
+  let live: GatewayStatusResponse
+  try {
+    live = await gatewayFetch<GatewayStatusResponse>("/internal/reconnect", {
+      method: "POST",
+      body: JSON.stringify({}),
+    })
+  } catch (error) {
+    throw new DependencyError("Gateway WhatsApp tidak tersedia untuk reconnect", error)
+  }
   const persisted = (await getSessionCollection().findOne({ _id: "primary" })) ?? defaultSession()
   return mergeStatus(persisted, live, true)
 }
@@ -279,6 +296,13 @@ export const sendNotificationToWhatsapp = async (
       sentAt: simulatedSentAt,
     }
   }
+
+  logger.info({
+    event: "whatsapp.gateway.send.forwarded",
+    notificationId: notification._id,
+    destinationPhone: maskPhone(notification.destinationPhone),
+    eventType: notification.eventType,
+  })
 
   return gatewayFetch<GatewaySendResponse>("/internal/send", {
     method: "POST",
@@ -313,6 +337,11 @@ export const listWhatsappMessages = async (chatId: string) => {
 
 export const ingestWhatsappInternalEvent = async (event: WhatsappInternalEvent) => {
   if (event.type === "session_state_changed") {
+    logger.info({
+      event: "whatsapp.internal.session_state_changed",
+      state: event.state,
+      connected: event.connected,
+    })
     const update: Partial<WhatsappSessionDocument> & { updatedAt: string } = {
       state: event.state,
       connected: event.connected,
@@ -349,6 +378,11 @@ export const ingestWhatsappInternalEvent = async (event: WhatsappInternalEvent) 
   }
 
   if (event.type === "message_ack_changed") {
+    logger.info({
+      event: "whatsapp.internal.message_ack_changed",
+      providerMessageId: event.providerMessageId,
+      providerAck: event.providerAck,
+    })
     await getMessagesCollection().updateOne(
       { _id: event.providerMessageId },
       {
@@ -382,6 +416,13 @@ export const ingestWhatsappInternalEvent = async (event: WhatsappInternalEvent) 
     event.mediaName
   )
   const now = new Date().toISOString()
+  logger.info({
+    event: "whatsapp.internal.message_upserted",
+    providerMessageId: event.providerMessageId,
+    chatId: event.chatId,
+    direction: event.direction,
+    phone: maskPhone(event.phone),
+  })
 
   await getMessagesCollection().updateOne(
     { _id: event.providerMessageId },

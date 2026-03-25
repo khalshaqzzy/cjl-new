@@ -1,4 +1,5 @@
 import type { ConfirmOrderInput, ServiceSetting } from "@cjl/contracts"
+import { ValidationError } from "../errors.js"
 
 export const calculateOrderPreview = (
   services: ServiceSetting[],
@@ -11,7 +12,7 @@ export const calculateOrderPreview = (
     .map((item) => {
       const service = serviceMap.get(item.serviceCode)
       if (!service || !service.isActive) {
-        throw new Error(`Service ${item.serviceCode} tidak aktif`)
+        throw new ValidationError(`Service ${item.serviceCode} tidak aktif`)
       }
 
       const quantity = service.pricingModel === "per_kg" ? input.weightKg : item.quantity

@@ -60,6 +60,8 @@ services:
     environment:
       NODE_ENV: production
       APP_ENV: ${APP_ENV}
+      RELEASE_SHA: ${RELEASE_SHA}
+      LOG_LEVEL: ${LOG_LEVEL}
       PORT: 4000
       MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DATABASE}?authSource=admin&replicaSet=rs0
       SESSION_SECRET: ${SESSION_SECRET}
@@ -92,6 +94,9 @@ services:
       api:
         condition: service_healthy
     environment:
+      APP_ENV: ${APP_ENV}
+      RELEASE_SHA: ${RELEASE_SHA}
+      LOG_LEVEL: ${LOG_LEVEL}
       PORT: 4100
       WHATSAPP_GATEWAY_TOKEN: ${WHATSAPP_GATEWAY_TOKEN}
       WHATSAPP_AUTH_DIR: ${WHATSAPP_AUTH_DIR}
@@ -118,6 +123,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
+      APP_ENV: ${APP_ENV}
       PORT: 3001
       HOSTNAME: 0.0.0.0
     healthcheck:
@@ -139,6 +145,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
+      APP_ENV: ${APP_ENV}
       PORT: 3000
       HOSTNAME: 0.0.0.0
     healthcheck:

@@ -9,7 +9,8 @@ Purpose: condensed next-work inventory after deployment workflow implementation
 2. Validate hosted replica-set initialization, including correct `MONGO_REPLICA_KEY`, `WHATSAPP_GATEWAY_TOKEN`, and session-secret wiring, `/ready`, TLS issuance, and branch-based deploy behavior on staging before touching production.
 3. Pair the real CJ Laundry number through the admin WhatsApp status page on staging and verify the bot-paired gateway number plus customer-facing admin-contact settings behave correctly together.
 4. Validate the new customer magic-link flow on real devices: welcome WA link open, one-time redeem behavior, QR scan usability, and sliding 30-day session refresh after repeated portal usage.
-5. Decide whether the v1 in-process outbox remains sufficient operationally after the first hosted rollout or whether a separate queue/worker boundary is warranted.
+5. Execute the full `productionReadinessChecklist.md` on staging before allowing the first production push.
+6. Decide whether the v1 in-process outbox remains sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
 
 ## Lower Priority Follow-Ups
 

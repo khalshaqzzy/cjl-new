@@ -5,6 +5,7 @@ import { defaultMessageTemplates, defaultSettings, legacyDefaultMessageTemplates
 import { env } from "./env.js"
 import { sanitizeAdminWhatsappContacts } from "./lib/admin-whatsapp.js"
 import { formatCustomerName, normalizeName, normalizePhone } from "./lib/normalization.js"
+import { hashOpaqueToken, tokenLast4 } from "./lib/security.js"
 
 export const ensureSeedData = async () => {
   const db = getDatabase()
@@ -103,12 +104,12 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
   await db.collection("customers").createIndex({ normalizedPhone: 1 }, { unique: true })
   await db.collection("customers").createIndex({ phoneDigits: 1 })
   await db.collection("customers").createIndex({ normalizedName: 1 })
-  await db.collection("customer_magic_links").createIndex({ token: 1 }, { unique: true })
+  await db.collection("customer_magic_links").createIndex({ tokenHash: 1 }, { unique: true })
   await db.collection("customer_magic_links").createIndex({ customerId: 1, createdAt: -1 })
   await db.collection("orders").createIndex({ orderCode: 1 }, { unique: true })
   await db.collection("orders").createIndex({ customerId: 1, createdAt: -1 })
   await db.collection("orders").createIndex({ status: 1, createdAt: -1 })
-  await db.collection("direct_order_tokens").createIndex({ token: 1 }, { unique: true })
+  await db.collection("direct_order_tokens").createIndex({ tokenHash: 1 }, { unique: true })
   await db.collection("direct_order_tokens").createIndex({ orderId: 1 })
   await db.collection("notifications").createIndex({ businessKey: 1 }, { unique: true })
   await db.collection("notifications").createIndex({ deliveryStatus: 1, createdAt: 1 })
@@ -119,6 +120,8 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
   await db.collection("point_ledgers").createIndex({ orderId: 1 })
   await db.collection("leaderboard_snapshots").createIndex({ monthKey: 1, version: -1 }, { unique: true })
   await db.collection("audit_logs").createIndex({ entityType: 1, entityId: 1, createdAt: -1 })
+  await db.collection("audit_logs").createIndex({ requestId: 1, createdAt: -1 }, { sparse: true })
+  await db.collection("rate_limits").createIndex({ resetTime: 1 }, { expireAfterSeconds: 0 })
   await db.collection("whatsapp_chats").createIndex({ lastMessageAt: -1, updatedAt: -1 })
   await db.collection("whatsapp_chats").createIndex({ phone: 1 }, { sparse: true })
   await db.collection("whatsapp_messages").createIndex({ chatId: 1, timestampIso: 1 })
@@ -156,6 +159,51 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
   await db.collection("customers").updateMany(
     { publicNameVisible: { $exists: false } },
     { $set: { publicNameVisible: false } }
+  )
+
+  const magicLinks = await db.collection("customer_magic_links").find({}).toArray()
+  for (const magicLink of magicLinks) {
+    if (!magicLink.tokenHash && typeof magicLink.token === "string" && magicLink.token.length > 0) {
+      await db.collection("customer_magic_links").updateOne(
+        { _id: magicLink._id },
+        {
+          $set: {
+            tokenHash: hashOpaqueToken(magicLink.token),
+            tokenLast4: tokenLast4(magicLink.token),
+          },
+          $unset: {
+            token: "",
+          }
+        }
+      )
+    }
+  }
+
+  const directTokens = await db.collection("direct_order_tokens").find({}).toArray()
+  for (const directToken of directTokens) {
+    if (!directToken.tokenHash && typeof directToken.token === "string" && directToken.token.length > 0) {
+      await db.collection("direct_order_tokens").updateOne(
+        { _id: directToken._id },
+        {
+          $set: {
+            tokenHash: hashOpaqueToken(directToken.token),
+            tokenLast4: tokenLast4(directToken.token),
+          },
+          $unset: {
+            token: "",
+          }
+        }
+      )
+    }
+  }
+
+  await db.collection("orders").updateMany(
+    { directToken: { $exists: true } },
+    {
+      $unset: {
+        directToken: "",
+      }
+    }
   )
 
   const orders = await db.collection("orders").find({}).toArray()

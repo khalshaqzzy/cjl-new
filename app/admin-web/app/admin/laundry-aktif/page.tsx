@@ -19,7 +19,6 @@ import { cn } from "@/lib/utils"
 import {
   Search,
   Phone,
-  Clock,
   Scale,
   Star,
   CheckCircle2,

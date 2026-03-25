@@ -62,6 +62,11 @@ jobs:
           ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
             "mkdir -p '$REMOTE_BASE_DIR/releases/$RELEASE_SHA' '$REMOTE_BASE_DIR/shared'"
 
+      - name: Capture previous release
+        run: |
+          PREVIOUS_RELEASE=$(ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" "if [ -f '$REMOTE_BASE_DIR/current_release' ]; then cat '$REMOTE_BASE_DIR/current_release'; fi")
+          echo "PREVIOUS_RELEASE=$PREVIOUS_RELEASE" >> "$GITHUB_ENV"
+
       - name: Upload release archive over SSH
         run: |
           git archive --format=tar "$RELEASE_SHA" \
@@ -72,6 +77,8 @@ jobs:
         run: |
           cat > runtime.env <<EOF
           APP_ENV=staging
+          RELEASE_SHA=$RELEASE_SHA
+          LOG_LEVEL=info
           COMPOSE_PROJECT_NAME=cjl-staging
           SHARED_DIR=/opt/cjl/staging/shared
           ADMIN_DOMAIN=$ADMIN_DOMAIN
@@ -110,3 +117,10 @@ jobs:
             "https://$API_DOMAIN/ready" \
             "https://$ADMIN_DOMAIN" \
             "https://$PUBLIC_DOMAIN"
+
+      - name: Rollback staging on failed smoke-check
+        if: failure() && env.PREVIOUS_RELEASE != ''
+        run: |
+          ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "bash '$REMOTE_BASE_DIR/releases/$RELEASE_SHA/deploy/scripts/remote-rollback.sh' \
+             '$APP_ENV' '$PREVIOUS_RELEASE' '$REMOTE_BASE_DIR' '$REMOTE_RUNTIME_ENV'"

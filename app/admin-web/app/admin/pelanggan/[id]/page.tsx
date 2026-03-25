@@ -28,7 +28,6 @@ import {
   Edit2,
   Send,
   Plus,
-  Clock,
   ChevronLeft,
   Loader2,
   Package,

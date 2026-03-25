@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ConfirmOrderInput, CustomerSearchResult, OrderPreviewResponse, ServiceSetting } from "@cjl/contracts"
 import { AdminShell } from "@/components/admin/admin-shell"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"

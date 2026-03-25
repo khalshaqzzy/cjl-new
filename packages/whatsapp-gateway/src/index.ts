@@ -1,9 +1,10 @@
 import express from "express"
-import morgan from "morgan"
+import crypto from "node:crypto"
 import QRCode from "qrcode"
 import type { WhatsappInternalEvent } from "@cjl/contracts"
 import { LocalAuth, MessageMedia, Client } from "whatsapp-web.js"
 import { env } from "./env.js"
+import { logger, serializeError } from "./logger.js"
 
 type GatewayState = {
   state:
@@ -40,7 +41,23 @@ type SendRequest = {
 }
 
 const app = express()
-app.use(morgan("dev"))
+app.use((req, res, next) => {
+  const requestId = req.header("X-Request-Id")?.slice(0, 128) || crypto.randomUUID()
+  const startedAt = process.hrtime.bigint()
+  res.setHeader("X-Request-Id", requestId)
+  res.on("finish", () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000
+    logger.info({
+      event: "gateway.http.request.completed",
+      requestId,
+      method: req.method,
+      route: req.route?.path ?? req.originalUrl,
+      statusCode: res.statusCode,
+      durationMs: Number(durationMs.toFixed(2)),
+    })
+  })
+  next()
+})
 app.use(express.json({ limit: "12mb" }))
 
 const gatewayState: GatewayState = {
@@ -114,6 +131,12 @@ const updateSessionState = async (
   nextState: Partial<GatewayState> & Pick<GatewayState, "state" | "connected">
 ) => {
   Object.assign(gatewayState, nextState, { observedAt: nowIso() })
+  logger.info({
+    event: "whatsapp.session.state_changed",
+    state: gatewayState.state,
+    connected: gatewayState.connected,
+    currentPhone: gatewayState.currentPhone,
+  })
 
   await postInternalEvent({
     type: "session_state_changed",
@@ -355,6 +378,9 @@ const restartClient = async () => {
     await previousClient.destroy().catch(() => undefined)
   }
 
+  logger.info({
+    event: "whatsapp.client.restart",
+  })
   return initializeClient()
 }
 
@@ -393,8 +419,16 @@ app.post("/internal/pairing-code", requireGatewayAuth, async (req, res) => {
     gatewayState.state = "pairing"
     gatewayState.connected = false
     gatewayState.observedAt = nowIso()
+    logger.info({
+      event: "whatsapp.pairing_code.generated",
+      phoneNumber: toWhatsappNumber(phoneNumber),
+    })
     res.json(buildStatus())
   } catch (error) {
+    logger.error({
+      event: "whatsapp.pairing_code.failed",
+      error: serializeError(error),
+    })
     res.status(400).json({
       message: error instanceof Error ? error.message : "Gagal membuat pairing code",
       code: "pairing_failed",
@@ -405,8 +439,15 @@ app.post("/internal/pairing-code", requireGatewayAuth, async (req, res) => {
 app.post("/internal/reconnect", requireGatewayAuth, async (_req, res) => {
   try {
     await restartClient()
+    logger.info({
+      event: "whatsapp.reconnect.succeeded",
+    })
     res.json(buildStatus())
   } catch (error) {
+    logger.error({
+      event: "whatsapp.reconnect.failed",
+      error: serializeError(error),
+    })
     res.status(400).json({
       message: error instanceof Error ? error.message : "Gagal reconnect WhatsApp",
       code: "reconnect_failed",
@@ -418,6 +459,13 @@ app.post("/internal/send", requireGatewayAuth, async (req, res) => {
   try {
     const body = req.body as SendRequest
     const instance = await initializeClient()
+    logger.info({
+      event: "whatsapp.send.attempted",
+      notificationId: body.notificationId,
+      eventType: body.eventType,
+      toPhone: toWhatsappNumber(body.toPhone),
+      hasMedia: Boolean(body.media),
+    })
 
     if (!gatewayState.connected) {
       res.status(503).json({
@@ -452,6 +500,12 @@ app.post("/internal/send", requireGatewayAuth, async (req, res) => {
       mediaName: body.media?.filename,
     })
 
+    logger.info({
+      event: "whatsapp.send.succeeded",
+      notificationId: body.notificationId,
+      providerMessageId: extractMessageId(sentMessage),
+      providerChatId: chatId,
+    })
     res.json({
       providerMessageId: extractMessageId(sentMessage),
       providerChatId: chatId,
@@ -459,6 +513,10 @@ app.post("/internal/send", requireGatewayAuth, async (req, res) => {
       sentAt: extractMessageTimestamp(sentMessage),
     })
   } catch (error) {
+    logger.error({
+      event: "whatsapp.send.failed",
+      error: serializeError(error),
+    })
     res.status(400).json({
       message: error instanceof Error ? error.message : "Gagal mengirim WhatsApp",
       code: "send_failed",
@@ -466,11 +524,80 @@ app.post("/internal/send", requireGatewayAuth, async (req, res) => {
   }
 })
 
+let server: ReturnType<typeof app.listen> | null = null
+let shutdownPromise: Promise<void> | null = null
+
 const start = async () => {
   await initializeClient()
-  app.listen(env.PORT, () => {
-    console.log(`WhatsApp gateway listening on ${env.PORT}`)
+  server = app.listen(env.PORT, () => {
+    logger.info({
+      event: "gateway.server.started",
+      port: env.PORT,
+      releaseSha: env.RELEASE_SHA,
+    })
+  })
+
+  const shutdown = (signal: string) => {
+    if (shutdownPromise) {
+      return shutdownPromise
+    }
+
+    logger.info({
+      event: "gateway.server.stopping",
+      signal,
+    })
+
+    shutdownPromise = (async () => {
+      if (server) {
+        await new Promise<void>((resolve, reject) => {
+          server?.close((error) => {
+            if (error) {
+              reject(error)
+              return
+            }
+
+            resolve()
+          })
+        })
+      }
+
+      if (client) {
+        await client.destroy().catch(() => undefined)
+      }
+    })()
+      .then(() => {
+        logger.info({
+          event: "gateway.server.stopped",
+          signal,
+        })
+      })
+      .catch((error) => {
+        logger.error({
+          event: "gateway.server.stop_failed",
+          signal,
+          error: serializeError(error),
+        })
+        process.exitCode = 1
+      })
+      .finally(() => {
+        process.exit()
+      })
+
+    return shutdownPromise
+  }
+
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT")
+  })
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM")
   })
 }
 
-void start()
+void start().catch((error) => {
+  logger.error({
+    event: "gateway.bootstrap.failed",
+    error: serializeError(error),
+  })
+  process.exit(1)
+})

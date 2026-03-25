@@ -243,6 +243,9 @@ test.after(async () => {
 test("backend integration flow covers auth, transactions, idempotency, outbox states, throttling, and archived leaderboard rebuilds", async () => {
   let result = await requestJson("/v1/admin/dashboard", { expectedStatus: 401 })
   assert.equal(result.payload.message, "Unauthorized")
+  assert.equal(result.payload.error.code, "authentication_required")
+  assert.ok(result.payload.error.requestId)
+  assert.equal(result.payload.error.requestId, result.response.headers.get("x-request-id"))
 
   result = await requestJson("/v1/public/me/dashboard", { expectedStatus: 401 })
   assert.equal(result.payload.message, "Unauthorized")
@@ -490,7 +493,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       "Idempotency-Key": confirmKey
     },
     body: JSON.stringify({ ...firstOrderPayload, weightKg: 4 }),
-    expectedStatus: 400
+    expectedStatus: 409
   })
   assert.match(confirmMismatch.payload.message, /Idempotency-Key/)
 
@@ -739,7 +742,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       "Idempotency-Key": `done-conflict-${uniqueSuffix}`
     },
     body: JSON.stringify({}),
-    expectedStatus: 400
+    expectedStatus: 409
   })
   assert.ok(failedDone.payload.message)
 
@@ -913,7 +916,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       "Content-Type": "application/json",
       Cookie: adminCookie!
     },
-    expectedStatus: 400
+    expectedStatus: 409
   })
   assert.match(blockedManualWhatsapp.payload.message, /Receipt/)
 

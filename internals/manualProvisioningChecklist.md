@@ -6,8 +6,12 @@ Purpose: short external checklist for provisioning staging and production before
 
 ## Local Preparation
 
+- local `npm run lint` passes
+- local `npm run typecheck` passes
 - local `npm test` passes
 - local `npm run build` passes
+- local `npm run audit:prod` passes
+- local `npm run security:scan` passes
 - local `docker compose config` passes
 - staging SSH key pair exists on the operator machine
 - production SSH key pair exists on the operator machine
@@ -53,5 +57,10 @@ Purpose: short external checklist for provisioning staging and production before
 - `CI` succeeds on branch `staging`
 - `Deploy Staging` reaches green
 - staging smoke URLs respond
+- staging `/ready` shows release metadata and dependency state
+- staging API responses expose `X-Request-Id`
+- staging API and WhatsApp gateway logs are structured JSON
+- staging rollback is tested against a known-bad release
 - staging WhatsApp status page can generate pairing material
+- staging WhatsApp reconnect still works after restart
 - staging business flow is validated manually before touching `main`
