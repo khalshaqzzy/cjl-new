@@ -48,10 +48,8 @@ export default function PortalLeaderboardPage() {
   const handleVisibilityChange = async (checked: boolean) => {
     setIsUpdatingVisibility(true)
     try {
-      const [sessionPayload, leaderboardPayload] = await Promise.all([
-        publicApi.updateNameVisibility(checked),
-        publicApi.getLeaderboard(selectedMonth || undefined),
-      ])
+      const sessionPayload = await publicApi.updateNameVisibility(checked)
+      const leaderboardPayload = await publicApi.getLeaderboard(selectedMonth || undefined)
       setSession(sessionPayload.session)
       setRows(leaderboardPayload.rows)
       setMonths(leaderboardPayload.availableMonths)
