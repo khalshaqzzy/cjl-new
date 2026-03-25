@@ -2,9 +2,15 @@ import express from "express"
 import crypto from "node:crypto"
 import QRCode from "qrcode"
 import type { WhatsappInternalEvent } from "@cjl/contracts"
-import { LocalAuth, MessageMedia, Client } from "whatsapp-web.js"
+import whatsappWeb from "whatsapp-web.js"
 import { env } from "./env.js"
 import { logger, serializeError } from "./logger.js"
+
+const {
+  LocalAuth,
+  MessageMedia,
+  Client: WhatsappClient,
+} = whatsappWeb
 
 type GatewayState = {
   state:
@@ -65,8 +71,8 @@ const gatewayState: GatewayState = {
   connected: false,
 }
 
-let client: Client | null = null
-let clientInitPromise: Promise<Client> | null = null
+let client: InstanceType<typeof WhatsappClient> | null = null
+let clientInitPromise: Promise<InstanceType<typeof WhatsappClient>> | null = null
 
 const nowIso = () => new Date().toISOString()
 
@@ -213,7 +219,7 @@ const mirrorMessage = async (
   })
 }
 
-const attachClientListeners = (instance: Client) => {
+const attachClientListeners = (instance: InstanceType<typeof WhatsappClient>) => {
   instance.on("qr", async (qr) => {
     const qrCodeDataUrl = await QRCode.toDataURL(qr)
     await updateSessionState({
@@ -327,7 +333,7 @@ const initializeClient = async () => {
   }
 
   clientInitPromise = (async () => {
-    const instance = new Client({
+    const instance = new WhatsappClient({
       authStrategy: new LocalAuth({
         clientId: env.WHATSAPP_SESSION_CLIENT_ID,
         dataPath: env.WHATSAPP_AUTH_DIR,

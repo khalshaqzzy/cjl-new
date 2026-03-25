@@ -39,6 +39,7 @@ Purpose: repo snapshot after WhatsApp runtime integration, customer magic-login 
 - fixed the CI contract-resolution path so root `npm run typecheck` now builds `@cjl/contracts` before workspace typechecks on clean runners
 - corrected the CI Trivy step to an immutable `aquasecurity/trivy-action` SHA pin and kept the Trivy CLI version explicit
 - added explicit GitHub runner provisioning for Playwright Chromium before `npm test`
+- fixed the WhatsApp gateway runtime import path so `whatsapp-web.js` works under the hosted Node ESM build output instead of failing on CommonJS named exports
 - added ADR `docs/adr/0008-ux-first-production-hardening-baseline.md`
 - added ADR `docs/adr/0009-ci-runner-reproducibility-and-tool-provisioning.md`
 - added `internals/productionReadinessChecklist.md` as the final pre-production gate
