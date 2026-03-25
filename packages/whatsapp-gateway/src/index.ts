@@ -1,5 +1,7 @@
 import express from "express"
 import crypto from "node:crypto"
+import fs from "node:fs/promises"
+import path from "node:path"
 import QRCode from "qrcode"
 import type { WhatsappInternalEvent } from "@cjl/contracts"
 import whatsappWeb from "whatsapp-web.js"
@@ -73,6 +75,7 @@ const gatewayState: GatewayState = {
 
 let client: InstanceType<typeof WhatsappClient> | null = null
 let clientInitPromise: Promise<InstanceType<typeof WhatsappClient>> | null = null
+const chromiumSingletonArtifacts = new Set(["SingletonLock", "SingletonSocket", "SingletonCookie"])
 
 const nowIso = () => new Date().toISOString()
 
@@ -106,6 +109,43 @@ const toChatPhone = (chatId: string) => {
   }
 
   return `+${user}`
+}
+
+const isChromiumProfileLockError = (error: unknown) =>
+  error instanceof Error &&
+  /profile appears to be in use by another Chromium process/i.test(error.message)
+
+const removeChromiumSingletonArtifacts = async (directory: string): Promise<number> => {
+  const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => [])
+  let removedCount = 0
+
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name)
+
+    if (chromiumSingletonArtifacts.has(entry.name)) {
+      await fs.rm(fullPath, { recursive: true, force: true }).catch(() => undefined)
+      removedCount += 1
+      continue
+    }
+
+    if (entry.isDirectory()) {
+      removedCount += await removeChromiumSingletonArtifacts(fullPath)
+    }
+  }
+
+  return removedCount
+}
+
+const cleanupStaleChromiumLocks = async () => {
+  const removedCount = await removeChromiumSingletonArtifacts(env.WHATSAPP_AUTH_DIR)
+
+  if (removedCount > 0) {
+    logger.warn({
+      event: "whatsapp.chromium_lock.cleaned",
+      removedCount,
+      authDir: env.WHATSAPP_AUTH_DIR,
+    })
+  }
 }
 
 const buildStatus = () => ({
@@ -323,6 +363,59 @@ const attachClientListeners = (instance: InstanceType<typeof WhatsappClient>) =>
   })
 }
 
+const createClient = () =>
+  new WhatsappClient({
+    authStrategy: new LocalAuth({
+      clientId: env.WHATSAPP_SESSION_CLIENT_ID,
+      dataPath: env.WHATSAPP_AUTH_DIR,
+    }),
+    authTimeoutMs: 60_000,
+    takeoverOnConflict: true,
+    takeoverTimeoutMs: 0,
+    deviceName: env.WHATSAPP_DEVICE_NAME,
+    browserName: env.WHATSAPP_BROWSER_NAME,
+    puppeteer: {
+      headless: true,
+      executablePath: env.WHATSAPP_PUPPETEER_EXECUTABLE_PATH,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-first-run",
+        "--no-zygote",
+      ],
+    },
+  })
+
+const bootClient = async (attempt: 1 | 2): Promise<InstanceType<typeof WhatsappClient>> => {
+  const instance = createClient()
+  attachClientListeners(instance)
+
+  await updateSessionState({
+    state: "initializing",
+    connected: false,
+  })
+
+  try {
+    await instance.initialize()
+    return instance
+  } catch (error) {
+    await instance.destroy().catch(() => undefined)
+
+    if (attempt === 1 && isChromiumProfileLockError(error)) {
+      logger.warn({
+        event: "whatsapp.chromium_lock.retry",
+        error: serializeError(error),
+      })
+      await cleanupStaleChromiumLocks()
+      return bootClient(2)
+    }
+
+    throw error
+  }
+}
+
 const initializeClient = async () => {
   if (client) {
     return client
@@ -333,36 +426,8 @@ const initializeClient = async () => {
   }
 
   clientInitPromise = (async () => {
-    const instance = new WhatsappClient({
-      authStrategy: new LocalAuth({
-        clientId: env.WHATSAPP_SESSION_CLIENT_ID,
-        dataPath: env.WHATSAPP_AUTH_DIR,
-      }),
-      authTimeoutMs: 60_000,
-      takeoverOnConflict: true,
-      takeoverTimeoutMs: 0,
-      deviceName: env.WHATSAPP_DEVICE_NAME,
-      browserName: env.WHATSAPP_BROWSER_NAME,
-      puppeteer: {
-        headless: true,
-        executablePath: env.WHATSAPP_PUPPETEER_EXECUTABLE_PATH,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--no-first-run",
-          "--no-zygote",
-        ],
-      },
-    })
-
-    attachClientListeners(instance)
-    await updateSessionState({
-      state: "initializing",
-      connected: false,
-    })
-    await instance.initialize()
+    await cleanupStaleChromiumLocks()
+    const instance = await bootClient(1)
     client = instance
     clientInitPromise = null
     return instance
