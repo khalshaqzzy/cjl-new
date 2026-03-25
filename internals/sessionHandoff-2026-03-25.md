@@ -26,6 +26,7 @@ Purpose: repo snapshot after WhatsApp runtime integration, customer magic-login 
 - added production-grade API and gateway structured logging with request correlation through `X-Request-Id`
 - replaced generic API error handling with typed status mapping and stable error envelopes including `error.code` and `error.requestId`
 - hardened hosted env validation so staging and production reject placeholder secrets, unsafe hosted origins, and missing secure-cookie/proxy assumptions
+- simplified hosted admin bootstrap secrets so staging and production now provide plaintext `ADMIN_BOOTSTRAP_PASSWORD` and the API hashes it before syncing the single seeded admin account on startup
 - added trusted-origin enforcement for session-authenticated write routes without changing customer login UX
 - replaced in-memory abuse controls with Mongo-backed rate limiting for admin login, customer login, token redeem, and admin WhatsApp control paths
 - moved customer magic-link and direct order status tokens to hashed persistence with rollout-safe legacy compatibility handling
@@ -67,6 +68,7 @@ All passed at session end.
 - hosted runtime now depends on a persistent `${SHARED_DIR}/whatsapp-auth` mount for session survival
 - hosted staging and production domains are now canonical on `cjlaundry.com`, not `cjlaundry.site`
 - deploy workflows now render hosted WhatsApp runtime vars so first VM rollout includes `WHATSAPP_ENABLED=true` and the gateway token
+- deploy workflows and runtime env examples now expect `*_ADMIN_BOOTSTRAP_PASSWORD` instead of the old hash-based secret name
 - CI now self-builds shared contracts during root typecheck instead of assuming `packages/contracts/dist` already exists in the checkout
 - CI now also installs Playwright Chromium explicitly instead of assuming the runner cache already contains the browser binary
 - the gateway-paired WhatsApp number and the customer-facing admin contact list are now intentionally separate settings concepts

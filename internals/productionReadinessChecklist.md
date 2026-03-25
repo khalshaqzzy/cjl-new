@@ -23,7 +23,7 @@ Purpose: final gate checklist before the first production push after observabili
 - no placeholder secrets remain in staging or production runtime envs
 - `SESSION_SECRET` is unique per environment
 - `WHATSAPP_GATEWAY_TOKEN` is unique per environment
-- `ADMIN_BOOTSTRAP_PASSWORD_HASH` is present and not plaintext
+- `ADMIN_BOOTSTRAP_PASSWORD` is present, non-placeholder, and stored only in runtime secrets
 - `SESSION_COOKIE_SECURE=true` in hosted env
 - `TRUST_PROXY=1` or `true` in hosted env
 - `RELEASE_SHA` is rendered into hosted runtime env on deploy

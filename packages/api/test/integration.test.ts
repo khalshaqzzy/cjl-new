@@ -1,11 +1,15 @@
 import assert from "node:assert/strict"
+import { execFile } from "node:child_process"
 import test from "node:test"
 import { createServer, type Server } from "node:http"
+import { promisify } from "node:util"
+import bcrypt from "bcryptjs"
 import { DateTime } from "luxon"
 import { MongoMemoryReplSet } from "mongodb-memory-server"
 
 const baseUrl = "http://127.0.0.1:4105"
 const gatewayUrl = "http://127.0.0.1:4115"
+const execFileAsync = promisify(execFile)
 
 let mongo: MongoMemoryReplSet
 let server: Server
@@ -13,6 +17,7 @@ let gatewayServer: Server
 let getDatabase: (typeof import("../src/db.ts"))["getDatabase"]
 let disconnectDatabase: (typeof import("../src/db.ts"))["disconnectDatabase"]
 let stopBackgroundWork: (() => Promise<void>) | undefined
+let ensureSeedData: (typeof import("../src/seed.ts"))["ensureSeedData"]
 
 const gatewayState = {
   state: "connected",
@@ -173,6 +178,43 @@ const extractMagicToken = (url: string) => {
   return parsed.searchParams.get("token")
 }
 
+const runEnvImport = async (env: {
+  APP_ENV: string
+  SESSION_SECRET: string
+  SESSION_COOKIE_SECURE: string
+  TRUST_PROXY: string
+  ADMIN_ORIGIN: string
+  PUBLIC_ORIGIN: string
+  API_ORIGIN: string
+  WHATSAPP_GATEWAY_TOKEN: string
+  ADMIN_BOOTSTRAP_USERNAME?: string
+  ADMIN_BOOTSTRAP_PASSWORD?: string
+}) => {
+  const script = `
+    process.env.APP_ENV = ${JSON.stringify(env.APP_ENV)}
+    process.env.PORT = "4105"
+    process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/cjlaundry"
+    process.env.SESSION_SECRET = ${JSON.stringify(env.SESSION_SECRET)}
+    process.env.SESSION_COOKIE_SECURE = ${JSON.stringify(env.SESSION_COOKIE_SECURE)}
+    process.env.TRUST_PROXY = ${JSON.stringify(env.TRUST_PROXY)}
+    process.env.ADMIN_ORIGIN = ${JSON.stringify(env.ADMIN_ORIGIN)}
+    process.env.PUBLIC_ORIGIN = ${JSON.stringify(env.PUBLIC_ORIGIN)}
+    process.env.API_ORIGIN = ${JSON.stringify(env.API_ORIGIN)}
+    process.env.WHATSAPP_GATEWAY_TOKEN = ${JSON.stringify(env.WHATSAPP_GATEWAY_TOKEN)}
+    process.env.ADMIN_BOOTSTRAP_USERNAME = ${JSON.stringify(env.ADMIN_BOOTSTRAP_USERNAME ?? "")}
+    process.env.ADMIN_BOOTSTRAP_PASSWORD = ${JSON.stringify(env.ADMIN_BOOTSTRAP_PASSWORD ?? "")}
+    await import("./packages/api/src/env.ts")
+  `
+
+  return execFileAsync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "--eval", script],
+    {
+      cwd: "C:\\Users\\Khalfani Shaquille\\Documents\\GitHub\\cjl-new",
+    }
+  )
+}
+
 test.before(async () => {
   mongo = await MongoMemoryReplSet.create({
     replSet: { count: 1, storageEngine: "wiredTiger" }
@@ -197,10 +239,12 @@ test.before(async () => {
   process.env.WA_FAIL_MODE = "never"
 
   const dbModule = await import("../src/db.ts")
+  const seedModule = await import("../src/seed.ts")
   const serverModule = await import("../src/server.ts")
 
   getDatabase = dbModule.getDatabase
   disconnectDatabase = dbModule.disconnectDatabase
+  ensureSeedData = seedModule.ensureSeedData
 
   const started = await serverModule.startServer()
   server = started.server
@@ -259,6 +303,31 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   const adminCookie = result.response.headers.get("set-cookie")
   assert.ok(adminCookie)
   assertCookieLifetimeDays(adminCookie, 6.5, 7.5)
+
+  const seededAdminBefore = await getDatabase().collection("admins").findOne({ _id: "admin-primary" })
+  assert.ok(seededAdminBefore)
+  assert.equal(seededAdminBefore.username, "admin")
+  assert.notEqual(seededAdminBefore.passwordHash, "admin123")
+  assert.equal(seededAdminBefore.passwordHash.startsWith("$2"), true)
+  assert.equal(await bcrypt.compare("admin123", seededAdminBefore.passwordHash), true)
+
+  await getDatabase().collection("admins").updateOne(
+    { _id: "admin-primary" },
+    {
+      $set: {
+        username: "stale-admin",
+        passwordHash: await bcrypt.hash("stale-password", 10),
+      }
+    }
+  )
+
+  await ensureSeedData()
+
+  const seededAdmins = await getDatabase().collection("admins").find({ _id: "admin-primary" }).toArray()
+  assert.equal(seededAdmins.length, 1)
+  assert.equal(seededAdmins[0].username, "admin")
+  assert.notEqual(seededAdmins[0].passwordHash, seededAdminBefore.passwordHash)
+  assert.equal(await bcrypt.compare("admin123", seededAdmins[0].passwordHash), true)
 
   const initialSettings = await requestJson("/v1/admin/settings", {
     headers: { Cookie: adminCookie! }
@@ -1002,4 +1071,54 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
 
   result = await requestJson("/v1/public/leaderboard")
   assert.ok(result.payload.availableMonths.some((month: { key: string }) => month.key === previousMonthKey))
+})
+
+test("hosted env contract requires plaintext bootstrap password and accepts valid hosted values", async () => {
+  await assert.rejects(
+    () =>
+      runEnvImport({
+        APP_ENV: "staging",
+        SESSION_SECRET: "staging-session-secret",
+        SESSION_COOKIE_SECURE: "true",
+        TRUST_PROXY: "1",
+        ADMIN_ORIGIN: "https://admin-staging.cjlaundry.com",
+        PUBLIC_ORIGIN: "https://staging.cjlaundry.com",
+        API_ORIGIN: "https://api-staging.cjlaundry.com",
+        WHATSAPP_GATEWAY_TOKEN: "staging-whatsapp-token",
+        ADMIN_BOOTSTRAP_USERNAME: "admin",
+        ADMIN_BOOTSTRAP_PASSWORD: "replace-me",
+      }),
+    /ADMIN_BOOTSTRAP_PASSWORD/
+  )
+
+  await assert.rejects(
+    () =>
+      runEnvImport({
+        APP_ENV: "production",
+        SESSION_SECRET: "production-session-secret",
+        SESSION_COOKIE_SECURE: "true",
+        TRUST_PROXY: "1",
+        ADMIN_ORIGIN: "https://admin.cjlaundry.com",
+        PUBLIC_ORIGIN: "https://cjlaundry.com",
+        API_ORIGIN: "https://api.cjlaundry.com",
+        WHATSAPP_GATEWAY_TOKEN: "production-whatsapp-token",
+        ADMIN_BOOTSTRAP_USERNAME: "admin",
+      }),
+    /ADMIN_BOOTSTRAP_PASSWORD/
+  )
+
+  await assert.doesNotReject(() =>
+    runEnvImport({
+      APP_ENV: "staging",
+      SESSION_SECRET: "staging-session-secret",
+      SESSION_COOKIE_SECURE: "true",
+      TRUST_PROXY: "1",
+      ADMIN_ORIGIN: "https://admin-staging.cjlaundry.com",
+      PUBLIC_ORIGIN: "https://staging.cjlaundry.com",
+      API_ORIGIN: "https://api-staging.cjlaundry.com",
+      WHATSAPP_GATEWAY_TOKEN: "staging-whatsapp-token",
+      ADMIN_BOOTSTRAP_USERNAME: "admin",
+      ADMIN_BOOTSTRAP_PASSWORD: "staging-bootstrap-password-123",
+    })
+  )
 })

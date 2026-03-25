@@ -23,8 +23,8 @@ Purpose: repo snapshot after deployment/workflow work plus PRD-gap closure for b
 - added proxy-aware API env support:
   - `APP_ENV`
   - `TRUST_PROXY`
-  - `ADMIN_PASSWORD_HASH`
-- changed bootstrap admin seeding so hosted environments can seed from a bcrypt hash instead of a plaintext password
+  - `ADMIN_PASSWORD`
+- changed bootstrap admin seeding so the API hashes the configured bootstrap password before storing it
 - documented the full hosted deployment path in:
   - `internals/deploymentGuide.md`
   - `internals/environmentMatrix.md`

@@ -525,7 +525,7 @@ Open the `staging` environment, then use `Add secret` for each value below.
 | `STAGING_SESSION_SECRET` | long random secret |
 | `STAGING_WHATSAPP_GATEWAY_TOKEN` | shared internal token for API <-> WhatsApp gateway auth |
 | `STAGING_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
-| `STAGING_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the first admin password |
+| `STAGING_ADMIN_BOOTSTRAP_PASSWORD` | plaintext first admin password used for bootstrap seeding |
 
 ### 10.3 Add production environment secrets
 
@@ -546,7 +546,7 @@ Open the `production` environment and add:
 | `PRODUCTION_SESSION_SECRET` | long random secret |
 | `PRODUCTION_WHATSAPP_GATEWAY_TOKEN` | shared internal token for API <-> WhatsApp gateway auth |
 | `PRODUCTION_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
-| `PRODUCTION_ADMIN_BOOTSTRAP_PASSWORD_HASH` | bcrypt hash of the first admin password |
+| `PRODUCTION_ADMIN_BOOTSTRAP_PASSWORD` | plaintext first admin password used for bootstrap seeding |
 
 ### 10.4 Generate secure values
 
@@ -556,17 +556,11 @@ Generate a session secret:
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Generate a bcrypt hash for an admin password:
-
-```bash
-node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('replace-with-real-password', 12));"
-```
-
 Important:
 
-- store the real admin password somewhere secure before hashing it
-- only the hash belongs in GitHub
-- changing the hash later does not automatically overwrite an already-seeded admin user
+- store the real admin password in a secure secret manager before pasting it into GitHub
+- GitHub now stores the plaintext bootstrap password and the API hashes it before storing it in MongoDB
+- on each hosted deploy/startup, the single `admin-primary` account is synchronized to the configured bootstrap username and password
 - generate a separate `*_MONGO_REPLICA_KEY` value and keep it stable for the life of that environment unless you intentionally rotate Mongo internal auth
 - staging and production boots now reject placeholder or obviously default values for critical secrets, so do not leave values like `replace-me` in any hosted secret
 
@@ -958,13 +952,13 @@ If the deploy only fails during the immediate GitHub smoke check on a first roll
 Check:
 
 - `*_ADMIN_BOOTSTRAP_USERNAME`
-- `*_ADMIN_BOOTSTRAP_PASSWORD_HASH`
-- whether the stored hash matches the intended password
+- `*_ADMIN_BOOTSTRAP_PASSWORD`
+- whether the bootstrap password secret matches the password you are trying to use
 
 Important:
 
-- the bootstrap admin is seeded only if missing
-- changing the hash later does not overwrite an existing admin
+- the bootstrap admin account is re-synced on startup to match the configured bootstrap username and password
+- changing the bootstrap password secret and redeploying will rotate the login credentials for the single seeded admin account
 
 ## 18. Final Checklist
 

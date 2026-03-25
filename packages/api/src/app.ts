@@ -424,7 +424,7 @@ export const createApp = () => {
       await mongoClient.db().command({ ping: 1 })
       const [settings, admin] = await Promise.all([
         mongoClient.db().collection<SettingsDocument>("settings").findOne({ _id: "app-settings" }),
-        mongoClient.db().collection<AdminDocument>("admins").findOne({ username: env.ADMIN_USERNAME })
+        mongoClient.db().collection<AdminDocument>("admins").findOne({ _id: "admin-primary" })
       ])
 
       if (!settings || !admin) {

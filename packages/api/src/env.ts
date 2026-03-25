@@ -43,7 +43,8 @@ const envSchema = z.object({
   TRUST_PROXY: trustProxyLikeSchema.default(false),
   ADMIN_USERNAME: z.string().default("admin"),
   ADMIN_PASSWORD: z.string().default("admin123"),
-  ADMIN_PASSWORD_HASH: z.string().optional(),
+  ADMIN_BOOTSTRAP_USERNAME: z.string().optional(),
+  ADMIN_BOOTSTRAP_PASSWORD: z.string().optional(),
   APP_TIMEZONE: z.string().default("Asia/Jakarta"),
   ADMIN_ORIGIN: z.string().default("http://localhost:3001"),
   PUBLIC_ORIGIN: z.string().default("http://localhost:3000"),
@@ -65,7 +66,7 @@ const envSchema = z.object({
   const placeholderSecrets = new Map<string, string | undefined>([
     ["SESSION_SECRET", value.SESSION_SECRET],
     ["WHATSAPP_GATEWAY_TOKEN", value.WHATSAPP_GATEWAY_TOKEN],
-    ["ADMIN_PASSWORD_HASH", value.ADMIN_PASSWORD_HASH],
+    ["ADMIN_BOOTSTRAP_PASSWORD", value.ADMIN_BOOTSTRAP_PASSWORD],
   ])
 
   for (const [field, currentValue] of placeholderSecrets.entries()) {
@@ -73,6 +74,7 @@ const envSchema = z.object({
     if (
       !normalized ||
       normalized.startsWith("replace-me") ||
+      normalized === "admin123" ||
       normalized.includes("dev-secret") ||
       normalized.includes("internal-token")
     ) {
@@ -112,6 +114,14 @@ const envSchema = z.object({
         message: `${field} wajib memakai HTTPS pada staging/production`,
       })
     }
+  }
+
+  if (!value.ADMIN_BOOTSTRAP_USERNAME?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["ADMIN_BOOTSTRAP_USERNAME"],
+      message: "ADMIN_BOOTSTRAP_USERNAME wajib diisi pada staging/production",
+    })
   }
 })
 

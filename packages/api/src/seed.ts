@@ -7,6 +7,17 @@ import { sanitizeAdminWhatsappContacts } from "./lib/admin-whatsapp.js"
 import { formatCustomerName, normalizeName, normalizePhone } from "./lib/normalization.js"
 import { hashOpaqueToken, tokenLast4 } from "./lib/security.js"
 
+const resolveConfiguredAdminCredentials = () => ({
+  username:
+    env.APP_ENV === "local" || env.APP_ENV === "test"
+      ? env.ADMIN_USERNAME
+      : env.ADMIN_BOOTSTRAP_USERNAME ?? env.ADMIN_USERNAME,
+  password:
+    env.APP_ENV === "local" || env.APP_ENV === "test"
+      ? env.ADMIN_PASSWORD
+      : env.ADMIN_BOOTSTRAP_PASSWORD ?? env.ADMIN_PASSWORD,
+})
+
 export const ensureSeedData = async () => {
   const db = getDatabase()
   const settingsCollection = db.collection<SettingsDocument>("settings")
@@ -90,15 +101,34 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
     }
   }
 
-  const admin = await adminCollection.findOne({ username: env.ADMIN_USERNAME })
-  if (!admin) {
-    const passwordHash = env.ADMIN_PASSWORD_HASH ?? (await bcrypt.hash(env.ADMIN_PASSWORD, 10))
+  const configuredAdmin = resolveConfiguredAdminCredentials()
+  const currentAdmin = await adminCollection.findOne({ _id: "admin-primary" })
+
+  if (!currentAdmin) {
+    const passwordHash = await bcrypt.hash(configuredAdmin.password, 10)
     await adminCollection.insertOne({
       _id: "admin-primary",
-      username: env.ADMIN_USERNAME,
+      username: configuredAdmin.username,
       passwordHash,
       createdAt: new Date().toISOString()
     })
+  } else {
+    const usernameChanged = currentAdmin.username !== configuredAdmin.username
+    const passwordChanged = !(await bcrypt.compare(configuredAdmin.password, currentAdmin.passwordHash))
+
+    if (usernameChanged || passwordChanged) {
+      await adminCollection.updateOne(
+        { _id: "admin-primary" },
+        {
+          $set: {
+            username: configuredAdmin.username,
+            ...(passwordChanged
+              ? { passwordHash: await bcrypt.hash(configuredAdmin.password, 10) }
+              : {}),
+          }
+        }
+      )
+    }
   }
 
   await db.collection("customers").createIndex({ normalizedPhone: 1 }, { unique: true })
