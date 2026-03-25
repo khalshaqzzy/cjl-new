@@ -13,7 +13,7 @@
     "build:admin": "npm run build --workspace @cjl/admin-web",
     "build:public": "npm run build --workspace @cjl/public-web",
     "lint": "eslint app packages scripts tests --no-warn-ignored",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run build:contracts && npm run typecheck --workspaces --if-present",
     "audit:prod": "npm audit --omit=dev --audit-level=moderate",
     "security:scan": "npm run lint && npm run typecheck && npm run audit:prod",
     "dev:api": "npm run dev --workspace @cjl/api",
