@@ -3,7 +3,7 @@ import crypto from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import QRCode from "qrcode"
-import type { WhatsappInternalEvent } from "@cjl/contracts"
+import type { WhatsappInternalEvent, WhatsappPairingMethod } from "@cjl/contracts"
 import whatsappWeb from "whatsapp-web.js"
 import { env } from "./env.js"
 import { logger, serializeError } from "./logger.js"
@@ -27,6 +27,7 @@ type GatewayState = {
   currentPhone?: string
   wid?: string
   profileName?: string
+  pairingMethod?: WhatsappPairingMethod
   qrCodeValue?: string
   qrCodeDataUrl?: string
   pairingCode?: string
@@ -148,12 +149,27 @@ const cleanupStaleChromiumLocks = async () => {
   }
 }
 
+const resolveAuthSessionDir = () =>
+  path.join(
+    path.resolve(env.WHATSAPP_AUTH_DIR),
+    env.WHATSAPP_SESSION_CLIENT_ID ? `session-${env.WHATSAPP_SESSION_CLIENT_ID}` : "session"
+  )
+
+const removeAuthSession = async () => {
+  await fs.rm(resolveAuthSessionDir(), { recursive: true, force: true }).catch((error) => {
+    throw new Error(
+      `Gagal menghapus session WhatsApp: ${error instanceof Error ? error.message : String(error)}`
+    )
+  })
+}
+
 const buildStatus = () => ({
   state: gatewayState.state,
   connected: gatewayState.connected,
   currentPhone: gatewayState.currentPhone,
   wid: gatewayState.wid,
   profileName: gatewayState.profileName,
+  pairingMethod: gatewayState.pairingMethod,
   qrCodeValue: gatewayState.qrCodeValue,
   qrCodeDataUrl: gatewayState.qrCodeDataUrl,
   pairingCode: gatewayState.pairingCode,
@@ -193,6 +209,7 @@ const updateSessionState = async (
     profileName: gatewayState.profileName,
     lastDisconnectReason: gatewayState.lastDisconnectReason,
     lastAuthFailureReason: gatewayState.lastAuthFailureReason,
+    pairingMethod: gatewayState.pairingMethod,
     observedAt: gatewayState.observedAt!,
   })
 }
@@ -265,6 +282,7 @@ const attachClientListeners = (instance: InstanceType<typeof WhatsappClient>) =>
     await updateSessionState({
       state: "pairing",
       connected: false,
+      pairingMethod: "qr",
       qrCodeValue: qr,
       qrCodeDataUrl,
       pairingCode: undefined,
@@ -277,6 +295,9 @@ const attachClientListeners = (instance: InstanceType<typeof WhatsappClient>) =>
     await updateSessionState({
       state: "pairing",
       connected: false,
+      pairingMethod: "code",
+      qrCodeValue: undefined,
+      qrCodeDataUrl: undefined,
       pairingCode: code,
     })
   })
@@ -285,6 +306,7 @@ const attachClientListeners = (instance: InstanceType<typeof WhatsappClient>) =>
     await updateSessionState({
       state: "authenticated",
       connected: false,
+      pairingMethod: undefined,
       qrCodeValue: undefined,
       qrCodeDataUrl: undefined,
       pairingCode: undefined,
@@ -306,6 +328,7 @@ const attachClientListeners = (instance: InstanceType<typeof WhatsappClient>) =>
       currentPhone: wid ? toChatPhone(wid) : gatewayState.currentPhone,
       wid,
       profileName: instance.info?.pushname,
+      pairingMethod: undefined,
       qrCodeValue: undefined,
       qrCodeDataUrl: undefined,
       pairingCode: undefined,
@@ -318,6 +341,10 @@ const attachClientListeners = (instance: InstanceType<typeof WhatsappClient>) =>
     await updateSessionState({
       state: "auth_failure",
       connected: false,
+      pairingMethod: undefined,
+      qrCodeValue: undefined,
+      qrCodeDataUrl: undefined,
+      pairingCode: undefined,
       lastAuthFailureReason: typeof message === "string" ? message : "Authentication failed",
     })
   })
@@ -326,6 +353,10 @@ const attachClientListeners = (instance: InstanceType<typeof WhatsappClient>) =>
     await updateSessionState({
       state: "disconnected",
       connected: false,
+      pairingMethod: undefined,
+      qrCodeValue: undefined,
+      qrCodeDataUrl: undefined,
+      pairingCode: undefined,
       lastDisconnectReason: typeof reason === "string" ? reason : "Disconnected",
     })
   })
@@ -395,6 +426,10 @@ const bootClient = async (attempt: 1 | 2): Promise<InstanceType<typeof WhatsappC
   await updateSessionState({
     state: "initializing",
     connected: false,
+    pairingMethod: undefined,
+    qrCodeValue: undefined,
+    qrCodeDataUrl: undefined,
+    pairingCode: undefined,
   })
 
   try {
@@ -455,6 +490,40 @@ const restartClient = async () => {
   return initializeClient()
 }
 
+const resetClientSession = async () => {
+  const previousClient = client
+  client = null
+  clientInitPromise = null
+
+  if (previousClient) {
+    await previousClient.destroy().catch(() => undefined)
+  }
+
+  await removeAuthSession()
+  await cleanupStaleChromiumLocks()
+
+  await updateSessionState({
+    state: "initializing",
+    connected: false,
+    currentPhone: undefined,
+    wid: undefined,
+    profileName: undefined,
+    pairingMethod: undefined,
+    qrCodeValue: undefined,
+    qrCodeDataUrl: undefined,
+    pairingCode: undefined,
+    lastDisconnectReason: undefined,
+    lastAuthFailureReason: undefined,
+  })
+
+  logger.info({
+    event: "whatsapp.session.reset",
+    authDir: env.WHATSAPP_AUTH_DIR,
+  })
+
+  return initializeClient()
+}
+
 const requireGatewayAuth = (
   req: express.Request,
   res: express.Response,
@@ -486,7 +555,10 @@ app.post("/internal/pairing-code", requireGatewayAuth, async (req, res) => {
 
     const instance = await initializeClient()
     const pairingCode = await instance.requestPairingCode(toWhatsappNumber(phoneNumber), true)
+    gatewayState.qrCodeValue = undefined
+    gatewayState.qrCodeDataUrl = undefined
     gatewayState.pairingCode = pairingCode
+    gatewayState.pairingMethod = "code"
     gatewayState.state = "pairing"
     gatewayState.connected = false
     gatewayState.observedAt = nowIso()
@@ -522,6 +594,25 @@ app.post("/internal/reconnect", requireGatewayAuth, async (_req, res) => {
     res.status(400).json({
       message: error instanceof Error ? error.message : "Gagal reconnect WhatsApp",
       code: "reconnect_failed",
+    })
+  }
+})
+
+app.post("/internal/reset-session", requireGatewayAuth, async (_req, res) => {
+  try {
+    await resetClientSession()
+    logger.info({
+      event: "whatsapp.reset_session.succeeded",
+    })
+    res.json(buildStatus())
+  } catch (error) {
+    logger.error({
+      event: "whatsapp.reset_session.failed",
+      error: serializeError(error),
+    })
+    res.status(400).json({
+      message: error instanceof Error ? error.message : "Gagal reset session WhatsApp",
+      code: "reset_session_failed",
     })
   }
 })

@@ -4,10 +4,11 @@ import type {
   WhatsappInternalEvent,
   WhatsappMessageDirection,
   WhatsappMessageItem,
+  WhatsappPairingMethod,
 } from "@cjl/contracts"
 import { env } from "../env.js"
 import { getDatabase } from "../db.js"
-import { DependencyError, ValidationError } from "../errors.js"
+import { AppError, DependencyError, ValidationError } from "../errors.js"
 import { logger, serializeError } from "../logger.js"
 import { maskPhone } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel } from "../lib/time.js"
@@ -29,6 +30,7 @@ type GatewayStatusResponse = {
   currentPhone?: string
   wid?: string
   profileName?: string
+  pairingMethod?: WhatsappPairingMethod
   qrCodeValue?: string
   qrCodeDataUrl?: string
   pairingCode?: string
@@ -99,12 +101,72 @@ const gatewayFetch = async <T>(
       | { message?: string; code?: string }
       | null
     const error = new Error(payload?.message ?? "WhatsApp gateway request gagal") as GatewayError
+    error.name = "GatewayError"
     error.code = payload?.code
     error.status = response.status
     throw error
   }
 
   return (await response.json()) as T
+}
+
+const isGatewayHttpError = (error: unknown): error is GatewayError =>
+  error instanceof Error &&
+  "status" in error &&
+  typeof (error as { status?: unknown }).status === "number"
+
+const buildGatewayErrorDetails = (error: GatewayError) => ({
+  gatewayStatus: error.status,
+  ...(error.code ? { gatewayCode: error.code } : {}),
+  gatewayMessage: error.message,
+})
+
+const throwGatewayControlError = (actionLabel: string, error: unknown): never => {
+  if (isGatewayHttpError(error)) {
+    const status = error.status ?? 500
+
+    logger.warn({
+      event: "whatsapp.gateway.control_failed",
+      action: actionLabel,
+      gatewayStatus: status,
+      gatewayCode: error.code,
+      gatewayMessage: error.message,
+      error: serializeError(error),
+    })
+
+    if (status === 401) {
+      throw new DependencyError(
+        "Autentikasi internal WhatsApp gateway gagal. Periksa WHATSAPP_GATEWAY_TOKEN.",
+        error,
+        {
+          exposeDetails: true,
+          details: buildGatewayErrorDetails(error),
+          code: error.code ?? "dependency_unavailable",
+        }
+      )
+    }
+
+    if (status >= 400 && status < 500) {
+      throw new AppError(error.message, status, error.code ?? "validation_error", {
+        exposeDetails: true,
+        details: buildGatewayErrorDetails(error),
+        cause: error,
+      })
+    }
+
+    throw new DependencyError(`Gateway WhatsApp gagal memproses ${actionLabel}`, error, {
+      exposeDetails: true,
+      details: buildGatewayErrorDetails(error),
+      code: error.code ?? "dependency_unavailable",
+    })
+  }
+
+  logger.error({
+    event: "whatsapp.gateway.unreachable",
+    action: actionLabel,
+    error: serializeError(error),
+  })
+  throw new DependencyError(`Gateway WhatsApp tidak tersedia untuk ${actionLabel}`, error)
 }
 
 const buildMessagePreview = (
@@ -210,6 +272,7 @@ const mergeStatus = (
   lastDisconnectReason: persisted.lastDisconnectReason,
   lastAuthFailureAt: persisted.lastAuthFailureAt,
   lastAuthFailureReason: persisted.lastAuthFailureReason,
+  pairingMethod: live?.pairingMethod ?? persisted.pairingMethod,
   qrCodeValue: live?.qrCodeValue,
   qrCodeDataUrl: live?.qrCodeDataUrl,
   pairingCode: live?.pairingCode,
@@ -248,17 +311,18 @@ export const requestWhatsappPairingCode = async (): Promise<WhatsappConnectionSt
     throw new ValidationError("Nomor WhatsApp publik belum diatur")
   }
 
-  let live: GatewayRequestPairingCodeResponse
-  try {
-    live = await gatewayFetch<GatewayRequestPairingCodeResponse>("/internal/pairing-code", {
-      method: "POST",
-      body: JSON.stringify({
-        phoneNumber: settings.business.publicWhatsapp,
-      }),
-    })
-  } catch (error) {
-    throw new DependencyError("Gateway WhatsApp tidak tersedia untuk pairing code", error)
-  }
+  const live = await (async (): Promise<GatewayRequestPairingCodeResponse> => {
+    try {
+      return await gatewayFetch<GatewayRequestPairingCodeResponse>("/internal/pairing-code", {
+        method: "POST",
+        body: JSON.stringify({
+          phoneNumber: settings.business.publicWhatsapp,
+        }),
+      })
+    } catch (error) {
+      return throwGatewayControlError("pairing code", error)
+    }
+  })()
 
   const persisted = (await getSessionCollection().findOne({ _id: "primary" })) ?? defaultSession()
   return mergeStatus(persisted, live, true)
@@ -269,15 +333,36 @@ export const reconnectWhatsapp = async (): Promise<WhatsappConnectionStatus> => 
     return getWhatsappStatus()
   }
 
-  let live: GatewayStatusResponse
-  try {
-    live = await gatewayFetch<GatewayStatusResponse>("/internal/reconnect", {
-      method: "POST",
-      body: JSON.stringify({}),
-    })
-  } catch (error) {
-    throw new DependencyError("Gateway WhatsApp tidak tersedia untuk reconnect", error)
+  const live = await (async (): Promise<GatewayStatusResponse> => {
+    try {
+      return await gatewayFetch<GatewayStatusResponse>("/internal/reconnect", {
+        method: "POST",
+        body: JSON.stringify({}),
+      })
+    } catch (error) {
+      return throwGatewayControlError("reconnect", error)
+    }
+  })()
+  const persisted = (await getSessionCollection().findOne({ _id: "primary" })) ?? defaultSession()
+  return mergeStatus(persisted, live, true)
+}
+
+export const resetWhatsappSession = async (): Promise<WhatsappConnectionStatus> => {
+  if (!env.WHATSAPP_ENABLED) {
+    return getWhatsappStatus()
   }
+
+  const live = await (async (): Promise<GatewayStatusResponse> => {
+    try {
+      return await gatewayFetch<GatewayStatusResponse>("/internal/reset-session", {
+        method: "POST",
+        body: JSON.stringify({}),
+      })
+    } catch (error) {
+      return throwGatewayControlError("reset session", error)
+    }
+  })()
+
   const persisted = (await getSessionCollection().findOne({ _id: "primary" })) ?? defaultSession()
   return mergeStatus(persisted, live, true)
 }
@@ -345,10 +430,32 @@ export const ingestWhatsappInternalEvent = async (event: WhatsappInternalEvent) 
     const update: Partial<WhatsappSessionDocument> & { updatedAt: string } = {
       state: event.state,
       connected: event.connected,
-      currentPhone: event.currentPhone,
-      wid: event.wid,
-      profileName: event.profileName,
       updatedAt: event.observedAt,
+    }
+    const unset: Record<string, ""> = {}
+
+    if (event.currentPhone) {
+      update.currentPhone = event.currentPhone
+    } else {
+      unset.currentPhone = ""
+    }
+
+    if (event.wid) {
+      update.wid = event.wid
+    } else {
+      unset.wid = ""
+    }
+
+    if (event.profileName) {
+      update.profileName = event.profileName
+    } else {
+      unset.profileName = ""
+    }
+
+    if (event.pairingMethod) {
+      update.pairingMethod = event.pairingMethod
+    } else {
+      unset.pairingMethod = ""
     }
 
     if (event.state === "connected") {
@@ -358,11 +465,15 @@ export const ingestWhatsappInternalEvent = async (event: WhatsappInternalEvent) 
     if (event.state === "disconnected") {
       update.lastDisconnectAt = event.observedAt
       update.lastDisconnectReason = event.lastDisconnectReason
+    } else if (!event.lastDisconnectReason) {
+      unset.lastDisconnectReason = ""
     }
 
     if (event.state === "auth_failure") {
       update.lastAuthFailureAt = event.observedAt
       update.lastAuthFailureReason = event.lastAuthFailureReason
+    } else if (!event.lastAuthFailureReason) {
+      unset.lastAuthFailureReason = ""
     }
 
     await getSessionCollection().updateOne(
@@ -370,6 +481,7 @@ export const ingestWhatsappInternalEvent = async (event: WhatsappInternalEvent) 
       {
         $set: update,
         $setOnInsert: { _id: "primary" },
+        ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}),
       },
       { upsert: true }
     )

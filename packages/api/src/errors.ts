@@ -11,6 +11,7 @@ export type AppErrorCode =
   | "origin_not_allowed"
   | "dependency_unavailable"
   | "internal_error"
+  | (string & {})
 
 export class AppError extends Error {
   readonly statusCode: number
@@ -83,8 +84,20 @@ export class RateLimitError extends AppError {
 }
 
 export class DependencyError extends AppError {
-  constructor(message: string, cause?: unknown) {
-    super(message, 503, "dependency_unavailable", { cause })
+  constructor(
+    message: string,
+    cause?: unknown,
+    options?: {
+      details?: unknown
+      exposeDetails?: boolean
+      code?: AppErrorCode
+    }
+  ) {
+    super(message, 503, options?.code ?? "dependency_unavailable", {
+      cause,
+      details: options?.details,
+      exposeDetails: options?.exposeDetails,
+    })
     this.name = "DependencyError"
   }
 }

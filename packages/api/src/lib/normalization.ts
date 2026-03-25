@@ -21,5 +21,22 @@ export const normalizePhone = (value: string) => {
   return `+62${digits}`
 }
 
+export const normalizePhoneLabel = (value: string) => {
+  const digits = value.replace(/\D/g, "")
+  if (!digits) {
+    return ""
+  }
+
+  if (digits.startsWith("62")) {
+    return `0${digits.slice(2)}`
+  }
+
+  if (digits.startsWith("0")) {
+    return digits
+  }
+
+  return `0${digits}`
+}
+
 export const normalizeWhatsappPhone = (value: string) =>
   normalizePhone(value).replace(/\D/g, "")

@@ -16,6 +16,7 @@ The repo now has:
 - in-process outbox worker with separate receipt render vs delivery state for confirmation notifications
 - real WhatsApp delivery via dedicated gateway sidecar with persistent auth volume
 - admin WhatsApp status page plus read-only mirrored inbox backed by API-owned chat/message records
+- admin WhatsApp controls now distinguish QR vs pairing-code state, surface gateway control errors, and support session reset for stuck auth state
 - uppercase customer-name normalization plus repo-safe startup backfill for legacy customer/order/notification name snapshots
 - PDF receipt downloads for admin notification fallback and authenticated portal order detail
 - manual WhatsApp fallback for failed notification sends with admin outbox action support

@@ -960,6 +960,35 @@ Important:
 - the bootstrap admin account is re-synced on startup to match the configured bootstrap username and password
 - changing the bootstrap password secret and redeploying will rotate the login credentials for the single seeded admin account
 
+### 17.6 WhatsApp pairing code fails or QR keeps loading forever
+
+Check from the admin WhatsApp page first:
+
+- `Gateway aktif` must be visible
+- pairing-code mode should not display an old QR at the same time
+- if the page shows `Auth Gagal` or `Terputus`, use `Reset Session` before retrying pairing
+
+Then verify runtime config on the VM:
+
+- `WHATSAPP_GATEWAY_TOKEN` in `/opt/cjl/<env>/shared/runtime.env` is not a placeholder and matches both `api` and `whatsapp-gateway`
+- `WHATSAPP_ENABLED=true`
+- the shared auth mount exists at `/opt/cjl/<env>/shared/whatsapp-auth`
+
+Useful commands:
+
+```bash
+cd /opt/cjl/<env>/current
+docker compose --env-file /opt/cjl/<env>/shared/runtime.env -f deploy/api/docker-compose.remote.yml logs api --tail 100
+docker compose --env-file /opt/cjl/<env>/shared/runtime.env -f deploy/api/docker-compose.remote.yml logs whatsapp-gateway --tail 100
+curl -s http://127.0.0.1:4100/health
+```
+
+Interpretation:
+
+- if `api` logs mention gateway unauthorized or internal auth mismatch, fix `WHATSAPP_GATEWAY_TOKEN` and redeploy
+- if `whatsapp-gateway` logs show auth failure or stale browser/session issues, run `Reset Session` from admin and pair again
+- if pairing code succeeds but the phone still shows an old QR flow, refresh the page and confirm the panel is in pairing-code mode before scanning anything
+
 ## 18. Final Checklist
 
 You are ready when all of the following are true:
@@ -979,4 +1008,5 @@ You are ready when all of the following are true:
 - staging deploy completes successfully
 - staging smoke checks pass
 - staging business flow passes manual validation
+- staging WhatsApp admin page shows `Gateway aktif` and can recover with `Reset Session` if pairing is stuck
 - production deploy is ready to run

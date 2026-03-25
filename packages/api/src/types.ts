@@ -6,6 +6,7 @@ import type {
   ServiceCode,
   ServiceSetting,
   WhatsappConnectionState,
+  WhatsappPairingMethod,
   WhatsappMessageDirection
 } from "@cjl/contracts"
 
@@ -116,6 +117,7 @@ export type WhatsappSessionDocument = {
   lastDisconnectReason?: string
   lastAuthFailureAt?: string
   lastAuthFailureReason?: string
+  pairingMethod?: WhatsappPairingMethod
   updatedAt: string
 }
 

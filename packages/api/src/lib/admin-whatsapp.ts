@@ -1,9 +1,7 @@
 import type { AdminWhatsappContact } from "@cjl/contracts"
-import { normalizeWhatsappPhone } from "./normalization.js"
+import { normalizePhoneLabel, normalizeWhatsappPhone } from "./normalization.js"
 
 export const ADMIN_WHATSAPP_FALLBACK_PHONE = "087780563875"
-
-const normalizePhoneLabel = (value: string) => value.trim()
 
 export const sanitizeAdminWhatsappContacts = (
   contacts: AdminWhatsappContact[] | undefined,

@@ -47,6 +47,7 @@ export const whatsappConnectionStateSchema = z.enum([
   "disconnected",
   "auth_failure",
 ])
+export const whatsappPairingMethodSchema = z.enum(["qr", "code"])
 export const whatsappMessageDirectionSchema = z.enum(["inbound", "outbound"])
 
 export const serviceSettingSchema = z.object({
@@ -226,6 +227,7 @@ export const whatsappConnectionStatusSchema = z.object({
   lastDisconnectReason: z.string().optional(),
   lastAuthFailureAt: z.string().optional(),
   lastAuthFailureReason: z.string().optional(),
+  pairingMethod: whatsappPairingMethodSchema.optional(),
   qrCodeValue: z.string().optional(),
   qrCodeDataUrl: z.string().optional(),
   pairingCode: z.string().optional(),
@@ -275,6 +277,7 @@ export const whatsappInternalSessionStateChangedEventSchema = z.object({
   profileName: z.string().optional(),
   lastDisconnectReason: z.string().optional(),
   lastAuthFailureReason: z.string().optional(),
+  pairingMethod: whatsappPairingMethodSchema.optional(),
   observedAt: z.string(),
 })
 
@@ -558,6 +561,7 @@ export type OrderHistoryItem = z.infer<typeof orderHistoryItemSchema>
 export type PointLedgerItem = z.infer<typeof pointLedgerItemSchema>
 export type NotificationRecord = z.infer<typeof notificationRecordSchema>
 export type WhatsappConnectionState = z.infer<typeof whatsappConnectionStateSchema>
+export type WhatsappPairingMethod = z.infer<typeof whatsappPairingMethodSchema>
 export type WhatsappMessageDirection = z.infer<typeof whatsappMessageDirectionSchema>
 export type WhatsappConnectionStatus = z.infer<typeof whatsappConnectionStatusSchema>
 export type WhatsappChatSummary = z.infer<typeof whatsappChatSummarySchema>

@@ -23,7 +23,7 @@ import { calculateOrderPreview } from "../lib/calculator.js"
 import { formatCurrency } from "../lib/formatters.js"
 import { createId, createOpaqueToken, createOrderCode } from "../lib/ids.js"
 import { buildMaskedAlias, rebuildArchivedLeaderboard } from "../lib/leaderboard.js"
-import { normalizeName, normalizePhone, normalizeWhatsappPhone } from "../lib/normalization.js"
+import { normalizeName, normalizePhone, normalizePhoneLabel, normalizeWhatsappPhone } from "../lib/normalization.js"
 import { hashOpaqueToken, tokenLast4 } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel, monthKeyFromIso, nowJakarta } from "../lib/time.js"
 import type {
@@ -970,12 +970,27 @@ export const getSettings = async (): Promise<SettingsResponse> => {
 }
 
 export const updateSettings = async (payload: SettingsResponse) => {
+  const normalizedPublicWhatsapp =
+    normalizePhoneLabel(payload.business.publicWhatsapp) || payload.business.publicWhatsapp.trim()
+  const normalizedAdminWhatsappContacts = sanitizeAdminWhatsappContacts(
+    payload.business.adminWhatsappContacts,
+    [
+      payload.business.publicContactPhone,
+      normalizedPublicWhatsapp,
+    ]
+  )
+  const primaryAdminWhatsappContact =
+    normalizedAdminWhatsappContacts.find((contact) => contact.isPrimary) ??
+    normalizedAdminWhatsappContacts[0]
   const nextBusiness = {
     ...payload.business,
-    adminWhatsappContacts: sanitizeAdminWhatsappContacts(payload.business.adminWhatsappContacts, [
-      payload.business.publicContactPhone,
-      payload.business.publicWhatsapp,
-    ]),
+    laundryName: payload.business.laundryName.trim(),
+    laundryPhone: normalizePhoneLabel(payload.business.laundryPhone) || payload.business.laundryPhone.trim(),
+    publicContactPhone: primaryAdminWhatsappContact.phone,
+    publicWhatsapp: normalizedPublicWhatsapp || primaryAdminWhatsappContact.phone,
+    adminWhatsappContacts: normalizedAdminWhatsappContacts,
+    address: payload.business.address.trim(),
+    operatingHours: payload.business.operatingHours.trim(),
   }
 
   await db().collection<SettingsDocument>("settings").updateOne(

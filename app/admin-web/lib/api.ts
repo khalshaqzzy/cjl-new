@@ -188,6 +188,8 @@ export const adminApi = {
     apiFetch<WhatsappConnectionStatus>("/v1/admin/whatsapp/pairing-code", { method: "POST" }),
   reconnectWhatsapp: () =>
     apiFetch<WhatsappConnectionStatus>("/v1/admin/whatsapp/reconnect", { method: "POST" }),
+  resetWhatsappSession: () =>
+    apiFetch<WhatsappConnectionStatus>("/v1/admin/whatsapp/reset-session", { method: "POST" }),
   listWhatsappChats: () => apiFetch<WhatsappChatSummary[]>("/v1/admin/whatsapp/chats"),
   listWhatsappMessages: (chatId: string) =>
     apiFetch<WhatsappMessageItem[]>(`/v1/admin/whatsapp/chats/${encodeURIComponent(chatId)}/messages`),

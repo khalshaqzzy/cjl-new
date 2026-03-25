@@ -23,10 +23,21 @@ const gatewayState = {
   currentPhone: "+6281234567890",
   wid: "6281234567890@c.us",
   profileName: "CJ Laundry",
+  pairingMethod: undefined as "qr" | "code" | undefined,
   qrCodeValue: undefined as string | undefined,
   qrCodeDataUrl: undefined as string | undefined,
   pairingCode: undefined as string | undefined,
   observedAt: new Date().toISOString(),
+}
+
+const gatewayControls = {
+  nextPairingFailure: null as null | {
+    status: number
+    message: string
+    code: string
+  },
+  nextPairingNetworkFailure: false,
+  forceUnauthorizedForPairing: false,
 }
 
 const startGatewayServer = async () => {
@@ -48,11 +59,34 @@ const startGatewayServer = async () => {
     }
 
     if (req.method === "POST" && req.url === "/internal/pairing-code") {
+      if (gatewayControls.forceUnauthorizedForPairing) {
+        gatewayControls.forceUnauthorizedForPairing = false
+        sendJson(401, { message: "Unauthorized", code: "unauthorized" })
+        return
+      }
+
+      if (gatewayControls.nextPairingNetworkFailure) {
+        gatewayControls.nextPairingNetworkFailure = false
+        req.socket.destroy()
+        return
+      }
+
+      if (gatewayControls.nextPairingFailure) {
+        const failure = gatewayControls.nextPairingFailure
+        gatewayControls.nextPairingFailure = null
+        sendJson(failure.status, {
+          message: failure.message,
+          code: failure.code,
+        })
+        return
+      }
+
       gatewayState.state = "pairing"
       gatewayState.connected = false
+      gatewayState.pairingMethod = "code"
       gatewayState.pairingCode = "PAIR-1234-5678"
-      gatewayState.qrCodeValue = "qr-integration-value"
-      gatewayState.qrCodeDataUrl = "data:image/png;base64,ZmFrZQ=="
+      gatewayState.qrCodeValue = undefined
+      gatewayState.qrCodeDataUrl = undefined
       gatewayState.observedAt = new Date().toISOString()
       sendJson(200, gatewayState)
       return
@@ -61,6 +95,22 @@ const startGatewayServer = async () => {
     if (req.method === "POST" && req.url === "/internal/reconnect") {
       gatewayState.state = "connected"
       gatewayState.connected = true
+      gatewayState.pairingMethod = undefined
+      gatewayState.pairingCode = undefined
+      gatewayState.qrCodeValue = undefined
+      gatewayState.qrCodeDataUrl = undefined
+      gatewayState.observedAt = new Date().toISOString()
+      sendJson(200, gatewayState)
+      return
+    }
+
+    if (req.method === "POST" && req.url === "/internal/reset-session") {
+      gatewayState.state = "initializing"
+      gatewayState.connected = false
+      gatewayState.currentPhone = undefined
+      gatewayState.wid = undefined
+      gatewayState.profileName = undefined
+      gatewayState.pairingMethod = undefined
       gatewayState.pairingCode = undefined
       gatewayState.qrCodeValue = undefined
       gatewayState.qrCodeDataUrl = undefined
@@ -300,10 +350,14 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
     ...initialSettings.payload,
     business: {
       ...initialSettings.payload.business,
+      laundryPhone: "081333333333",
+      publicContactPhone: "081444444444",
+      publicWhatsapp: "087703122004",
       adminWhatsappContacts: [
-        { id: "admin-1", phone: "081111111111", isPrimary: false },
+        { id: "admin-1", phone: "+62 81111111111", isPrimary: false },
         { id: "admin-2", phone: "082222222222", isPrimary: true }
-      ]
+      ],
+      address: "Jl. Integration No. 45, Bandung"
     }
   }
 
@@ -316,11 +370,17 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
     body: JSON.stringify(multiContactSettings)
   })
   assert.equal(result.payload.business.adminWhatsappContacts.length, 2)
+  assert.equal(result.payload.business.laundryPhone, "081333333333")
+  assert.equal(result.payload.business.publicContactPhone, "082222222222")
+  assert.equal(result.payload.business.publicWhatsapp, "087703122004")
+  assert.equal(result.payload.business.adminWhatsappContacts[0].phone, "081111111111")
   assert.equal(result.payload.business.adminWhatsappContacts[1].isPrimary, true)
+  assert.equal(result.payload.business.address, "Jl. Integration No. 45, Bandung")
 
   result = await requestJson("/v1/public/landing")
   assert.equal(result.payload.laundryInfo.phone, "082222222222")
   assert.equal(result.payload.laundryInfo.whatsapp, "6282222222222")
+  assert.equal(result.payload.laundryInfo.address, "Jl. Integration No. 45, Bandung")
 
   const fallbackSettings = {
     ...multiContactSettings,
@@ -554,6 +614,8 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.session.name, upperCustomerName)
   assert.equal(result.payload.session.publicNameVisible, false)
   assert.equal(result.payload.adminWhatsappContacts.length, 2)
+  assert.equal(result.payload.adminWhatsappContacts[0].phone, "081111111111")
+  assert.equal(result.payload.adminWhatsappContacts[1].phone, "082222222222")
   assert.equal(result.payload.adminWhatsappContacts[1].isPrimary, true)
   assert.ok(result.payload.activeOrders.some((order: { orderId: string }) => order.orderId === firstOrderId))
   const refreshedPublicCookie = result.response.headers.get("set-cookie")
@@ -654,8 +716,84 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   })
   assert.equal(result.payload.state, "pairing")
   assert.equal(result.payload.connected, false)
+  assert.equal(result.payload.pairingMethod, "code")
   assert.equal(result.payload.pairingCode, "PAIR-1234-5678")
-  assert.match(result.payload.qrCodeDataUrl, /^data:image\/png;base64,/)
+  assert.equal(result.payload.qrCodeDataUrl, undefined)
+  assert.equal(result.payload.qrCodeValue, undefined)
+
+  gatewayControls.nextPairingFailure = {
+    status: 400,
+    message: "Session WhatsApp belum berada pada mode pairing",
+    code: "pairing_failed",
+  }
+  result = await requestJson("/v1/admin/whatsapp/pairing-code", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({}),
+    expectedStatus: 400
+  })
+  assert.equal(result.payload.message, "Session WhatsApp belum berada pada mode pairing")
+  assert.equal(result.payload.error.code, "pairing_failed")
+  assert.equal(result.payload.error.details.gatewayCode, "pairing_failed")
+  assert.equal(result.payload.error.details.gatewayStatus, 400)
+
+  gatewayControls.forceUnauthorizedForPairing = true
+  result = await requestJson("/v1/admin/whatsapp/pairing-code", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({}),
+    expectedStatus: 503
+  })
+  assert.match(result.payload.message, /WHATSAPP_GATEWAY_TOKEN/)
+  assert.equal(result.payload.error.code, "unauthorized")
+  assert.equal(result.payload.error.details.gatewayCode, "unauthorized")
+  assert.equal(result.payload.error.details.gatewayStatus, 401)
+
+  gatewayControls.nextPairingNetworkFailure = true
+  result = await requestJson("/v1/admin/whatsapp/pairing-code", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({}),
+    expectedStatus: 503
+  })
+  assert.equal(result.payload.message, "Gateway WhatsApp tidak tersedia untuk pairing code")
+  assert.equal(result.payload.error.code, "dependency_unavailable")
+
+  result = await requestJson("/v1/admin/whatsapp/reconnect", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.state, "connected")
+  assert.equal(result.payload.connected, true)
+
+  result = await requestJson("/v1/admin/whatsapp/reset-session", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.state, "initializing")
+  assert.equal(result.payload.connected, false)
+  assert.equal(result.payload.currentPhone, undefined)
+  assert.equal(result.payload.profileName, undefined)
+  assert.equal(result.payload.pairingMethod, undefined)
+  assert.equal(result.payload.pairingCode, undefined)
+  assert.equal(result.payload.qrCodeDataUrl, undefined)
 
   result = await requestJson("/v1/admin/whatsapp/reconnect", {
     method: "POST",

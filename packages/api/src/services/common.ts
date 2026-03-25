@@ -13,7 +13,7 @@ import { createId, createOpaqueToken } from "../lib/ids.js"
 import { formatCurrency } from "../lib/formatters.js"
 import { compileTemplate, shouldForceNotificationFailure } from "../lib/notifications.js"
 import { renderReceiptImageBase64 } from "../lib/receipt-image.js"
-import { formatCustomerName, normalizeName } from "../lib/normalization.js"
+import { formatCustomerName, normalizeName, normalizePhoneLabel } from "../lib/normalization.js"
 import { renderReceiptPdf } from "../lib/receipts.js"
 import { hashOpaqueToken, maskPhone, tokenLast4 } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel } from "../lib/time.js"
@@ -65,20 +65,36 @@ export const getSettingsDocument = async (session?: ClientSession) => {
     throw new DependencyError("Settings belum tersedia")
   }
 
+  const normalizedPublicWhatsapp =
+    normalizePhoneLabel(settings.business.publicWhatsapp) || settings.business.publicWhatsapp.trim()
   const adminWhatsappContacts = sanitizeAdminWhatsappContacts(
     settings.business.adminWhatsappContacts,
     [
       settings.business.publicContactPhone,
-      settings.business.publicWhatsapp,
+      normalizedPublicWhatsapp,
     ]
   )
+  const primaryAdminWhatsappContact = resolvePrimaryAdminWhatsappContact(adminWhatsappContacts, [
+    settings.business.publicContactPhone,
+    normalizedPublicWhatsapp,
+  ])
+  const normalizedBusiness = {
+    ...settings.business,
+    laundryName: settings.business.laundryName.trim(),
+    laundryPhone: normalizePhoneLabel(settings.business.laundryPhone) || settings.business.laundryPhone.trim(),
+    publicContactPhone: primaryAdminWhatsappContact.phone,
+    publicWhatsapp: normalizedPublicWhatsapp || primaryAdminWhatsappContact.phone,
+    adminWhatsappContacts,
+    address: settings.business.address.trim(),
+    operatingHours: settings.business.operatingHours.trim(),
+  }
 
-  if (JSON.stringify(adminWhatsappContacts) !== JSON.stringify(settings.business.adminWhatsappContacts ?? [])) {
+  if (JSON.stringify(normalizedBusiness) !== JSON.stringify(settings.business)) {
     await db().collection<SettingsDocument>("settings").updateOne(
       { _id: "app-settings" },
       {
         $set: {
-          "business.adminWhatsappContacts": adminWhatsappContacts,
+          business: normalizedBusiness,
           updatedAt: new Date().toISOString(),
         }
       },
@@ -86,7 +102,7 @@ export const getSettingsDocument = async (session?: ClientSession) => {
     )
   }
 
-  settings.business.adminWhatsappContacts = adminWhatsappContacts
+  settings.business = normalizedBusiness
   return settings
 }
 

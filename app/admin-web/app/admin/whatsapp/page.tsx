@@ -50,12 +50,18 @@ export default function WhatsappAdminPage() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [busyAction, setBusyAction] = useState<"pair" | "reconnect" | null>(null)
+  const [busyAction, setBusyAction] = useState<"pair" | "reconnect" | "reset" | null>(null)
 
   const selectedChat = useMemo(
     () => chats.find((chat) => chat.chatId === selectedChatId) ?? null,
     [chats, selectedChatId]
   )
+
+  const pairingMethod = status?.pairingMethod
+  const showQrCode = pairingMethod === "qr" && Boolean(status?.qrCodeDataUrl)
+  const showPairingCode = pairingMethod === "code" || Boolean(status?.pairingCode)
+  const canResetSession =
+    Boolean(error) || status?.state === "auth_failure" || status?.state === "disconnected"
 
   const loadStatusAndChats = async (preserveSelection = true) => {
     const [statusPayload, chatPayload] = await Promise.all([
@@ -65,6 +71,7 @@ export default function WhatsappAdminPage() {
 
     setStatus(statusPayload)
     setChats(chatPayload)
+    setError(null)
     setSelectedChatId((current) => {
       if (preserveSelection && current && chatPayload.some((chat) => chat.chatId === current)) {
         return current
@@ -137,9 +144,11 @@ export default function WhatsappAdminPage() {
 
   const handlePairing = async () => {
     setBusyAction("pair")
+    setError(null)
     try {
       const payload = await adminApi.requestWhatsappPairingCode()
       setStatus(payload)
+      setError(null)
       await loadStatusAndChats()
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Gagal membuat pairing code")
@@ -150,12 +159,29 @@ export default function WhatsappAdminPage() {
 
   const handleReconnect = async () => {
     setBusyAction("reconnect")
+    setError(null)
     try {
       const payload = await adminApi.reconnectWhatsapp()
       setStatus(payload)
+      setError(null)
       await loadStatusAndChats()
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Gagal reconnect WhatsApp")
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const handleResetSession = async () => {
+    setBusyAction("reset")
+    setError(null)
+    try {
+      const payload = await adminApi.resetWhatsappSession()
+      setStatus(payload)
+      setError(null)
+      await loadStatusAndChats()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Gagal reset session WhatsApp")
     } finally {
       setBusyAction(null)
     }
@@ -233,7 +259,7 @@ export default function WhatsappAdminPage() {
                         disabled={busyAction !== null}
                       >
                         {busyAction === "pair" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <QrCode className="mr-1 h-4 w-4" />}
-                        Generate
+                        Generate Pairing Code
                       </Button>
                       <Button
                         size="sm"
@@ -244,23 +270,47 @@ export default function WhatsappAdminPage() {
                         {busyAction === "reconnect" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
                         Reconnect
                       </Button>
+                      {canResetSession && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={handleResetSession}
+                          disabled={busyAction !== null}
+                        >
+                          {busyAction === "reset" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Unplug className="mr-1 h-4 w-4" />}
+                          Reset Session
+                        </Button>
+                      )}
                     </div>
                   </div>
 
-                  {status?.qrCodeDataUrl ? (
+                  {showQrCode ? (
                     <div className="flex flex-col items-center gap-3 rounded-2xl bg-white p-4">
                       <img
-                        src={status.qrCodeDataUrl}
+                        src={status?.qrCodeDataUrl}
                         alt="WhatsApp QR"
                         className="h-56 w-56 rounded-2xl border border-line-base object-contain"
                       />
                       <p className="text-center text-xs text-text-muted">
-                        Scan QR ini dari perangkat WhatsApp utama jika pairing code belum dipakai.
+                        Scan QR ini hanya saat gateway memang berada pada mode QR pairing.
+                      </p>
+                    </div>
+                  ) : showPairingCode ? (
+                    <div className="rounded-2xl bg-white p-6 text-center">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                        Pairing Code Aktif
+                      </p>
+                      <p className="mt-3 text-2xl font-semibold tracking-[0.2em] text-text-strong">
+                        {status?.pairingCode ?? "-"}
+                      </p>
+                      <p className="mt-3 text-sm text-text-muted">
+                        Gunakan pairing code ini dari perangkat WhatsApp utama. QR lama tidak berlaku saat mode pairing code aktif.
                       </p>
                     </div>
                   ) : (
                     <div className="rounded-2xl bg-white p-6 text-center text-sm text-text-muted">
-                      QR akan tampil ketika gateway meminta scan. Pairing code tetap menjadi jalur utama operator.
+                      QR hanya tampil saat gateway berada pada mode QR pairing. Jalur utama operator adalah pairing code.
                     </div>
                   )}
                 </div>

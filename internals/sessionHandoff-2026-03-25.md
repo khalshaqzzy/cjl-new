@@ -44,6 +44,11 @@ Purpose: repo snapshot after WhatsApp runtime integration, customer magic-login 
 - added ADR `docs/adr/0008-ux-first-production-hardening-baseline.md`
 - added ADR `docs/adr/0009-ci-runner-reproducibility-and-tool-provisioning.md`
 - added `internals/productionReadinessChecklist.md` as the final pre-production gate
+- stabilized admin WhatsApp pairing controls so QR and pairing-code modes are explicit, stale QR material is cleared during code mode, and operators can use `Reset Session` to recover a stuck auth volume
+- changed gateway-control error handling so admin now sees real gateway `4xx` messages and token-mismatch diagnostics instead of one generic pairing failure
+- normalized business/admin phone fields to canonical `08...` storage on backend read/write paths and made customer-facing public contact resolve from the primary admin WhatsApp contact consistently
+- verified through backend integration coverage that landing, portal, address, pairing-code, reset-session, and gateway error semantics now follow the canonical settings/runtime model
+- added ADR `docs/adr/0010-whatsapp-pairing-controls-and-canonical-business-contact-normalization.md`
 
 ## Verification Run
 
@@ -73,6 +78,8 @@ All passed at session end.
 - CI now also installs Playwright Chromium explicitly instead of assuming the runner cache already contains the browser binary
 - the gateway-paired WhatsApp number and the customer-facing admin contact list are now intentionally separate settings concepts
 - if legacy settings lack `adminWhatsappContacts`, backend read/update paths backfill from `publicContactPhone`, then `publicWhatsapp`, then fallback `087780563875`
+- settings business phone fields are now normalized to `08...` display/storage format even if operators enter `+62` or `62`
+- landing page, direct-status contact, and portal admin-contact surfaces should now be verified against the primary admin WhatsApp contact after any settings save
 - one-time customer magic links are stored server-side and deactivated per token only after a successful login session is saved
 - generating a new magic link from customer detail does not revoke older active unused tokens
 - customer session extension is sliding 30 days from the latest authenticated portal request; admin remains fixed at 7 days
@@ -84,5 +91,6 @@ All passed at session end.
 ## Recommended Next Start
 
 1. provision or refresh the staging VM secrets and run the first full staging deploy using the hardened CI and rollback path
-2. execute `internals/productionReadinessChecklist.md` on staging, including request-id tracing, rollback proof, error-code validation, and security-header checks
-3. validate real-device welcome WA, magic-link open and QR scan usability, reconnect behavior, and WhatsApp auth-volume persistence before touching production
+2. save a fresh production-like settings payload on staging using `08...` numbers and a new address, then verify landing and portal reflect the changes immediately
+3. execute `internals/productionReadinessChecklist.md` on staging, including request-id tracing, rollback proof, error-code validation, and security-header checks
+4. validate real-device welcome WA, magic-link open and QR scan usability, reconnect behavior, `Reset Session`, and WhatsApp auth-volume persistence before touching production

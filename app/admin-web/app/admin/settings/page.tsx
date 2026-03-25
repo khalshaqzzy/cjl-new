@@ -364,9 +364,9 @@ export default function SettingsPage() {
             <CardContent className="space-y-4 p-5">
               {[
                 { label: "Nama Laundry", value: laundryName, setter: setLaundryName, placeholder: "Nama laundry", type: "text" },
-                { label: "Nomor Telepon Laundry", value: laundryPhone, setter: setLaundryPhone, placeholder: "+62 xxx", type: "tel" },
-                { label: "Kontak Publik Umum", value: publicContactPhone, setter: setPublicContactPhone, placeholder: "+62 xxx", type: "tel" },
-                { label: "Nomor Gateway WhatsApp", value: publicWhatsapp, setter: setPublicWhatsapp, placeholder: "628xxxx", type: "text" },
+                { label: "Nomor Telepon Laundry", value: laundryPhone, setter: setLaundryPhone, placeholder: "08xxxxxxxxxx", type: "tel" },
+                { label: "Kontak Publik Umum", value: publicContactPhone, setter: setPublicContactPhone, placeholder: "08xxxxxxxxxx", type: "tel" },
+                { label: "Nomor Gateway WhatsApp", value: publicWhatsapp, setter: setPublicWhatsapp, placeholder: "08xxxxxxxxxx", type: "text" },
                 { label: "Alamat", value: laundryAddress, setter: setLaundryAddress, placeholder: "Alamat lengkap", type: "text" },
                 { label: "Jam Operasional", value: operatingHours, setter: setOperatingHours, placeholder: "Senin - Minggu, 07:00 - 22:00", type: "text" },
               ].map((field) => (
@@ -399,7 +399,7 @@ export default function SettingsPage() {
           <Card className="rounded-xl border-line-base bg-bg-surface shadow-card">
             <CardContent className="space-y-4 p-5">
               <div className="rounded-xl border border-info/20 bg-info/5 px-4 py-3 text-xs leading-relaxed text-info">
-                Nomor primary dipakai untuk landing page, direct status, dan contact utama customer. Semua nomor aktif akan muncul pada popup "Chat Admin" di portal customer.
+                Nomor primary dipakai untuk landing page, direct status, dan contact utama customer. Semua nomor aktif akan muncul pada popup "Chat Admin" di portal customer. Semua field nomor boleh diisi dengan format `08...`.
               </div>
 
               <div className="space-y-3">

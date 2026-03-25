@@ -88,6 +88,7 @@ import {
   listWhatsappChats,
   listWhatsappMessages,
   reconnectWhatsapp,
+  resetWhatsappSession,
   requestWhatsappPairingCode,
 } from "./services/whatsapp.js"
 import type { AdminDocument, SettingsDocument } from "./types.js"
@@ -690,6 +691,15 @@ export const createApp = () => {
     const result = await reconnectWhatsapp()
     logger.info({
       event: "whatsapp.reconnect.requested",
+      state: result.state,
+    })
+    res.json(result)
+  }))
+
+  app.post("/v1/admin/whatsapp/reset-session", requireAdmin, requireTrustedOrigin("admin"), whatsappAdminLimiter, asyncRoute(async (_req, res) => {
+    const result = await resetWhatsappSession()
+    logger.info({
+      event: "whatsapp.reset_session.requested",
       state: result.state,
     })
     res.json(result)

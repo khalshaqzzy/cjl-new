@@ -3,8 +3,8 @@ import type { AdminDocument, SettingsDocument } from "./types.js"
 import { getDatabase } from "./db.js"
 import { defaultMessageTemplates, defaultSettings, legacyDefaultMessageTemplates } from "./defaults.js"
 import { env } from "./env.js"
-import { sanitizeAdminWhatsappContacts } from "./lib/admin-whatsapp.js"
-import { formatCustomerName, normalizeName, normalizePhone } from "./lib/normalization.js"
+import { resolvePrimaryAdminWhatsappContact, sanitizeAdminWhatsappContacts } from "./lib/admin-whatsapp.js"
+import { formatCustomerName, normalizeName, normalizePhone, normalizePhoneLabel } from "./lib/normalization.js"
 import { hashOpaqueToken, tokenLast4 } from "./lib/security.js"
 
 const resolveConfiguredAdminCredentials = () => ({
@@ -58,13 +58,31 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
       isLegacyMessageTemplate ||
       existingSettings.messageTemplates.welcome === previousSiteWelcomeTemplate
 
+    const normalizedPublicWhatsapp =
+      normalizePhoneLabel(existingSettings.business.publicWhatsapp) || existingSettings.business.publicWhatsapp.trim()
     const nextAdminWhatsappContacts = sanitizeAdminWhatsappContacts(
       existingSettings.business.adminWhatsappContacts,
       [
         existingSettings.business.publicContactPhone,
-        existingSettings.business.publicWhatsapp,
+        normalizedPublicWhatsapp,
       ]
     )
+    const primaryAdminWhatsappContact = resolvePrimaryAdminWhatsappContact(nextAdminWhatsappContacts, [
+      existingSettings.business.publicContactPhone,
+      normalizedPublicWhatsapp,
+    ])
+    const nextBusiness = {
+      ...existingSettings.business,
+      laundryName: existingSettings.business.laundryName.trim(),
+      laundryPhone:
+        normalizePhoneLabel(existingSettings.business.laundryPhone) ||
+        existingSettings.business.laundryPhone.trim(),
+      publicContactPhone: primaryAdminWhatsappContact.phone,
+      publicWhatsapp: normalizedPublicWhatsapp || primaryAdminWhatsappContact.phone,
+      adminWhatsappContacts: nextAdminWhatsappContacts,
+      address: existingSettings.business.address.trim(),
+      operatingHours: existingSettings.business.operatingHours.trim(),
+    }
 
     if (isLegacyMessageTemplate) {
       await settingsCollection.updateOne(
@@ -72,14 +90,14 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
         {
           $set: {
             messageTemplates: defaultMessageTemplates,
-            "business.adminWhatsappContacts": nextAdminWhatsappContacts,
+            business: nextBusiness,
             updatedAt: new Date().toISOString()
           }
         }
       )
     } else if (
       shouldUpgradeWelcomeTemplate ||
-      JSON.stringify(nextAdminWhatsappContacts) !== JSON.stringify(existingSettings.business.adminWhatsappContacts ?? [])
+      JSON.stringify(nextBusiness) !== JSON.stringify(existingSettings.business)
     ) {
       await settingsCollection.updateOne(
         { _id: "app-settings" },
@@ -93,7 +111,7 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
                   },
                 }
               : {}),
-            "business.adminWhatsappContacts": nextAdminWhatsappContacts,
+            business: nextBusiness,
             updatedAt: new Date().toISOString(),
           }
         }
