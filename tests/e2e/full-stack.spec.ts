@@ -28,6 +28,33 @@ const waitForOrderRecord = async (orderCode: string) => {
   throw new Error(`Order ${orderCode} was not found in MongoDB`)
 }
 
+const waitForDirectStatusToken = async (orderId: string) => {
+  const client = new MongoClient(mongoUri)
+  await client.connect()
+  const database = client.db()
+
+  try {
+    const startedAt = Date.now()
+    while (Date.now() - startedAt < 15_000) {
+      const notification = await database.collection("notifications").findOne({
+        orderId,
+        eventType: "order_confirmed",
+      })
+
+      const token = notification?.preparedMessage.match(/\/status\/([a-f0-9]+)/i)?.[1]
+      if (token) {
+        return token
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  } finally {
+    await client.close()
+  }
+
+  throw new Error(`Direct status token for order ${orderId} was not found`)
+}
+
 test.describe.configure({ mode: "serial" })
 
 test("admin and public frontends stay fully integrated through the backend", async ({ browser, page }) => {
@@ -81,6 +108,7 @@ test("admin and public frontends stay fully integrated through the backend", asy
 
   const orderCode = (await page.getByTestId("pos-success-order-code").innerText()).trim()
   const { order, customer } = await waitForOrderRecord(orderCode)
+  const directStatusToken = await waitForDirectStatusToken(order._id)
 
   expect(customer?._id).toBeTruthy()
 
@@ -135,7 +163,7 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(publicPage.locator("main").getByText(upperCustomerName)).not.toBeVisible()
 
   const directStatusPage = await browser.newPage()
-  await directStatusPage.goto(`http://127.0.0.1:3100/status/${order.directToken}`)
+  await directStatusPage.goto(`http://127.0.0.1:3100/status/${directStatusToken}`)
   await expect(directStatusPage.getByTestId("direct-status-order-code")).toContainText(orderCode)
   await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Aktif")
   await expect(directStatusPage.getByText("Rincian Receipt")).not.toBeVisible()

@@ -12,6 +12,7 @@ If you follow this file from top to bottom, you should end with:
 - a provisioned staging environment
 - a documented path to production deployment
 - a rollback path if something goes wrong
+- a clear validation path for request correlation, structured logs, security headers, rollback, and WhatsApp runtime health
 
 ## 1. Read This First
 
@@ -207,8 +208,12 @@ At minimum, local values should be:
 From the repo root:
 
 ```powershell
+npm run lint
+npm run typecheck
+npm run audit:prod
 npm test
 npm run build
+npm run security:scan
 docker compose config
 ```
 
@@ -233,8 +238,10 @@ npm run docker:down
 
 What done looks like:
 
+- lint and typecheck pass
 - tests pass
 - build passes
+- audit and local security scan pass
 - compose config renders
 - `/health` responds successfully
 - `/ready` responds successfully
@@ -538,6 +545,7 @@ Important:
 - only the hash belongs in GitHub
 - changing the hash later does not automatically overwrite an already-seeded admin user
 - generate a separate `*_MONGO_REPLICA_KEY` value and keep it stable for the life of that environment unless you intentionally rotate Mongo internal auth
+- staging and production boots now reject placeholder or obviously default values for critical secrets, so do not leave values like `replace-me` in any hosted secret
 
 ### 10.5 What GitHub will write onto the VM
 
@@ -557,9 +565,21 @@ This matters because it tells you what must already be correct before the first 
 `.github/workflows/ci.yml` runs:
 
 - `npm ci`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run audit:prod`
 - `npm test`
 - `npm run build`
+- `npm run security:scan`
 - `docker compose config`
+- `docker compose build`
+
+Security-specific automation also runs in GitHub:
+
+- dependency review on pull requests
+- CodeQL static analysis
+- Gitleaks secret scanning
+- Trivy filesystem scanning
 
 ### 11.2 Staging deploy workflow
 
@@ -650,6 +670,8 @@ Confirm:
 
 - `/health` returns success
 - `/ready` returns success
+- `/ready` includes release metadata and dependency state
+- API responses include `X-Request-Id`
 
 `/ready` is the stronger check because it proves:
 
@@ -682,6 +704,19 @@ Manually validate:
 
 If any of these fail, do not deploy production yet.
 
+### 13.4 Observability and hardening checks
+
+On staging, also confirm:
+
+- API and WhatsApp gateway logs are JSON logs, not dev-only console output
+- the same `X-Request-Id` visible in browser/network tools can be found in the API container logs
+- expected error responses include `message`, `error.code`, and `error.requestId`
+- admin/public/API domains return the expected security headers
+- trusted-origin enforcement blocks invalid cross-origin state-changing requests
+- Mongo-backed rate limiting survives process restarts for login and token-redeem paths
+- real-device WhatsApp pairing and reconnect work after a container restart
+- rollback can return the VM to the last healthy release if a smoke check fails
+
 ## 14. Step 10: First Production Rollout
 
 Only do this after staging is healthy and manually validated.
@@ -694,6 +729,7 @@ Confirm:
 - production DNS resolves correctly
 - production GitHub environment secrets are filled
 - the exact commit was already validated in staging
+- `internals/productionReadinessChecklist.md` is fully checked off
 
 ### 14.2 Trigger production
 
@@ -719,6 +755,14 @@ Check:
 
 Then repeat the same business smoke checks you used in staging.
 
+For the first production push, also assign one operator to review the first hour of logs for:
+
+- `401` spikes
+- `429` spikes
+- `5xx` spikes
+- notification delivery failures
+- gateway disconnect or auth failures
+
 ## 15. Runtime Env Shape
 
 The GitHub workflows render the real runtime env file from environment secrets, but these example files define the expected shape:
@@ -731,6 +775,8 @@ The most important variables are:
 | Variable | Purpose |
 | --- | --- |
 | `APP_ENV` | `staging` or `production` |
+| `RELEASE_SHA` | git SHA rendered by deploy workflow for log correlation and `/ready` |
+| `LOG_LEVEL` | runtime logger threshold |
 | `COMPOSE_PROJECT_NAME` | compose project name for the environment |
 | `SHARED_DIR` | bind-mount location for Mongo and Caddy state |
 | `ADMIN_DOMAIN` | admin hostname |
@@ -745,6 +791,11 @@ The most important variables are:
 | `WHATSAPP_AUTH_DIR` | runtime path mounted into the WhatsApp gateway for persistent auth state |
 | `ADMIN_BOOTSTRAP_*` | first admin seed |
 | `WA_FAIL_MODE` | failure simulation mode; keep `never` in hosted envs |
+
+Hosted runtime note:
+
+- `SESSION_COOKIE_SECURE=true` and `TRUST_PROXY=1` are enforced inside the hosted API service definition
+- staging and production boot reject placeholder secrets, unsafe non-HTTPS origins, and missing hosted security-critical values
 
 ## 16. Rollback
 
@@ -804,6 +855,7 @@ Likely causes:
 - wrong Mongo credentials in runtime env
 - Mongo container is unhealthy
 - bootstrap seed documents were not created
+- hosted env validation rejected a placeholder secret or unsafe hosted origin setting
 
 Check:
 

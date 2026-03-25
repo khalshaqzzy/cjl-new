@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next"
 import { Plus_Jakarta_Sans, DM_Sans } from "next/font/google"
 import "./globals.css"
-import { FONT_DISPLAY, FONT_BODY } from "@/lib/fonts"
-
-// Google Fonts: "${FONT_DISPLAY}" for headings, "${FONT_BODY}" for body
 
 const fontDisplay = Plus_Jakarta_Sans({
   subsets: ["latin"],

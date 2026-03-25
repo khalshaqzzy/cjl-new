@@ -1,9 +1,12 @@
 import cors from "cors"
+import crypto from "node:crypto"
 import express from "express"
 import session from "express-session"
 import rateLimit from "express-rate-limit"
 import MongoStore from "connect-mongo"
-import morgan from "morgan"
+import helmet from "helmet"
+import { MongoServerError } from "mongodb"
+import { ZodError } from "zod"
 import {
   adminLoginInputSchema,
   confirmOrderInputSchema,
@@ -18,10 +21,21 @@ import {
   voidOrderInputSchema,
   whatsappInternalEventSchema,
 } from "@cjl/contracts"
+import {
+  AppError,
+  AuthorizationError,
+  ConflictError,
+  RateLimitError,
+  toValidationAppError,
+} from "./errors.js"
 import { env } from "./env.js"
 import { mongoClient } from "./db.js"
 import { normalizePhone } from "./lib/normalization.js"
+import { fingerprintUserAgent, hashIpAddress, maskPhone } from "./lib/security.js"
 import { nowJakarta } from "./lib/time.js"
+import { logger, serializeError } from "./logger.js"
+import { MongoRateLimitStore } from "./mongo-rate-limit-store.js"
+import { updateRequestContext, withRequestContext } from "./request-context.js"
 import {
   addManualPoints,
   beginIdempotencyRequest,
@@ -78,6 +92,9 @@ import {
 } from "./services/whatsapp.js"
 import type { AdminDocument, SettingsDocument } from "./types.js"
 
+const processStartedAt = new Date().toISOString()
+const allowedOrigins = new Set([env.ADMIN_ORIGIN, env.PUBLIC_ORIGIN])
+
 declare module "express-session" {
   interface SessionData {
     adminUserId?: string
@@ -102,31 +119,101 @@ const applyCustomerSessionLifetime = (req: express.Request) => {
   req.session.cookie.maxAge = CUSTOMER_SESSION_MAX_AGE_MS
 }
 
+const getRequestId = (res: express.Response) => String(res.getHeader("X-Request-Id") ?? "")
+
+const sendErrorResponse = (
+  res: express.Response,
+  statusCode: number,
+  message: string,
+  code: string,
+  details?: unknown
+) => {
+  const requestId = getRequestId(res)
+  res.status(statusCode).json({
+    message,
+    error: {
+      code,
+      requestId,
+      ...(details ? { details } : {}),
+    },
+  })
+}
+
+const resolveRequestOrigin = (req: express.Request) => {
+  const origin = req.header("Origin")
+  if (origin) {
+    return origin
+  }
+
+  const referer = req.header("Referer")
+  if (!referer) {
+    return undefined
+  }
+
+  try {
+    return new URL(referer).origin
+  } catch {
+    return undefined
+  }
+}
+
+const requireTrustedOrigin = (surface: "admin" | "public") =>
+  (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    const origin = resolveRequestOrigin(req)
+    if (!origin && (env.APP_ENV === "local" || env.APP_ENV === "test")) {
+      next()
+      return
+    }
+
+    const allowedOrigin = surface === "admin" ? env.ADMIN_ORIGIN : env.PUBLIC_ORIGIN
+    if (origin !== allowedOrigin) {
+      next(new AuthorizationError("Origin tidak diizinkan", "origin_not_allowed"))
+      return
+    }
+
+    next()
+  }
+
 const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!req.session.adminUserId) {
-    res.status(401).json({ message: "Unauthorized" })
+    sendErrorResponse(res, 401, "Unauthorized", "authentication_required")
     return
   }
+  updateRequestContext({
+    actorType: "admin",
+    actorId: req.session.adminUserId,
+    actorSource: "session",
+  })
   next()
 }
 
 const requireCustomer = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (!req.session.customerUserId || !req.session.customerProfile) {
-    res.status(401).json({ message: "Unauthorized" })
+    sendErrorResponse(res, 401, "Unauthorized", "authentication_required")
     return
   }
   applyCustomerSessionLifetime(req)
   req.session.touch()
+  updateRequestContext({
+    actorType: "customer",
+    actorId: req.session.customerUserId,
+    actorSource: "session",
+  })
   next()
 }
 
 const requireInternal = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authorization = req.header("Authorization")
   if (authorization !== `Bearer ${env.WHATSAPP_GATEWAY_TOKEN}`) {
-    res.status(401).json({ message: "Unauthorized" })
+    sendErrorResponse(res, 401, "Unauthorized", "authentication_required")
     return
   }
 
+  updateRequestContext({
+    actorType: "system",
+    actorId: "whatsapp-gateway",
+    actorSource: "system",
+  })
   next()
 }
 
@@ -155,7 +242,7 @@ const withIdempotency = async <T>(
 
   if (claim.kind === "existing") {
     if (claim.record.fingerprint !== fingerprint) {
-      throw new Error("Idempotency-Key sudah digunakan untuk payload yang berbeda")
+      throw new ConflictError("Idempotency-Key sudah digunakan untuk payload yang berbeda")
     }
 
     if (claim.record.status === "completed") {
@@ -167,7 +254,7 @@ const withIdempotency = async <T>(
       return completed.response as T
     }
 
-    throw new Error("Permintaan sedang diproses, silakan ulangi beberapa saat lagi")
+    throw new ConflictError("Permintaan sedang diproses, silakan ulangi beberapa saat lagi")
   }
 
   try {
@@ -183,6 +270,8 @@ const withIdempotency = async <T>(
 export const createApp = () => {
   const app = express()
   app.set("trust proxy", env.TRUST_PROXY)
+  app.locals.startedAt = processStartedAt
+  app.locals.releaseSha = env.RELEASE_SHA
   const sessionStore =
     env.APP_ENV === "test"
       ? null
@@ -195,11 +284,78 @@ export const createApp = () => {
     app.locals.sessionStore = sessionStore
   }
 
-  app.use(morgan("dev"))
+  app.use((req, res, next) => {
+    const requestId = req.header("X-Request-Id")?.slice(0, 128) || crypto.randomUUID()
+    const context = {
+      requestId,
+      actorType: "anonymous" as const,
+      actorId: "anonymous",
+      actorSource: "http" as const,
+      origin: resolveRequestOrigin(req),
+      userAgent: fingerprintUserAgent(req.header("User-Agent")),
+      ipHash: hashIpAddress(req.ip),
+      method: req.method,
+      path: req.originalUrl,
+    }
+    const startedAt = process.hrtime.bigint()
+    res.setHeader("X-Request-Id", requestId)
+
+    res.on("finish", () => {
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000
+      const actorType = req.session?.adminUserId
+        ? "admin"
+        : req.session?.customerUserId
+          ? "customer"
+          : context.actorType
+      const actorId = req.session?.adminUserId ?? req.session?.customerUserId ?? context.actorId
+      logger.info({
+        event: "http.request.completed",
+        requestId,
+        method: req.method,
+        route: req.route?.path ?? req.originalUrl,
+        statusCode: res.statusCode,
+        durationMs: Number(durationMs.toFixed(2)),
+        actorType,
+        actorId,
+        origin: context.origin,
+        ipHash: context.ipHash,
+        userAgent: context.userAgent,
+      })
+    })
+
+    withRequestContext(context, next)
+  })
   app.use(express.json({ limit: "1mb" }))
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    hsts: env.APP_ENV === "production"
+      ? {
+          maxAge: 31536000,
+          includeSubDomains: true,
+          preload: true,
+        }
+      : env.APP_ENV === "staging"
+        ? {
+            maxAge: 86400,
+            includeSubDomains: true,
+          }
+        : false,
+  }))
+  app.use((_req, res, next) => {
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    next()
+  })
   app.use(
     cors({
-      origin: [env.ADMIN_ORIGIN, env.PUBLIC_ORIGIN],
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.has(origin)) {
+          callback(null, true)
+          return
+        }
+
+        callback(new AuthorizationError("Origin tidak diizinkan", "origin_not_allowed"))
+      },
       credentials: true
     })
   )
@@ -221,6 +377,7 @@ export const createApp = () => {
   )
 
   const buildLimiter = (
+    keyPrefix: string,
     limit: number,
     message: string,
     keyGenerator?: (req: express.Request, res: express.Response) => string,
@@ -229,24 +386,37 @@ export const createApp = () => {
     rateLimit({
       windowMs: 10 * 60 * 1000,
       limit,
-      keyGenerator,
+      store: new MongoRateLimitStore(),
+      keyGenerator: (req, res) => `${keyPrefix}:${keyGenerator ? keyGenerator(req, res) : req.ip}`,
       skipSuccessfulRequests,
       handler: (_req, res) => {
-        res.status(429).json({ message })
+        const error = new RateLimitError(message)
+        sendErrorResponse(res, error.statusCode, error.message, error.code)
       }
     })
 
-  const adminLimiter = buildLimiter(20, "Terlalu banyak percobaan login admin")
-  const customerLimiter = buildLimiter(30, "Terlalu banyak percobaan login pelanggan", undefined, true)
+  const adminLimiter = buildLimiter("admin-login", 20, "Terlalu banyak percobaan login admin")
+  const customerLimiter = buildLimiter("customer-login-ip", 30, "Terlalu banyak percobaan login pelanggan", undefined, true)
   const customerPhoneLimiter = buildLimiter(
+    "customer-login-phone",
     10,
     "Terlalu banyak percobaan login untuk nomor ini",
     (req) => `customer-login:${normalizePhone(typeof req.body?.phone === "string" ? req.body.phone : "") || "unknown"}`,
     true
   )
+  const customerMagicLinkLimiter = buildLimiter(
+    "customer-magic-link",
+    10,
+    "Terlalu banyak percobaan redeem link login"
+  )
+  const whatsappAdminLimiter = buildLimiter(
+    "admin-whatsapp",
+    10,
+    "Terlalu banyak percobaan pada kontrol WhatsApp admin"
+  )
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true })
+    res.json({ ok: true, releaseSha: env.RELEASE_SHA })
   })
 
   app.get("/ready", asyncRoute(async (_req, res) => {
@@ -260,6 +430,10 @@ export const createApp = () => {
       if (!settings || !admin) {
         res.status(503).json({
           ok: false,
+          release: {
+            sha: env.RELEASE_SHA,
+            startedAt: processStartedAt,
+          },
           checks: {
             mongo: true,
             settingsSeeded: Boolean(settings),
@@ -272,16 +446,24 @@ export const createApp = () => {
       res.json({
         ok: true,
         appEnv: env.APP_ENV,
+        release: {
+          sha: env.RELEASE_SHA,
+          startedAt: processStartedAt,
+        },
         checks: {
           mongo: true,
           settingsSeeded: true,
           adminSeeded: true
         }
       })
-    } catch (error) {
+    } catch (_error) {
       res.status(503).json({
         ok: false,
         appEnv: env.APP_ENV,
+        release: {
+          sha: env.RELEASE_SHA,
+          startedAt: processStartedAt,
+        },
         checks: {
           mongo: false,
           settingsSeeded: false,
@@ -295,17 +477,30 @@ export const createApp = () => {
     const body = adminLoginInputSchema.parse(req.body)
     const admin = await findAdminByUsername(body.username)
     if (!admin || !(await verifyAdminPassword(admin, body.password))) {
-      res.status(401).json({ message: "Username atau password salah" })
+      logger.warn({
+        event: "admin.auth.login.failed",
+        username: body.username,
+      })
+      sendErrorResponse(res, 401, "Username atau password salah", "authentication_failed")
       return
     }
     req.session.adminUserId = admin._id
     req.session.customerUserId = undefined
     req.session.customerProfile = undefined
     applyAdminSessionLifetime(req)
+    updateRequestContext({
+      actorType: "admin",
+      actorId: admin._id,
+      actorSource: "session",
+    })
+    logger.info({
+      event: "admin.auth.login.succeeded",
+      actorId: admin._id,
+    })
     res.json({ ok: true })
   }))
 
-  app.post("/v1/admin/auth/logout", requireAdmin, asyncRoute(async (req, res) => {
+  app.post("/v1/admin/auth/logout", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     req.session.destroy(() => res.json({ ok: true }))
   }))
 
@@ -323,37 +518,70 @@ export const createApp = () => {
     res.json(await listCustomers(search))
   }))
 
-  app.post("/v1/admin/customers", requireAdmin, asyncRoute(async (req, res) => {
+  app.post("/v1/admin/customers", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = createCustomerInputSchema.parse(req.body)
-    res.json(await withIdempotency(req, "create-customer", body, () => createCustomer(body)))
+    const result = await withIdempotency(req, "create-customer", body, () => createCustomer(body))
+    logger.info({
+      event: result.duplicate ? "customer.create.duplicate" : "customer.create.succeeded",
+      customerId: result.customer.customerId,
+      destinationPhone: maskPhone(result.customer.phone),
+    })
+    res.json(result)
   }))
 
-  app.post("/v1/admin/customers/:id/magic-link", requireAdmin, asyncRoute(async (req, res) => {
-    res.json(await generateCustomerMagicLink(getParam(req.params.id)))
+  app.post("/v1/admin/customers/:id/magic-link", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const customerId = getParam(req.params.id)
+    const result = await generateCustomerMagicLink(customerId)
+    logger.info({
+      event: "customer.magic_link.created",
+      customerId,
+    })
+    res.json(result)
   }))
 
   app.get("/v1/admin/customers/:id", requireAdmin, asyncRoute(async (req, res) => {
     res.json(await getCustomerDetail(getParam(req.params.id)))
   }))
 
-  app.patch("/v1/admin/customers/:id", requireAdmin, asyncRoute(async (req, res) => {
+  app.patch("/v1/admin/customers/:id", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = updateCustomerInputSchema.parse(req.body)
-    res.json(await updateCustomerIdentity(getParam(req.params.id), body))
+    const customerId = getParam(req.params.id)
+    const result = await updateCustomerIdentity(customerId, body)
+    logger.info({
+      event: "customer.updated",
+      customerId,
+      destinationPhone: maskPhone(body.phone),
+    })
+    res.json(result)
   }))
 
-  app.post("/v1/admin/customers/:id/points", requireAdmin, asyncRoute(async (req, res) => {
+  app.post("/v1/admin/customers/:id/points", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = manualPointAdjustmentInputSchema.parse(req.body)
-    res.json(await addManualPoints(getParam(req.params.id), body.points, body.reason))
+    const customerId = getParam(req.params.id)
+    const result = await addManualPoints(customerId, body.points, body.reason)
+    logger.info({
+      event: "customer.points.adjusted",
+      customerId,
+      points: body.points,
+    })
+    res.json(result)
   }))
 
-  app.post("/v1/admin/orders/preview", requireAdmin, asyncRoute(async (req, res) => {
+  app.post("/v1/admin/orders/preview", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = confirmOrderInputSchema.parse(req.body)
     res.json(await getOrderPreview(body))
   }))
 
-  app.post("/v1/admin/orders", requireAdmin, asyncRoute(async (req, res) => {
+  app.post("/v1/admin/orders", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = confirmOrderInputSchema.parse(req.body)
-    res.json(await withIdempotency(req, "confirm-order", body, () => confirmOrder(body)))
+    const result = await withIdempotency(req, "confirm-order", body, () => confirmOrder(body))
+    logger.info({
+      event: "order.confirmed",
+      orderId: result.order.orderId,
+      orderCode: result.order.orderCode,
+      customerId: body.customerId,
+    })
+    res.json(result)
   }))
 
   app.get("/v1/admin/orders/active", requireAdmin, asyncRoute(async (_req, res) => {
@@ -364,32 +592,62 @@ export const createApp = () => {
     res.json(await getOrderById(getParam(req.params.id)))
   }))
 
-  app.post("/v1/admin/orders/:id/done", requireAdmin, asyncRoute(async (req, res) => {
+  app.post("/v1/admin/orders/:id/done", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const orderId = getParam(req.params.id)
-    res.json(await withIdempotency(req, "mark-done", { orderId }, () => markOrderDone(orderId)))
+    const result = await withIdempotency(req, "mark-done", { orderId }, () => markOrderDone(orderId))
+    logger.info({
+      event: "order.done",
+      orderId,
+      orderCode: result.orderCode,
+    })
+    res.json(result)
   }))
 
-  app.post("/v1/admin/orders/:id/void", requireAdmin, asyncRoute(async (req, res) => {
+  app.post("/v1/admin/orders/:id/void", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = voidOrderInputSchema.parse(req.body)
     const orderId = getParam(req.params.id)
-    res.json(await withIdempotency(req, "void-order", { orderId, ...body }, () => voidOrder(orderId, body)))
+    const result = await withIdempotency(req, "void-order", { orderId, ...body }, () => voidOrder(orderId, body))
+    logger.info({
+      event: "order.voided",
+      orderId,
+      reason: body.reason,
+    })
+    res.json(result)
   }))
 
   app.get("/v1/admin/notifications", requireAdmin, asyncRoute(async (_req, res) => {
     res.json(await listNotifications())
   }))
 
-  app.post("/v1/admin/notifications/:id/resend", requireAdmin, asyncRoute(async (req, res) => {
-    res.json(await resendNotification(getParam(req.params.id)))
+  app.post("/v1/admin/notifications/:id/resend", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const notificationId = getParam(req.params.id)
+    const result = await resendNotification(notificationId)
+    logger.info({
+      event: "notification.retry.queued",
+      notificationId,
+    })
+    res.json(result)
   }))
 
-  app.post("/v1/admin/notifications/:id/manual-resolve", requireAdmin, asyncRoute(async (req, res) => {
+  app.post("/v1/admin/notifications/:id/manual-resolve", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const note = typeof req.body?.note === "string" ? req.body.note : ""
-    res.json(await markNotificationManualResolved(getParam(req.params.id), note))
+    const notificationId = getParam(req.params.id)
+    const result = await markNotificationManualResolved(notificationId, note)
+    logger.info({
+      event: "notification.manual_resolved",
+      notificationId,
+    })
+    res.json(result)
   }))
 
-  app.post("/v1/admin/notifications/:id/manual-whatsapp", requireAdmin, asyncRoute(async (req, res) => {
-    res.json(await openManualWhatsappFallback(getParam(req.params.id)))
+  app.post("/v1/admin/notifications/:id/manual-whatsapp", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const notificationId = getParam(req.params.id)
+    const result = await openManualWhatsappFallback(notificationId)
+    logger.info({
+      event: "notification.manual_whatsapp_opened",
+      notificationId,
+    })
+    res.json(result)
   }))
 
   app.get("/v1/admin/notifications/:id/receipt", requireAdmin, asyncRoute(async (req, res) => {
@@ -406,21 +664,35 @@ export const createApp = () => {
     res.json(await getSettings())
   }))
 
-  app.put("/v1/admin/settings", requireAdmin, asyncRoute(async (req, res) => {
+  app.put("/v1/admin/settings", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = settingsResponseSchema.parse(req.body)
-    res.json(await updateSettings(body))
+    const result = await updateSettings(body)
+    logger.info({
+      event: "settings.updated",
+    })
+    res.json(result)
   }))
 
   app.get("/v1/admin/whatsapp/status", requireAdmin, asyncRoute(async (_req, res) => {
     res.json(await getWhatsappStatus())
   }))
 
-  app.post("/v1/admin/whatsapp/pairing-code", requireAdmin, asyncRoute(async (_req, res) => {
-    res.json(await requestWhatsappPairingCode())
+  app.post("/v1/admin/whatsapp/pairing-code", requireAdmin, requireTrustedOrigin("admin"), whatsappAdminLimiter, asyncRoute(async (_req, res) => {
+    const result = await requestWhatsappPairingCode()
+    logger.info({
+      event: "whatsapp.pairing_code.requested",
+      state: result.state,
+    })
+    res.json(result)
   }))
 
-  app.post("/v1/admin/whatsapp/reconnect", requireAdmin, asyncRoute(async (_req, res) => {
-    res.json(await reconnectWhatsapp())
+  app.post("/v1/admin/whatsapp/reconnect", requireAdmin, requireTrustedOrigin("admin"), whatsappAdminLimiter, asyncRoute(async (_req, res) => {
+    const result = await reconnectWhatsapp()
+    logger.info({
+      event: "whatsapp.reconnect.requested",
+      state: result.state,
+    })
+    res.json(result)
   }))
 
   app.get("/v1/admin/whatsapp/chats", requireAdmin, asyncRoute(async (_req, res) => {
@@ -445,21 +717,35 @@ export const createApp = () => {
     const body = customerLoginInputSchema.parse(req.body)
     const customer = await loginCustomer(body.phone, body.name)
     if (!customer) {
-      res.status(401).json({ message: "Nomor HP atau nama tidak sesuai" })
+      logger.warn({
+        event: "customer.auth.login.failed",
+        destinationPhone: maskPhone(body.phone),
+      })
+      sendErrorResponse(res, 401, "Nomor HP atau nama tidak sesuai", "authentication_failed")
       return
     }
     req.session.customerUserId = customer.customerId
     req.session.customerProfile = customer
     req.session.adminUserId = undefined
     applyCustomerSessionLifetime(req)
+    updateRequestContext({
+      actorType: "customer",
+      actorId: customer.customerId,
+      actorSource: "session",
+    })
+    logger.info({
+      event: "customer.auth.login.succeeded",
+      customerId: customer.customerId,
+      destinationPhone: maskPhone(customer.phone),
+    })
     res.json({ ok: true })
   }))
 
-  app.post("/v1/public/auth/magic-link/redeem", asyncRoute(async (req, res) => {
+  app.post("/v1/public/auth/magic-link/redeem", customerMagicLinkLimiter, asyncRoute(async (req, res) => {
     const body = customerMagicLinkRedeemInputSchema.parse(req.body)
     const redeemed = await redeemCustomerMagicLink(body)
     if (!redeemed) {
-      res.status(401).json({ message: "Link login sudah tidak valid" })
+      sendErrorResponse(res, 401, "Link login sudah tidak valid", "authentication_failed")
       return
     }
 
@@ -480,10 +766,19 @@ export const createApp = () => {
     })
 
     await markCustomerMagicLinkUsed(redeemed.magicLinkId)
+    updateRequestContext({
+      actorType: "customer",
+      actorId: redeemed.session.customerId,
+      actorSource: "session",
+    })
+    logger.info({
+      event: "customer.magic_link.redeemed",
+      customerId: redeemed.session.customerId,
+    })
     res.json({ ok: true, session: redeemed.session })
   }))
 
-  app.post("/v1/public/auth/logout", requireCustomer, asyncRoute(async (req, res) => {
+  app.post("/v1/public/auth/logout", requireCustomer, requireTrustedOrigin("public"), asyncRoute(async (req, res) => {
     req.session.destroy(() => res.json({ ok: true }))
   }))
 
@@ -530,10 +825,15 @@ export const createApp = () => {
     res.json(dashboard.monthlySummary)
   }))
 
-  app.patch("/v1/public/me/preferences/name-visibility", requireCustomer, asyncRoute(async (req, res) => {
+  app.patch("/v1/public/me/preferences/name-visibility", requireCustomer, requireTrustedOrigin("public"), asyncRoute(async (req, res) => {
     const body = customerNameVisibilityInputSchema.parse(req.body)
     const session = await updateCustomerNameVisibility(req.session.customerUserId!, body)
     req.session.customerProfile = session
+    logger.info({
+      event: "customer.name_visibility.updated",
+      customerId: session.customerId,
+      publicNameVisible: session.publicNameVisible,
+    })
     res.json({ session })
   }))
 
@@ -548,14 +848,69 @@ export const createApp = () => {
   app.get("/v1/public/status/:token", asyncRoute(async (req, res) => {
     const payload = await getDirectOrderStatus(getParam(req.params.token))
     if (!payload) {
-      res.status(404).json({ message: "Status order tidak ditemukan" })
+      sendErrorResponse(res, 404, "Status order tidak ditemukan", "resource_not_found")
       return
     }
     res.json(payload)
   }))
 
-  app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    res.status(400).json({ message: error.message })
+  app.use((error: unknown, _req: express.Request, res: express.Response, __next: express.NextFunction) => {
+    const requestId = getRequestId(res)
+
+    if (error instanceof ZodError) {
+      const validationError = toValidationAppError(error)
+      logger.warn({
+        event: "http.request.failed",
+        requestId,
+        code: validationError.code,
+        error: serializeError(validationError),
+      })
+      sendErrorResponse(
+        res,
+        validationError.statusCode,
+        validationError.message,
+        validationError.code,
+        validationError.details
+      )
+      return
+    }
+
+    if (error instanceof MongoServerError && error.code === 11000) {
+      const conflictError = new ConflictError("Data konflik dengan record yang sudah ada")
+      logger.warn({
+        event: "http.request.failed",
+        requestId,
+        code: conflictError.code,
+        error: serializeError(error),
+      })
+      sendErrorResponse(res, conflictError.statusCode, conflictError.message, conflictError.code)
+      return
+    }
+
+    if (error instanceof AppError) {
+      logger[error.statusCode >= 500 ? "error" : "warn"]({
+        event: "http.request.failed",
+        requestId,
+        code: error.code,
+        error: serializeError(error),
+      })
+      sendErrorResponse(
+        res,
+        error.statusCode,
+        error.message,
+        error.code,
+        error.exposeDetails ? error.details : undefined
+      )
+      return
+    }
+
+    logger.error({
+      event: "http.request.failed",
+      requestId,
+      code: "internal_error",
+      error: serializeError(error),
+    })
+    sendErrorResponse(res, 500, "Terjadi kesalahan internal", "internal_error")
   })
 
   return app

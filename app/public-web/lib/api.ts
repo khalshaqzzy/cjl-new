@@ -14,6 +14,20 @@ import type {
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"
 
+export class ApiError extends Error {
+  readonly status: number
+  readonly code?: string
+  readonly requestId?: string
+
+  constructor(message: string, status: number, code?: string, requestId?: string) {
+    super(requestId ? `${message} [Ref: ${requestId}]` : message)
+    this.name = "ApiError"
+    this.status = status
+    this.code = code
+    this.requestId = requestId
+  }
+}
+
 const apiFetch = async <T>(path: string, init?: RequestInit) => {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
@@ -25,8 +39,15 @@ const apiFetch = async <T>(path: string, init?: RequestInit) => {
   })
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null
-    throw new Error(payload?.message ?? "Request gagal")
+    const payload = (await response.json().catch(() => null)) as
+      | { message?: string; error?: { code?: string; requestId?: string } }
+      | null
+    throw new ApiError(
+      payload?.message ?? "Request gagal",
+      response.status,
+      payload?.error?.code,
+      payload?.error?.requestId ?? response.headers.get("x-request-id") ?? undefined
+    )
   }
 
   return (await response.json()) as T
@@ -42,13 +63,20 @@ const apiFetchBlob = async (path: string, init?: RequestInit) => {
   })
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null
-    throw new Error(payload?.message ?? "Request gagal")
+    const payload = (await response.json().catch(() => null)) as
+      | { message?: string; error?: { code?: string; requestId?: string } }
+      | null
+    throw new ApiError(
+      payload?.message ?? "Request gagal",
+      response.status,
+      payload?.error?.code,
+      payload?.error?.requestId ?? response.headers.get("x-request-id") ?? undefined
+    )
   }
 
   return {
     blob: await response.blob(),
-    filename: response.headers.get("content-disposition")?.match(/filename=\"?([^"]+)\"?/)?.[1] ?? "receipt.pdf"
+    filename: response.headers.get("content-disposition")?.match(/filename="?([^"]+)"?/)?.[1] ?? "receipt.pdf"
   }
 }
 

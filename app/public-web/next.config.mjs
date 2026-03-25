@@ -9,14 +9,8 @@ const nextConfig = {
     root: path.join(process.cwd(), "../.."),
   },
   transpilePackages: ["@cjl/contracts"],
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   images: {
     unoptimized: true,
-  },
-  logging: {
-    browserToTerminal: true,
   },
 }
 

@@ -55,6 +55,18 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
   - API, WhatsApp gateway, admin, and public services built locally on the VM
   - persistent WhatsApp auth bind-mount at `${SHARED_DIR}/whatsapp-auth`
 
+## Hosted Hardening Baseline
+
+- API and WhatsApp gateway emit structured JSON logs to stdout
+- every API response includes `X-Request-Id`
+- API error envelopes include `message`, `error.code`, and `error.requestId`
+- staging and production enforce hosted env validation for secrets, trusted origins, secure cookies, and proxy settings
+- session-authenticated write endpoints enforce trusted `Origin` or `Referer`
+- login and token-redeem abuse controls use Mongo-backed rate limiting instead of in-memory state
+- customer magic-link and direct status tokens are stored as hashes, not plaintext
+- API, admin, and public containers run as non-root
+- WhatsApp gateway remains a temporary root-runtime exception until Chromium and auth-volume permissions are validated on staging
+
 ## Deployment Orchestration
 
 - CI runs on GitHub Actions

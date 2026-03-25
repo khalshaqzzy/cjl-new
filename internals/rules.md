@@ -51,6 +51,8 @@ Read these before planning or continuing implementation:
   - canonical deployment, provisioning, secrets, rollback, and smoke-test runbook
 - `manualProvisioningChecklist.md`
   - short external provisioning checklist
+- `productionReadinessChecklist.md`
+  - final pre-prod and pre-main release gate
 
 These should be updated whenever implementation changes alter roadmap status, environment assumptions, or deployment/provisioning requirements.
 

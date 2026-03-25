@@ -15,12 +15,17 @@ import { compileTemplate, shouldForceNotificationFailure } from "../lib/notifica
 import { renderReceiptImageBase64 } from "../lib/receipt-image.js"
 import { formatCustomerName, normalizeName } from "../lib/normalization.js"
 import { renderReceiptPdf } from "../lib/receipts.js"
+import { hashOpaqueToken, maskPhone, tokenLast4 } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel } from "../lib/time.js"
+import { DependencyError, NotFoundError, ValidationError } from "../errors.js"
+import { logger, serializeError } from "../logger.js"
+import { getRequestContext } from "../request-context.js"
 import { sendNotificationToWhatsapp } from "./whatsapp.js"
 import type {
   AuditLogDocument,
   CustomerMagicLinkDocument,
   CustomerDocument,
+  DirectOrderTokenDocument,
   NotificationDocument,
   OrderDocument,
   PointLedgerDocument,
@@ -57,7 +62,7 @@ export const getSettingsDocument = async (session?: ClientSession) => {
     .findOne({ _id: "app-settings" }, { session })
 
   if (!settings) {
-    throw new Error("Settings belum tersedia")
+    throw new DependencyError("Settings belum tersedia")
   }
 
   const adminWhatsappContacts = sanitizeAdminWhatsappContacts(
@@ -98,13 +103,20 @@ export const saveAuditLog = async (
   metadata?: Record<string, unknown>,
   session?: ClientSession
 ) => {
+  const context = getRequestContext()
   await db().collection<AuditLogDocument>("audit_logs").insertOne({
     _id: createId("audit"),
-    actorType: "admin",
-    actorId: "admin-primary",
+    actorType: context?.actorType ?? "system",
+    actorId: context?.actorId ?? "system",
+    actorSource: context?.actorSource ?? "system",
     action,
     entityType,
     entityId,
+    outcome: "success",
+    requestId: context?.requestId,
+    origin: context?.origin,
+    ipHash: context?.ipHash,
+    userAgent: context?.userAgent,
     metadata,
     createdAt: new Date().toISOString()
   }, { session })
@@ -240,7 +252,8 @@ export const createCustomerMagicLink = async (
   const token = createOpaqueToken()
   const document: CustomerMagicLinkDocument = {
     _id: createId("magic"),
-    token,
+    tokenHash: hashOpaqueToken(token),
+    tokenLast4: tokenLast4(token),
     customerId,
     source,
     createdAt,
@@ -260,12 +273,12 @@ export const queueNotification = async (notification: NotificationDocument, sess
 
 const createRenderedReceipt = async (notification: NotificationDocument) => {
   if (!notification.orderId) {
-    throw new Error("Receipt tidak tersedia untuk notifikasi ini")
+    throw new ValidationError("Receipt tidak tersedia untuk notifikasi ini")
   }
 
   const order = await db().collection<OrderDocument>("orders").findOne({ _id: notification.orderId })
   if (!order) {
-    throw new Error("Order receipt tidak ditemukan")
+    throw new NotFoundError("Order receipt tidak ditemukan")
   }
 
   return renderReceiptImageBase64(order.receiptSnapshot)
@@ -321,6 +334,11 @@ export const processNotification = async (notificationId: string) => {
           }
         )
       } catch (error) {
+        logger.error({
+          event: "notification.render.failed",
+          notificationId,
+          error: serializeError(error),
+        })
         await markNotificationFailed(
           notificationId,
           error instanceof Error ? error.message : "Gagal merender receipt",
@@ -342,6 +360,11 @@ export const processNotification = async (notificationId: string) => {
   }
 
   if (shouldForceNotificationFailure(notification.eventType)) {
+    logger.warn({
+      event: "notification.delivery.forced_failure",
+      notificationId,
+      eventType: notification.eventType,
+    })
     await markNotificationFailed(notificationId, "Simulasi kegagalan WhatsApp aktif", {
       deliveryStatus: "failed",
       gatewayErrorCode: "forced_failure",
@@ -350,6 +373,12 @@ export const processNotification = async (notificationId: string) => {
   }
 
   try {
+    logger.info({
+      event: "notification.delivery.attempted",
+      notificationId,
+      eventType: notification.eventType,
+      destinationPhone: maskPhone(notification.destinationPhone),
+    })
     const delivery = await sendNotificationToWhatsapp(
       notification,
       notification.preparedMessage,
@@ -381,6 +410,13 @@ export const processNotification = async (notificationId: string) => {
         $inc: { attemptCount: 1 }
       }
     )
+    logger.info({
+      event: "notification.delivery.sent",
+      notificationId,
+      eventType: notification.eventType,
+      providerMessageId: delivery.providerMessageId,
+      providerChatId: delivery.providerChatId,
+    })
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Gagal mengirim WhatsApp"
     const gatewayErrorCode =
@@ -394,6 +430,13 @@ export const processNotification = async (notificationId: string) => {
     await markNotificationFailed(notificationId, reason, {
       deliveryStatus: "failed",
       ...(gatewayErrorCode ? { gatewayErrorCode } : {}),
+    })
+    logger.error({
+      event: "notification.delivery.failed",
+      notificationId,
+      eventType: notification.eventType,
+      gatewayErrorCode,
+      error: serializeError(error),
     })
   }
 }
@@ -424,9 +467,11 @@ const processQueuedNotifications = async () => {
     for (const notification of notifications) {
       await processNotification(notification._id)
     }
-  } catch {
-    // Swallow background worker errors so shutdown or transient DB interruptions
-    // do not crash the process; operational visibility stays in notification state.
+  } catch (error) {
+    logger.error({
+      event: "outbox.tick.failed",
+      error: serializeError(error),
+    })
   } finally {
     outboxTickActive = false
   }
@@ -438,6 +483,10 @@ export const startOutboxWorker = () => {
   }
 
   outboxEnabled = true
+  logger.info({
+    event: "outbox.started",
+    pollMs: env.OUTBOX_POLL_MS,
+  })
   outboxTimer = setInterval(() => {
     void processQueuedNotifications()
   }, env.OUTBOX_POLL_MS)
@@ -455,12 +504,16 @@ export const stopOutboxWorker = async () => {
   while (outboxTickActive) {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
+
+  logger.info({
+    event: "outbox.stopped",
+  })
 }
 
 export const markNotificationForRetry = async (notificationId: string) => {
   const notification = await notificationsCollection().findOne({ _id: notificationId })
   if (!notification) {
-    throw new Error("Notifikasi tidak ditemukan")
+    throw new NotFoundError("Notifikasi tidak ditemukan")
   }
 
   const now = new Date().toISOString()
@@ -520,11 +573,11 @@ export const markNotificationManualResolved = async (notificationId: string, not
 export const buildOrderReceipt = async (notificationId: string) => {
   const notification = await notificationsCollection().findOne({ _id: notificationId })
   if (!notification) {
-    throw new Error("Notifikasi tidak ditemukan")
+    throw new NotFoundError("Notifikasi tidak ditemukan")
   }
 
   if (notification.eventType !== "order_confirmed") {
-    throw new Error("Receipt tidak tersedia")
+    throw new ValidationError("Receipt tidak tersedia")
   }
 
   if (notification.renderedReceipt) {
@@ -541,7 +594,7 @@ export const buildOrderReceiptPdf = async (orderId: string) => {
   ])
 
   if (!order) {
-    throw new Error("Order tidak ditemukan")
+    throw new NotFoundError("Order tidak ditemukan")
   }
 
   return renderReceiptPdf(
@@ -627,4 +680,21 @@ export const buildCustomerSearchFilter = (query?: string): Filter<CustomerDocume
   }
 
   return { $or: clauses }
+}
+
+export const findCustomerMagicLinkByToken = async (token: string) => {
+  const tokenHash = hashOpaqueToken(token)
+  return db().collection<CustomerMagicLinkDocument>("customer_magic_links").findOne({
+    tokenHash,
+    usedAt: { $exists: false },
+    revokedAt: { $exists: false },
+  })
+}
+
+export const findDirectOrderTokenByToken = async (token: string) => {
+  const tokenHash = hashOpaqueToken(token)
+  return db().collection<DirectOrderTokenDocument>("direct_order_tokens").findOne({
+    tokenHash,
+    revokedAt: { $exists: false },
+  })
 }

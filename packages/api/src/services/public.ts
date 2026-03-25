@@ -1,24 +1,32 @@
 import type {
   CustomerNameVisibilityInput,
-  CustomerOrderDetail,
   CustomerMagicLinkRedeemInput,
   LandingResponse,
   LeaderboardRow,
   PublicDashboardResponse
 } from "@cjl/contracts"
 import { getDatabase } from "../db.js"
+import { NotFoundError } from "../errors.js"
 import { computeLeaderboardRows } from "../lib/leaderboard.js"
 import { normalizeName, normalizePhone, normalizeWhatsappPhone } from "../lib/normalization.js"
 import { formatDateTime, formatWeightLabel, monthKeyFromIso, monthLabel, nowJakarta } from "../lib/time.js"
 import type {
   CustomerDocument,
   CustomerMagicLinkDocument,
-  DirectOrderTokenDocument,
   LeaderboardSnapshotDocument,
   OrderDocument,
   PointLedgerDocument
 } from "../types.js"
-import { buildOrderReceiptPdf, getPrimaryAdminWhatsappContact, getSettingsDocument, mapCustomerOrderDetail, mapOrderHistory, mapPointLedger } from "./common.js"
+import {
+  buildOrderReceiptPdf,
+  findCustomerMagicLinkByToken,
+  findDirectOrderTokenByToken,
+  getPrimaryAdminWhatsappContact,
+  getSettingsDocument,
+  mapCustomerOrderDetail,
+  mapOrderHistory,
+  mapPointLedger
+} from "./common.js"
 
 const db = () => getDatabase()
 
@@ -101,11 +109,7 @@ export const loginCustomer = async (phone: string, name: string) => {
 }
 
 export const redeemCustomerMagicLink = async (input: CustomerMagicLinkRedeemInput) => {
-  const magicLink = await db().collection<CustomerMagicLinkDocument>("customer_magic_links").findOne({
-    token: input.token,
-    usedAt: { $exists: false },
-    revokedAt: { $exists: false },
-  })
+  const magicLink = await findCustomerMagicLinkByToken(input.token)
 
   if (!magicLink) {
     return null
@@ -136,7 +140,7 @@ export const markCustomerMagicLinkUsed = async (magicLinkId: string) => {
 export const getPublicDashboard = async (customerId: string): Promise<PublicDashboardResponse> => {
   const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: customerId })
   if (!customer) {
-    throw new Error("Pelanggan tidak ditemukan")
+    throw new NotFoundError("Pelanggan tidak ditemukan")
   }
 
   const [orders, settings] = await Promise.all([
@@ -199,7 +203,7 @@ export const listCustomerOrders = async (customerId: string) => {
 export const getCustomerOrderDetail = async (customerId: string, orderId: string) => {
   const order = await db().collection<OrderDocument>("orders").findOne({ _id: orderId, customerId })
   if (!order) {
-    throw new Error("Order tidak ditemukan")
+    throw new NotFoundError("Order tidak ditemukan")
   }
   return mapCustomerOrderDetail(order)
 }
@@ -207,7 +211,7 @@ export const getCustomerOrderDetail = async (customerId: string, orderId: string
 export const getCustomerOrderReceipt = async (customerId: string, orderId: string) => {
   const order = await db().collection<OrderDocument>("orders").findOne({ _id: orderId, customerId })
   if (!order) {
-    throw new Error("Order tidak ditemukan")
+    throw new NotFoundError("Order tidak ditemukan")
   }
 
   return buildOrderReceiptPdf(orderId)
@@ -303,7 +307,7 @@ export const updateCustomerNameVisibility = async (
 
   const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: customerId })
   if (!customer) {
-    throw new Error("Pelanggan tidak ditemukan")
+    throw new NotFoundError("Pelanggan tidak ditemukan")
   }
 
   return {
@@ -315,10 +319,7 @@ export const updateCustomerNameVisibility = async (
 }
 
 export const getDirectOrderStatus = async (token: string) => {
-  const directToken = await db().collection<DirectOrderTokenDocument>("direct_order_tokens").findOne({
-    token,
-    revokedAt: { $exists: false }
-  })
+  const directToken = await findDirectOrderTokenByToken(token)
   if (!directToken) {
     return null
   }

@@ -36,4 +36,6 @@ COPY --from=builder /app/tsconfig.base.json ./tsconfig.base.json
 
 EXPOSE 3000
 
+USER node
+
 CMD ["npm", "run", "start", "--workspace", "@cjl/public-web"]

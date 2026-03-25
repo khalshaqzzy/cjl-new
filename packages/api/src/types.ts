@@ -55,7 +55,7 @@ export type OrderDocument = {
   redeemedPoints: number
   earnedStamps: number
   resultingPointBalance: number
-  directToken: string
+  directToken?: string
   receiptSnapshot: OrderReceiptSnapshotDocument
   status: "Active" | "Done" | "Voided"
   createdAt: string
@@ -178,11 +178,17 @@ export type SettingsDocument = {
 
 export type AuditLogDocument = {
   _id: string
-  actorType: "admin" | "system"
+  actorType: "admin" | "customer" | "system" | "anonymous"
   actorId: string
+  actorSource: "http" | "session" | "system"
   action: string
   entityType: string
   entityId: string
+  outcome: "success" | "failure"
+  requestId?: string
+  origin?: string
+  ipHash?: string
+  userAgent?: string
   metadata?: Record<string, unknown>
   createdAt: string
 }
@@ -221,7 +227,9 @@ export type AdminDocument = {
 
 export type CustomerMagicLinkDocument = {
   _id: string
-  token: string
+  tokenHash: string
+  tokenLast4: string
+  token?: string
   customerId: string
   source: "registration_welcome" | "admin_regenerated"
   createdAt: string
@@ -232,11 +240,19 @@ export type CustomerMagicLinkDocument = {
 
 export type DirectOrderTokenDocument = {
   _id: string
-  token: string
+  tokenHash: string
+  tokenLast4: string
+  token?: string
   orderId: string
   revokedAt?: string
   revokedReason?: string
   createdAt: string
+}
+
+export type RateLimitDocument = {
+  _id: string
+  totalHits: number
+  resetTime: Date
 }
 
 export type CounterDocument = {

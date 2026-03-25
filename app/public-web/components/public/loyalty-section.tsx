@@ -114,8 +114,6 @@ function LoopingStampCard() {
     }
   }, [])
 
-  const progressPct = (count / TOTAL_STAMPS) * 100
-
   return (
     <div ref={cardRef} className="relative max-w-sm mx-auto lg:mx-0">
       {/* Ambient glow behind card */}

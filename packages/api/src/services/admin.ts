@@ -16,6 +16,7 @@ import type {
   VoidOrderInput
 } from "@cjl/contracts"
 import { getDatabase, withMongoTransaction } from "../db.js"
+import { ConflictError, NotFoundError, ValidationError } from "../errors.js"
 import { env } from "../env.js"
 import { sanitizeAdminWhatsappContacts } from "../lib/admin-whatsapp.js"
 import { calculateOrderPreview } from "../lib/calculator.js"
@@ -23,6 +24,7 @@ import { formatCurrency } from "../lib/formatters.js"
 import { createId, createOpaqueToken, createOrderCode } from "../lib/ids.js"
 import { buildMaskedAlias, rebuildArchivedLeaderboard } from "../lib/leaderboard.js"
 import { normalizeName, normalizePhone, normalizeWhatsappPhone } from "../lib/normalization.js"
+import { hashOpaqueToken, tokenLast4 } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel, monthKeyFromIso, nowJakarta } from "../lib/time.js"
 import type {
   AdminDocument,
@@ -38,7 +40,6 @@ import {
   buildCustomerSearchFilter,
   createCustomerMagicLink,
   buildOrderReceiptPdf,
-  buildOrderReceipt,
   getPrimaryAdminWhatsappContact,
   buildPreparedMessage,
   getSettingsDocument,
@@ -50,7 +51,6 @@ import {
   mapPointLedger,
   markNotificationForRetry,
   markNotificationManualResolved as markNotificationManualResolvedRecord,
-  mapCustomerOrderDetail,
   queueNotification,
   saveAuditLog
 } from "./common.js"
@@ -105,7 +105,7 @@ const createUniqueOrderCode = async (
     }
   }
 
-  throw new Error("Gagal membuat kode order unik")
+  throw new ConflictError("Gagal membuat kode order unik")
 }
 
 const buildOrderReceiptSnapshot = async (
@@ -384,7 +384,7 @@ export const createCustomer = async (input: CreateCustomerInput): Promise<Create
 export const generateCustomerMagicLink = async (customerId: string): Promise<CustomerMagicLinkResponse> => {
   const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: customerId })
   if (!customer) {
-    throw new Error("Pelanggan tidak ditemukan")
+    throw new NotFoundError("Pelanggan tidak ditemukan")
   }
 
   const oneTimeLogin = await createCustomerMagicLink(customerId, "admin_regenerated")
@@ -400,7 +400,7 @@ export const generateCustomerMagicLink = async (customerId: string): Promise<Cus
 export const getCustomerDetail = async (customerId: string) => {
   const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: customerId })
   if (!customer) {
-    throw new Error("Pelanggan tidak ditemukan")
+    throw new NotFoundError("Pelanggan tidak ditemukan")
   }
 
   const [orders, pointLedger] = await Promise.all([
@@ -426,7 +426,7 @@ export const getCustomerDetail = async (customerId: string) => {
 export const updateCustomerIdentity = async (customerId: string, input: UpdateCustomerInput) => {
   const existing = await db().collection<CustomerDocument>("customers").findOne({ _id: customerId })
   if (!existing) {
-    throw new Error("Pelanggan tidak ditemukan")
+    throw new NotFoundError("Pelanggan tidak ditemukan")
   }
 
   const normalizedPhone = normalizePhone(input.phone)
@@ -435,7 +435,7 @@ export const updateCustomerIdentity = async (customerId: string, input: UpdateCu
     _id: { $ne: customerId }
   })
   if (duplicate) {
-    throw new Error("Nomor HP sudah digunakan pelanggan lain")
+    throw new ConflictError("Nomor HP sudah digunakan pelanggan lain")
   }
 
   await withMongoTransaction(async (session) => {
@@ -487,7 +487,7 @@ export const updateCustomerIdentity = async (customerId: string, input: UpdateCu
 export const addManualPoints = async (customerId: string, points: number, reason: string) => {
   const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: customerId })
   if (!customer) {
-    throw new Error("Pelanggan tidak ditemukan")
+    throw new NotFoundError("Pelanggan tidak ditemukan")
   }
 
   await withMongoTransaction(async (session) => {
@@ -520,7 +520,7 @@ export const addManualPoints = async (customerId: string, points: number, reason
 export const getOrderPreview = async (input: ConfirmOrderInput): Promise<OrderPreviewResponse> => {
   const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: input.customerId })
   if (!customer) {
-    throw new Error("Pelanggan tidak ditemukan")
+    throw new NotFoundError("Pelanggan tidak ditemukan")
   }
 
   const settings = await getSettingsDocument()
@@ -531,7 +531,7 @@ export const getOrderPreview = async (input: ConfirmOrderInput): Promise<OrderPr
   )
 
   if (preview.activeItems.length === 0) {
-    throw new Error("Pilih minimal satu layanan")
+    throw new ValidationError("Pilih minimal satu layanan")
   }
 
   return {
@@ -564,7 +564,7 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
   withMongoTransaction(async (session) => {
     const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: input.customerId }, { session })
     if (!customer) {
-      throw new Error("Pelanggan tidak ditemukan")
+      throw new NotFoundError("Pelanggan tidak ditemukan")
     }
 
     const settings = await getSettingsDocument(session)
@@ -575,7 +575,7 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
     )
 
     if (preview.activeItems.length === 0) {
-      throw new Error("Pilih minimal satu layanan")
+      throw new ValidationError("Pilih minimal satu layanan")
     }
 
     const createdAt = new Date().toISOString()
@@ -614,7 +614,6 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
       redeemedPoints: preview.redeemedPoints,
       earnedStamps: preview.earnedStamps,
       resultingPointBalance: preview.resultingPointBalance,
-      directToken,
       receiptSnapshot,
       status: "Active",
       createdAt
@@ -623,7 +622,8 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
     await db().collection<OrderDocument>("orders").insertOne(order, { session })
     await db().collection<DirectOrderTokenDocument>("direct_order_tokens").insertOne({
       _id: createId("token"),
-      token: directToken,
+      tokenHash: hashOpaqueToken(directToken),
+      tokenLast4: tokenLast4(directToken),
       orderId,
       createdAt
     }, { session })
@@ -719,7 +719,7 @@ export const listActiveOrders = async () => {
 export const getOrderById = async (orderId: string) => {
   const order = await db().collection<OrderDocument>("orders").findOne({ _id: orderId })
   if (!order) {
-    throw new Error("Order tidak ditemukan")
+    throw new NotFoundError("Order tidak ditemukan")
   }
 
   return mapOrderHistory(order)
@@ -729,13 +729,13 @@ export const markOrderDone = async (orderId: string) =>
   withMongoTransaction(async (session) => {
     const order = await db().collection<OrderDocument>("orders").findOne({ _id: orderId }, { session })
     if (!order) {
-      throw new Error("Order tidak ditemukan")
+      throw new NotFoundError("Order tidak ditemukan")
     }
     if (order.status === "Voided") {
-      throw new Error("Order yang sudah dibatalkan tidak bisa diselesaikan")
+      throw new ConflictError("Order yang sudah dibatalkan tidak bisa diselesaikan")
     }
     if (order.status === "Done") {
-      throw new Error("Order sudah diselesaikan")
+      throw new ConflictError("Order sudah diselesaikan")
     }
 
     const completedAt = new Date().toISOString()
@@ -781,15 +781,15 @@ export const voidOrder = async (orderId: string, input: VoidOrderInput) => {
   const result = await withMongoTransaction(async (session) => {
     const order = await db().collection<OrderDocument>("orders").findOne({ _id: orderId }, { session })
     if (!order) {
-      throw new Error("Order tidak ditemukan")
+      throw new NotFoundError("Order tidak ditemukan")
     }
     if (order.status === "Voided") {
-      throw new Error("Order sudah dibatalkan")
+      throw new ConflictError("Order sudah dibatalkan")
     }
 
     const customer = await db().collection<CustomerDocument>("customers").findOne({ _id: order.customerId }, { session })
     if (!customer) {
-      throw new Error("Pelanggan tidak ditemukan")
+      throw new NotFoundError("Pelanggan tidak ditemukan")
     }
 
     const voidedAt = new Date().toISOString()
@@ -887,7 +887,7 @@ export const resendNotification = async (notificationId: string) => {
   await markNotificationForRetry(notificationId)
   const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
   if (!notification) {
-    throw new Error("Notifikasi tidak ditemukan")
+    throw new NotFoundError("Notifikasi tidak ditemukan")
   }
 
   return mapNotification(notification)
@@ -897,7 +897,7 @@ export const markNotificationManualResolved = async (notificationId: string, not
   await markNotificationManualResolvedRecord(notificationId, note)
   const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
   if (!notification) {
-    throw new Error("Notifikasi tidak ditemukan")
+    throw new NotFoundError("Notifikasi tidak ditemukan")
   }
 
   return mapNotification(notification)
@@ -906,11 +906,11 @@ export const markNotificationManualResolved = async (notificationId: string, not
 export const downloadNotificationReceipt = async (notificationId: string) => {
   const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
   if (!notification) {
-    throw new Error("Notifikasi tidak ditemukan")
+    throw new NotFoundError("Notifikasi tidak ditemukan")
   }
 
   if (notification.eventType !== "order_confirmed" || !notification.orderId) {
-    throw new Error("Receipt tidak tersedia")
+    throw new ValidationError("Receipt tidak tersedia")
   }
 
   return buildOrderReceiptPdf(notification.orderId)
@@ -919,19 +919,19 @@ export const downloadNotificationReceipt = async (notificationId: string) => {
 export const openManualWhatsappFallback = async (notificationId: string) => {
   const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
   if (!notification) {
-    throw new Error("Notifikasi tidak ditemukan")
+    throw new NotFoundError("Notifikasi tidak ditemukan")
   }
 
   if (notification.deliveryStatus !== "failed") {
-    throw new Error("Manual WhatsApp hanya tersedia untuk notifikasi gagal")
+    throw new ConflictError("Manual WhatsApp hanya tersedia untuk notifikasi gagal")
   }
 
   if (notification.eventType !== "order_done" && notification.eventType !== "order_confirmed") {
-    throw new Error("Manual WhatsApp tidak tersedia untuk notifikasi ini")
+    throw new ValidationError("Manual WhatsApp tidak tersedia untuk notifikasi ini")
   }
 
   if (notification.eventType === "order_confirmed" && notification.renderStatus !== "ready") {
-    throw new Error("Receipt belum siap untuk fallback WhatsApp manual")
+    throw new ConflictError("Receipt belum siap untuk fallback WhatsApp manual")
   }
 
   const note = "Fallback WhatsApp manual dibuka oleh admin."
@@ -943,7 +943,7 @@ export const openManualWhatsappFallback = async (notificationId: string) => {
 
   const updated = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
   if (!updated) {
-    throw new Error("Notifikasi tidak ditemukan")
+    throw new NotFoundError("Notifikasi tidak ditemukan")
   }
 
   return {
@@ -955,7 +955,7 @@ export const openManualWhatsappFallback = async (notificationId: string) => {
 export const getNotificationPreparedMessage = async (notificationId: string) => {
   const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
   if (!notification) {
-    throw new Error("Notifikasi tidak ditemukan")
+    throw new NotFoundError("Notifikasi tidak ditemukan")
   }
   return notification.preparedMessage
 }
@@ -1010,7 +1010,7 @@ export const beginIdempotencyRequest = async (scope: string, key: string, finger
   } catch {
     const existing = await db().collection<IdempotencyKeyDocument>("idempotency_keys").findOne({ scope, key })
     if (!existing) {
-      throw new Error("Gagal memproses idempotency request")
+      throw new ConflictError("Gagal memproses idempotency request")
     }
 
     return { kind: "existing" as const, record: existing }
