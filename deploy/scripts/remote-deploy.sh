@@ -21,6 +21,15 @@ compose() {
     "$@"
 }
 
+docker_host_rm_rf() {
+  local target="$1"
+  docker run --rm \
+    -u 0:0 \
+    -v "${BASE_DIR}/shared:/shared" \
+    alpine:3.20 \
+    sh -lc "rm -rf \"/shared/${target}\""
+}
+
 wait_for_service() {
   local service="$1"
   local timeout_seconds="${2:-180}"
@@ -64,11 +73,10 @@ wait_for_service() {
 full_reset_stack() {
   echo "Running full container reset for ${APP_ENV}."
   compose down --remove-orphans --volumes || true
-  rm -rf \
-    "${BASE_DIR}/shared/caddy-data" \
-    "${BASE_DIR}/shared/caddy-config" \
-    "${BASE_DIR}/shared/mongo-data" \
-    "${BASE_DIR}/shared/whatsapp-auth"
+  docker_host_rm_rf "caddy-data"
+  docker_host_rm_rf "caddy-config"
+  docker_host_rm_rf "mongo-data"
+  docker_host_rm_rf "whatsapp-auth"
 }
 
 if [[ ! -d "${RELEASE_DIR}" ]]; then
