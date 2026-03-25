@@ -8,5 +8,16 @@ fi
 
 for url in "$@"; do
   echo "Checking ${url}"
-  curl --fail --silent --show-error --location --retry 12 --retry-delay 5 --retry-connrefused "${url}" > /dev/null
+  curl \
+    --fail \
+    --silent \
+    --show-error \
+    --location \
+    --connect-timeout 10 \
+    --max-time 30 \
+    --retry 30 \
+    --retry-delay 5 \
+    --retry-connrefused \
+    --retry-all-errors \
+    "${url}" > /dev/null
 done

@@ -619,9 +619,20 @@ Security-specific automation also runs in GitHub:
 9. runs `deploy/scripts/remote-deploy.sh` on the VM
 10. smoke-checks the staging URLs
 
+Important first-deploy behavior:
+
+- `remote-deploy.sh` now waits for `mongo`, `api`, `whatsapp-gateway`, `admin-web`, `public-web`, and `caddy` to become healthy or running before GitHub starts the external smoke checks
+- the external smoke check now retries broader edge failures, including transient TLS handshake failures, because first-time Caddy ACME issuance can lag behind container startup on a clean VM
+
 ### 11.3 Production deploy workflow
 
 `.github/workflows/deploy-production.yml` does the same shape for `main` and the production VM.
+
+On a first production deploy, this distinction matters:
+
+- internal service readiness proves the stack is booted
+- public HTTPS readiness still depends on Caddy finishing certificate issuance for the public domains
+- the workflow now tolerates this warm-up window better, but DNS and ports `80` and `443` must still already be correct
 
 ### 11.4 Why there is no image registry secret
 
@@ -935,6 +946,12 @@ Check:
 - DNS resolution
 - GCP firewall rules
 - `docker compose logs caddy`
+
+If the deploy only fails during the immediate GitHub smoke check on a first rollout:
+
+- verify whether internal API health is already good on the VM with `curl http://127.0.0.1:4000/health`
+- if internal health succeeds but public HTTPS still fails, treat it as an edge TLS readiness problem rather than an API outage
+- recent workflow changes now retry transient TLS errors and wait for container readiness first, but they do not replace correct DNS or open ports
 
 ### 17.5 Admin bootstrap login fails
 

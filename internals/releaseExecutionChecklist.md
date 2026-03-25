@@ -54,6 +54,7 @@ Confirm all are true on the selected release commit:
    - release archive upload
    - runtime env render and upload
    - remote deploy script
+   - internal container readiness wait
    - smoke checks
 6. record result:
    - staging deploy status:
@@ -68,6 +69,7 @@ Confirm all are true on the selected release commit:
 - `/ready` shows the expected `release.sha`
 - admin site loads
 - public site loads
+- if the rollout is the first hosted deploy for that environment, allow for initial Caddy ACME warm-up instead of treating the first transient TLS error as immediate app failure
 
 ### 5.2 Observability
 
@@ -150,6 +152,7 @@ Decision:
    - release archive upload
    - runtime env render and upload
    - remote deploy script
+   - internal container readiness wait
    - smoke checks
 5. record result:
    - production deploy status:

@@ -31,6 +31,7 @@ The repo now has:
 - branch-based CI and hosted deploy workflows committed in repo
 - root `typecheck` now bootstraps `@cjl/contracts` before workspace checks so clean CI runners resolve shared contracts reliably
 - CI now installs Playwright Chromium on GitHub runners before `npm test` so E2E does not depend on prewarmed browser caches
+- remote deploy now waits for container readiness and smoke checks retry transient TLS warm-up failures during first hosted rollouts
 - remote deploy assets for Caddy, Compose, release shipping, smoke checks, and rollback
 - hosted and local runtime env contracts updated for WhatsApp gateway auth and persistence
 
@@ -114,6 +115,7 @@ Status: complete in repo terms
 - CI workflow now validates test, build, and compose config
 - CI security scan now pins `aquasecurity/trivy-action` immutably by SHA and keeps an explicit Trivy CLI version pin
 - staging and production deploy workflows now exist with branch-based auto-deploy triggers
+- hosted smoke checks now explicitly tolerate first-deploy Caddy TLS issuance lag instead of failing fast on transient handshake errors
 - remote deploy assets now exist for Caddy, Compose, runtime env contracts, smoke checks, and rollback
 - hosted deployment model is now fixed as SSH-orchestrated VM-local builds
 
