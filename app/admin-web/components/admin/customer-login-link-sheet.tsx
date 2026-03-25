@@ -20,6 +20,11 @@ type CustomerLoginLinkSheetProps = {
   customerName?: string
   title?: string
   description?: string
+  continueAction?: {
+    label: string
+    onClick: () => void
+    testId?: string
+  }
 }
 
 export function CustomerLoginLinkSheet({
@@ -29,6 +34,7 @@ export function CustomerLoginLinkSheet({
   customerName,
   title = "QR Login Customer",
   description = "Pelanggan bisa scan QR ini atau membuka link sekali pakai untuk langsung masuk ke portal.",
+  continueAction,
 }: CustomerLoginLinkSheetProps) {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
@@ -116,18 +122,30 @@ export function CustomerLoginLinkSheet({
           </div>
         </div>
 
-        <SheetFooter className="gap-2">
-          <Button variant="outline" className="flex-1 rounded-xl" onClick={handleCopy}>
-            {copyState === "done" ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
-            {copyState === "done" ? "Tersalin" : "Copy Link"}
-          </Button>
-          <Button
-            className="flex-1 rounded-xl bg-rose-600 font-semibold text-white hover:bg-rose-500"
-            onClick={() => window.open(loginUrl, "_blank", "noopener,noreferrer")}
-          >
-            <ExternalLink className="mr-2 h-4 w-4" />
-            Buka Link
-          </Button>
+        <SheetFooter className="gap-2 sm:flex-col">
+          {continueAction ? (
+            <Button
+              className="w-full rounded-xl bg-rose-600 font-semibold text-white hover:bg-rose-500 sm:flex-none"
+              onClick={continueAction.onClick}
+              data-testid={continueAction.testId}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              {continueAction.label}
+            </Button>
+          ) : null}
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1 rounded-xl" onClick={handleCopy}>
+              {copyState === "done" ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+              {copyState === "done" ? "Tersalin" : "Copy Link"}
+            </Button>
+            <Button
+              className="flex-1 rounded-xl bg-slate-900 font-semibold text-white hover:bg-slate-800"
+              onClick={() => window.open(loginUrl, "_blank", "noopener,noreferrer")}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Buka Link
+            </Button>
+          </div>
         </SheetFooter>
       </SheetContent>
     </Sheet>

@@ -635,13 +635,6 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.items.length, 2)
   assert.equal(result.payload.items[0].unitPriceLabel.startsWith("Rp"), true)
 
-  let receiptResponse = await fetch(`${baseUrl}/v1/public/me/orders/${firstOrderId}/receipt`, {
-    headers: { Cookie: publicCookie! }
-  })
-  assert.equal(receiptResponse.status, 200)
-  assert.match(receiptResponse.headers.get("content-type") ?? "", /application\/pdf/)
-  assert.ok((await receiptResponse.arrayBuffer()).byteLength > 0)
-
   result = await waitFor(
     () => requestJson("/v1/admin/notifications", { headers: { Cookie: adminCookie! } }),
     (value) =>
@@ -673,12 +666,55 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   )
   assert.ok(confirmNotification)
 
+  let receiptResponse = await fetch(`${baseUrl}/v1/admin/notifications/${confirmNotification.notificationId}/receipt`, {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(receiptResponse.status, 200)
+  assert.match(receiptResponse.headers.get("content-type") ?? "", /image\/png/)
+  assert.match(receiptResponse.headers.get("content-disposition") ?? "", /\.png/)
+  const adminReceiptBeforeSettingsUpdate = Buffer.from(await receiptResponse.arrayBuffer())
+  assert.ok(adminReceiptBeforeSettingsUpdate.byteLength > 0)
+
+  const liveReceiptSettings = {
+    ...multiContactSettings,
+    business: {
+      ...multiContactSettings.business,
+      laundryPhone: "081555555555",
+      address: "Jl. Receipt Live No. 88, Surabaya"
+    }
+  }
+
+  result = await requestJson("/v1/admin/settings", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(liveReceiptSettings)
+  })
+  assert.equal(result.payload.business.laundryPhone, "081555555555")
+  assert.equal(result.payload.business.address, "Jl. Receipt Live No. 88, Surabaya")
+
+  receiptResponse = await fetch(`${baseUrl}/v1/public/me/orders/${firstOrderId}/receipt`, {
+    headers: { Cookie: publicCookie! }
+  })
+  assert.equal(receiptResponse.status, 200)
+  assert.match(receiptResponse.headers.get("content-type") ?? "", /application\/pdf/)
+  const publicReceiptPdf = Buffer.from(await receiptResponse.arrayBuffer())
+  assert.ok(publicReceiptPdf.byteLength > 0)
+  const publicReceiptPdfText = publicReceiptPdf.toString("latin1")
+  assert.match(publicReceiptPdfText, /303831353535353535353535/)
+  assert.match(publicReceiptPdfText, /52656365697074204c6976/)
+  assert.match(publicReceiptPdfText, /4a6c2e/)
+
   receiptResponse = await fetch(`${baseUrl}/v1/admin/notifications/${confirmNotification.notificationId}/receipt`, {
     headers: { Cookie: adminCookie! }
   })
   assert.equal(receiptResponse.status, 200)
-  assert.match(receiptResponse.headers.get("content-type") ?? "", /application\/pdf/)
-  assert.ok((await receiptResponse.arrayBuffer()).byteLength > 0)
+  assert.match(receiptResponse.headers.get("content-type") ?? "", /image\/png/)
+  const adminReceiptAfterSettingsUpdate = Buffer.from(await receiptResponse.arrayBuffer())
+  assert.ok(adminReceiptAfterSettingsUpdate.byteLength > 0)
+  assert.notDeepEqual(adminReceiptAfterSettingsUpdate, adminReceiptBeforeSettingsUpdate)
 
   result = await requestJson("/v1/public/leaderboard")
   assert.equal(result.payload.rows[0].isMasked, true)
@@ -1093,15 +1129,15 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   )
   assert.match(renderFailedNotification?.latestFailureReason ?? "", /receipt|Receipt|Order/)
 
-  const blockedManualWhatsapp = await requestJson(`/v1/admin/notifications/notification_render_failure_${uniqueSuffix}/manual-whatsapp`, {
+  const renderFailureManualWhatsapp = await requestJson(`/v1/admin/notifications/notification_render_failure_${uniqueSuffix}/manual-whatsapp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Cookie: adminCookie!
-    },
-    expectedStatus: 409
+    }
   })
-  assert.match(blockedManualWhatsapp.payload.message, /Receipt/)
+  assert.equal(renderFailureManualWhatsapp.payload.notification.deliveryStatus, "manual_resolved")
+  assert.match(renderFailureManualWhatsapp.payload.whatsappUrl, /wa\.me/)
 
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_done_failed_${uniqueSuffix}`,

@@ -130,7 +130,8 @@ Customer laundry yang:
 - Satuan berat disimpan minimal 2 digit desimal, tetapi UI default menampilkan 1 digit desimal.
 - Berat order wajib diisi untuk semua order, meskipun tidak semua layanan menggunakan harga per kg.
 - Harga `Setrika` dihitung dari berat order yang sama.
-- Receipt dikirim melalui WhatsApp dan dapat diunduh sebagai PDF dari surface yang diizinkan; backend hanya menyimpan receipt source snapshot di MongoDB dan merender output final saat dibutuhkan.
+- Receipt order-confirmed dikirim melalui WhatsApp sebagai image; portal customer tetap menyediakan download PDF, sedangkan admin outbox fallback untuk failed order-confirmed menyediakan download image agar mudah diteruskan ke WhatsApp.
+- Output receipt final memakai data transaksi dari order, tetapi nama laundry, nomor kontak laundry, dan alamat diambil dari admin settings terbaru saat render.
 - Public portal tidak menampilkan nominal uang pada monthly summary.
 - Untuk menjaga privasi akibat login yang lemah, public portal default tetap tidak menonjolkan nominal uang pada dashboard/list views; nominal resmi tersedia pada halaman detail order terautentikasi dan PDF receipt, bukan pada direct status token page.
 - Void/cancel didukung lintas bulan; jika koreksi menyentuh bulan leaderboard yang sudah diarsipkan, sistem harus meregenerasi snapshot bulan terkait dengan audit trail yang jelas.
@@ -221,7 +222,9 @@ Rules:
    - customer record is stored,
    - audit log is written,
    - exactly one welcome WA notification record is created.
-6. WhatsApp welcome message contains:
+6. Admin may optionally open a one-time login QR/link sheet immediately after successful creation.
+7. If registration happens from the POS flow and the QR sheet is shown, the sheet must provide a clear continue CTA so the cashier can proceed directly to service selection without manually leaving the QR sheet first.
+8. WhatsApp welcome message contains:
    - greeting text,
    - registered customer name,
    - registered customer phone,
@@ -270,15 +273,14 @@ Rules:
 11. If receipt generation or WhatsApp delivery fails:
    - order remains `Active`,
    - notification stays visible in admin outbox as pending or failed,
-   - admin can resend via bot,
-  - admin can download a rendered receipt on demand,
-   - admin can open fallback WhatsApp manual setelah delivery gagal; untuk order confirmation fallback ini hanya tersedia jika receipt sudah siap diunduh,
-   - admin can mark the notification as manually resolved with note after operational handling.
+   - failed `order_confirmed` handling should prioritize `Download Receipt` and `Send Message`,
+   - failed notifications without receipt should prioritize `Send Message` and `Kirim Ulang`,
+   - admin fallback must open a WhatsApp deep link with the prepared message already filled in.
 12. Successful WhatsApp confirmation message includes:
    - customer-friendly message,
    - order code,
    - order created timestamp,
-  - receipt rendered on demand and downloadable as PDF from authorized surfaces,
+  - receipt rendered on demand and downloadable as PDF from authenticated customer portal surfaces,
    - points earned,
    - points redeemed if any,
    - current point balance,
@@ -442,6 +444,7 @@ Content goals:
 - Registration success triggers welcome WA exactly once.
 - System must prevent duplicate customer creation if network retry happens.
 - Successful non-duplicate registration also creates one one-time magic-login token for welcome WA delivery.
+- POS registration with optional QR display must still let the cashier continue directly into order entry without losing the selected customer.
 
 ### 12.3 Customer search
 
@@ -471,11 +474,13 @@ Content goals:
 - Admin has a dedicated notification status page/outbox.
 - Outbox lists queued, sent, failed, and manually resolved notification records.
 - Failed order-confirmation notifications must expose:
-  - resend via bot,
-  - download rendered receipt,
-  - manual WhatsApp fallback setelah delivery gagal dan receipt siap,
+  - download fallback receipt,
+  - prefilled manual WhatsApp fallback link,
   - latest failure reason,
   - timestamps of attempts.
+- Failed notifications without receipt must expose:
+  - prefilled manual WhatsApp fallback link,
+  - resend via bot.
 - Orders remain valid business records even if notification delivery is pending or failed.
 
 ### 12.7 Customer profile
@@ -846,13 +851,15 @@ Must include:
 - new current point balance,
 - direct status link,
 - receipt image rendered on demand.
-- receipt PDF downloadable from authenticated portal order detail and admin notification surfaces.
+- receipt PDF downloadable from authenticated portal order detail.
+- admin notification fallback receipt downloadable as image.
 
 Failure handling:
 
 - If receipt rendering or media delivery fails after order confirmation, the order remains valid and stays `Active`.
 - The related notification must enter a visible pending/failed outbox state for operator follow-up.
-- Admin must be able to resend via bot, download the rendered receipt on demand, open a manual WhatsApp fallback when delivery has failed, and mark the case manually resolved with note.
+- Admin must be able to download the fallback receipt image on demand and open a manual WhatsApp fallback when delivery has failed.
+- Failed notifications without receipt should still support retry plus manual WhatsApp fallback.
 
 ### 15.3 Order done WA
 
@@ -873,7 +880,9 @@ Must include:
 - Message status must be trackable as `queued`, `sent`, `failed`, or equivalent.
 - Receipt render status and message delivery status must be tracked separately for order-confirmed notifications.
 - Failed or pending confirmation notifications must remain visible in admin outbox until successfully sent or manually resolved.
-- Admin outbox must support resend via bot, download rendered receipt, manual WhatsApp fallback on failed sends, and manual resolution note.
+- Admin outbox must support a focused recovery UX:
+  - failed `order_confirmed`: `Download Receipt` and `Send Message`
+  - failed non-receipt notifications: `Send Message` and `Kirim Ulang`
 - Order business state must not roll back only because notification rendering or delivery failed.
 - WhatsApp session disconnect should surface operationally in admin monitoring/logs.
 - Session/auth artifacts for the WhatsApp bot must be persisted outside ephemeral container storage.
@@ -1051,7 +1060,7 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - Business transaction remains committed if order creation succeeded.
 - Notification record is marked pending/failed in outbox and remains retryable.
 - Admin should be able to identify whether failure happened at receipt render or delivery stage.
-- Admin must have resend, download receipt, manual WhatsApp fallback, and manual resolution options.
+- Admin must have focused fallback actions appropriate to the failed notification type, including image receipt download for failed `order_confirmed`.
 
 ### 19.10 Order done after month changes
 
@@ -1141,6 +1150,7 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - Duplicate phone is rejected.
 - Successful creation creates one welcome WA event and never duplicates it on retry.
 - Successful non-duplicate creation also returns one one-time login URL for optional admin QR presentation.
+- POS registration can continue directly from the QR sheet into service selection while keeping the newly created customer selected.
 - Admin can later edit customer name and phone through audited flow without breaking customer history or customer ID.
 - Successful identity change resends account-information WA to the latest normalized phone number.
 
@@ -1152,6 +1162,7 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - Receipt snapshot is generated and linked to the order.
 - Confirmation WA event is recorded once.
 - If receipt rendering or WhatsApp delivery fails, the order remains `Active` and the failed notification appears in admin outbox for resend or manual fallback.
+- Admin fallback receipt download for failed `order_confirmed` is an image; authenticated customer receipt download remains PDF.
 
 ### 22.3 Point logic
 
@@ -1224,7 +1235,7 @@ The implementation must explicitly cover at minimum:
 12. WhatsApp retry/idempotency so duplicate sends do not create duplicate business events.
 13. Login abuse throttling and generic error handling.
 14. Cross-month void on an archived leaderboard month triggers snapshot rebuild with audit/version trail.
-15. Receipt render failure or WhatsApp media send failure appears in outbox with resend, download receipt, manual WhatsApp fallback, and manual resolve fallback.
+15. Receipt render failure or WhatsApp media send failure appears in outbox with the focused fallback actions expected for that notification type, including image receipt download for failed `order_confirmed`.
 16. Customer identity edit preserves history, enforces unique normalized phone, and resends updated account-information WA.
 17. Welcome WA one-time auto-login link succeeds once and rejects token reuse.
 18. Additional QR/login links generated from customer detail do not revoke older unused one-time links.

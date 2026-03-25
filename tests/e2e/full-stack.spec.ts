@@ -93,9 +93,8 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(page.getByText("QR Login Customer Baru")).toBeVisible()
   const firstMagicLinkUrl = (await page.getByText(/\/auto-login\?token=/).first().innerText()).trim()
   await expect(firstMagicLinkUrl).toContain("/auto-login?token=")
-  await page.keyboard.press("Escape")
-  await expect(page.getByTestId("pos-next-to-services")).toBeEnabled()
-  await page.getByTestId("pos-next-to-services").click()
+  await page.getByTestId("pos-continue-after-qr").click()
+  await expect(page.getByTestId("pos-open-summary")).toBeVisible()
 
   await page.getByTestId("pos-weight-input").fill("3")
   await page.getByTestId("service-plus-washer").click()
@@ -195,7 +194,7 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await page.goto("http://127.0.0.1:3101/admin/notifikasi")
   await expect(page.getByText("Simulasi gagal kirim bot")).toBeVisible()
   const whatsappPopup = page.waitForEvent("popup")
-  await page.getByRole("button", { name: "WhatsApp" }).first().click()
+  await page.getByRole("button", { name: "Send Message" }).first().click()
   const popup = await whatsappPopup
   await expect(popup).toHaveURL(/wa\.me|api\.whatsapp\.com/)
   await expect(page.getByText("Fallback WhatsApp manual dibuka oleh admin.")).toBeVisible()

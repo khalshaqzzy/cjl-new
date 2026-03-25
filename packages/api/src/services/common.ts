@@ -14,7 +14,7 @@ import { formatCurrency } from "../lib/formatters.js"
 import { compileTemplate, shouldForceNotificationFailure } from "../lib/notifications.js"
 import { renderReceiptImageBase64 } from "../lib/receipt-image.js"
 import { formatCustomerName, normalizeName, normalizePhoneLabel } from "../lib/normalization.js"
-import { renderReceiptPdf } from "../lib/receipts.js"
+import { createReceiptRenderModel, renderReceiptPdf } from "../lib/receipts.js"
 import { hashOpaqueToken, maskPhone, tokenLast4 } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel } from "../lib/time.js"
 import { DependencyError, NotFoundError, ValidationError } from "../errors.js"
@@ -41,19 +41,7 @@ let outboxEnabled = false
 const notificationsCollection = () => db().collection<NotificationDocument>("notifications")
 
 const canManualWhatsappFallback = (notification: NotificationDocument) => {
-  if (notification.deliveryStatus !== "failed") {
-    return false
-  }
-
-  if (notification.eventType === "order_done") {
-    return true
-  }
-
-  if (notification.eventType === "order_confirmed") {
-    return notification.renderStatus === "ready"
-  }
-
-  return false
+  return notification.deliveryStatus === "failed" && notification.preparedMessage.trim().length > 0
 }
 
 export const getSettingsDocument = async (session?: ClientSession) => {
@@ -111,6 +99,39 @@ export const getPrimaryAdminWhatsappContact = (settings: SettingsDocument) =>
     settings.business.publicContactPhone,
     settings.business.publicWhatsapp,
   ])
+
+const buildReceiptRenderModelFromOrder = async (order: OrderDocument) => {
+  const settings = await getSettingsDocument()
+  const primaryAdminContact = getPrimaryAdminWhatsappContact(settings)
+
+  return createReceiptRenderModel(
+    {
+      orderCode: order.orderCode,
+      customerName: order.customerName,
+      createdAtLabel: formatDateTime(order.createdAt),
+      weightKgLabel: formatWeightLabel(order.weightKg),
+      subtotal: order.subtotal,
+      discount: order.discount,
+      total: order.total,
+      earnedStamps: order.earnedStamps,
+      redeemedPoints: order.redeemedPoints,
+      resultingPointBalance: order.resultingPointBalance,
+      items: order.items.map((item) => ({
+        serviceLabel: item.serviceLabel,
+        quantityLabel: item.pricingModel === "per_kg" ? formatWeightLabel(item.quantity) : `${item.quantity} unit`,
+        unitPriceLabel: formatCurrency(item.unitPrice),
+        lineTotalLabel: formatCurrency(item.lineTotal),
+      })),
+    },
+    {
+      laundryName: settings.business.laundryName,
+      laundryPhone: settings.business.laundryPhone,
+      adminWhatsapp: primaryAdminContact.phone,
+      address: settings.business.address,
+      operatingHours: settings.business.operatingHours,
+    }
+  )
+}
 
 export const saveAuditLog = async (
   action: string,
@@ -297,7 +318,7 @@ const createRenderedReceipt = async (notification: NotificationDocument) => {
     throw new NotFoundError("Order receipt tidak ditemukan")
   }
 
-  return renderReceiptImageBase64(order.receiptSnapshot)
+  return renderReceiptImageBase64(await buildReceiptRenderModelFromOrder(order))
 }
 
 const markNotificationFailed = async (
@@ -586,7 +607,10 @@ export const markNotificationManualResolved = async (notificationId: string, not
   )
 }
 
-export const buildOrderReceipt = async (notificationId: string) => {
+export const buildOrderReceipt = async (
+  notificationId: string,
+  options?: { preferCached?: boolean }
+) => {
   const notification = await notificationsCollection().findOne({ _id: notificationId })
   if (!notification) {
     throw new NotFoundError("Notifikasi tidak ditemukan")
@@ -596,7 +620,7 @@ export const buildOrderReceipt = async (notificationId: string) => {
     throw new ValidationError("Receipt tidak tersedia")
   }
 
-  if (notification.renderedReceipt) {
+  if (options?.preferCached !== false && notification.renderedReceipt) {
     return notification.renderedReceipt
   }
 
@@ -604,36 +628,13 @@ export const buildOrderReceipt = async (notificationId: string) => {
 }
 
 export const buildOrderReceiptPdf = async (orderId: string) => {
-  const [order, settings] = await Promise.all([
-    db().collection<OrderDocument>("orders").findOne({ _id: orderId }),
-    getSettingsDocument()
-  ])
+  const order = await db().collection<OrderDocument>("orders").findOne({ _id: orderId })
 
   if (!order) {
     throw new NotFoundError("Order tidak ditemukan")
   }
 
-  return renderReceiptPdf(
-    {
-      orderCode: order.orderCode,
-      customerName: order.customerName,
-      createdAtLabel: formatDateTime(order.createdAt),
-      weightKgLabel: formatWeightLabel(order.weightKg),
-      subtotal: order.subtotal,
-      discount: order.discount,
-      total: order.total,
-      items: order.items.map((item) => ({
-        serviceLabel: item.serviceLabel,
-        quantityLabel: item.pricingModel === "per_kg" ? formatWeightLabel(item.quantity) : `${item.quantity} unit`,
-        unitPriceLabel: formatCurrency(item.unitPrice),
-        lineTotalLabel: formatCurrency(item.lineTotal)
-      }))
-    },
-    {
-      laundryName: settings.business.laundryName,
-      laundryPhone: getPrimaryAdminWhatsappContact(settings).phone
-    }
-  )
+  return renderReceiptPdf(await buildReceiptRenderModelFromOrder(order))
 }
 
 export const toCustomerName = (value: string) => formatCustomerName(value)
