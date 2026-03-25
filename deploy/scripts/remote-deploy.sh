@@ -77,6 +77,7 @@ full_reset_stack() {
   docker_host_rm_rf "caddy-config"
   docker_host_rm_rf "mongo-data"
   docker_host_rm_rf "whatsapp-auth"
+  rm -f "${RESET_FINGERPRINT_FILE}"
 }
 
 if [[ ! -d "${RELEASE_DIR}" ]]; then
