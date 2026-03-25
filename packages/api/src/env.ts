@@ -125,4 +125,6 @@ const envSchema = z.object({
   }
 })
 
-export const env = envSchema.parse(process.env)
+export const parseEnv = (input: NodeJS.ProcessEnv) => envSchema.parse(input)
+
+export const env = parseEnv(process.env)

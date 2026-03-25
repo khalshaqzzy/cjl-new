@@ -1,15 +1,12 @@
 import assert from "node:assert/strict"
-import { execFile } from "node:child_process"
 import test from "node:test"
 import { createServer, type Server } from "node:http"
-import { promisify } from "node:util"
 import bcrypt from "bcryptjs"
 import { DateTime } from "luxon"
 import { MongoMemoryReplSet } from "mongodb-memory-server"
 
 const baseUrl = "http://127.0.0.1:4105"
 const gatewayUrl = "http://127.0.0.1:4115"
-const execFileAsync = promisify(execFile)
 
 let mongo: MongoMemoryReplSet
 let server: Server
@@ -18,6 +15,7 @@ let getDatabase: (typeof import("../src/db.ts"))["getDatabase"]
 let disconnectDatabase: (typeof import("../src/db.ts"))["disconnectDatabase"]
 let stopBackgroundWork: (() => Promise<void>) | undefined
 let ensureSeedData: (typeof import("../src/seed.ts"))["ensureSeedData"]
+let parseEnv: (typeof import("../src/env.ts"))["parseEnv"]
 
 const gatewayState = {
   state: "connected",
@@ -178,43 +176,6 @@ const extractMagicToken = (url: string) => {
   return parsed.searchParams.get("token")
 }
 
-const runEnvImport = async (env: {
-  APP_ENV: string
-  SESSION_SECRET: string
-  SESSION_COOKIE_SECURE: string
-  TRUST_PROXY: string
-  ADMIN_ORIGIN: string
-  PUBLIC_ORIGIN: string
-  API_ORIGIN: string
-  WHATSAPP_GATEWAY_TOKEN: string
-  ADMIN_BOOTSTRAP_USERNAME?: string
-  ADMIN_BOOTSTRAP_PASSWORD?: string
-}) => {
-  const script = `
-    process.env.APP_ENV = ${JSON.stringify(env.APP_ENV)}
-    process.env.PORT = "4105"
-    process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/cjlaundry"
-    process.env.SESSION_SECRET = ${JSON.stringify(env.SESSION_SECRET)}
-    process.env.SESSION_COOKIE_SECURE = ${JSON.stringify(env.SESSION_COOKIE_SECURE)}
-    process.env.TRUST_PROXY = ${JSON.stringify(env.TRUST_PROXY)}
-    process.env.ADMIN_ORIGIN = ${JSON.stringify(env.ADMIN_ORIGIN)}
-    process.env.PUBLIC_ORIGIN = ${JSON.stringify(env.PUBLIC_ORIGIN)}
-    process.env.API_ORIGIN = ${JSON.stringify(env.API_ORIGIN)}
-    process.env.WHATSAPP_GATEWAY_TOKEN = ${JSON.stringify(env.WHATSAPP_GATEWAY_TOKEN)}
-    process.env.ADMIN_BOOTSTRAP_USERNAME = ${JSON.stringify(env.ADMIN_BOOTSTRAP_USERNAME ?? "")}
-    process.env.ADMIN_BOOTSTRAP_PASSWORD = ${JSON.stringify(env.ADMIN_BOOTSTRAP_PASSWORD ?? "")}
-    await import("./packages/api/src/env.ts")
-  `
-
-  return execFileAsync(
-    process.execPath,
-    ["--import", "tsx", "--input-type=module", "--eval", script],
-    {
-      cwd: "C:\\Users\\Khalfani Shaquille\\Documents\\GitHub\\cjl-new",
-    }
-  )
-}
-
 test.before(async () => {
   mongo = await MongoMemoryReplSet.create({
     replSet: { count: 1, storageEngine: "wiredTiger" }
@@ -238,10 +199,12 @@ test.before(async () => {
   process.env.WHATSAPP_GATEWAY_TOKEN = "integration-test-whatsapp-token"
   process.env.WA_FAIL_MODE = "never"
 
+  const envModule = await import("../src/env.ts")
   const dbModule = await import("../src/db.ts")
   const seedModule = await import("../src/seed.ts")
   const serverModule = await import("../src/server.ts")
 
+  parseEnv = envModule.parseEnv
   getDatabase = dbModule.getDatabase
   disconnectDatabase = dbModule.disconnectDatabase
   ensureSeedData = seedModule.ensureSeedData
@@ -1074,10 +1037,12 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
 })
 
 test("hosted env contract requires plaintext bootstrap password and accepts valid hosted values", async () => {
-  await assert.rejects(
+  assert.throws(
     () =>
-      runEnvImport({
+      parseEnv({
         APP_ENV: "staging",
+        PORT: "4105",
+        MONGODB_URI: "mongodb://127.0.0.1:27017/cjlaundry",
         SESSION_SECRET: "staging-session-secret",
         SESSION_COOKIE_SECURE: "true",
         TRUST_PROXY: "1",
@@ -1091,10 +1056,12 @@ test("hosted env contract requires plaintext bootstrap password and accepts vali
     /ADMIN_BOOTSTRAP_PASSWORD/
   )
 
-  await assert.rejects(
+  assert.throws(
     () =>
-      runEnvImport({
+      parseEnv({
         APP_ENV: "production",
+        PORT: "4105",
+        MONGODB_URI: "mongodb://127.0.0.1:27017/cjlaundry",
         SESSION_SECRET: "production-session-secret",
         SESSION_COOKIE_SECURE: "true",
         TRUST_PROXY: "1",
@@ -1107,9 +1074,11 @@ test("hosted env contract requires plaintext bootstrap password and accepts vali
     /ADMIN_BOOTSTRAP_PASSWORD/
   )
 
-  await assert.doesNotReject(() =>
-    runEnvImport({
+  assert.doesNotThrow(() =>
+    parseEnv({
       APP_ENV: "staging",
+      PORT: "4105",
+      MONGODB_URI: "mongodb://127.0.0.1:27017/cjlaundry",
       SESSION_SECRET: "staging-session-secret",
       SESSION_COOKIE_SECURE: "true",
       TRUST_PROXY: "1",
