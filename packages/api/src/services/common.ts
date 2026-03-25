@@ -321,6 +321,24 @@ const createRenderedReceipt = async (notification: NotificationDocument) => {
   return renderReceiptImageBase64(await buildReceiptRenderModelFromOrder(order))
 }
 
+const buildWhatsappReceiptAttachment = async (notification: NotificationDocument) => {
+  if (notification.eventType !== "order_confirmed" || !notification.orderId) {
+    return undefined
+  }
+
+  const order = await db().collection<OrderDocument>("orders").findOne({ _id: notification.orderId })
+  if (!order) {
+    throw new NotFoundError("Order receipt tidak ditemukan")
+  }
+
+  const pdfBuffer = await renderReceiptPdf(await buildReceiptRenderModelFromOrder(order))
+  return {
+    mimeType: "application/pdf",
+    filename: `${notification.orderCode ?? notification._id}-receipt.pdf`,
+    base64Data: pdfBuffer.toString("base64"),
+  }
+}
+
 const markNotificationFailed = async (
   notificationId: string,
   reason: string,
@@ -416,16 +434,11 @@ export const processNotification = async (notificationId: string) => {
       eventType: notification.eventType,
       destinationPhone: maskPhone(notification.destinationPhone),
     })
+    const whatsappAttachment = await buildWhatsappReceiptAttachment(notification)
     const delivery = await sendNotificationToWhatsapp(
       notification,
       notification.preparedMessage,
-      notification.eventType === "order_confirmed" && notification.renderedReceipt
-        ? {
-            mimeType: "image/png",
-            filename: `${notification.orderCode ?? notification._id}-receipt.png`,
-            base64Data: notification.renderedReceipt,
-          }
-        : undefined
+      whatsappAttachment
     )
 
     await notificationsCollection().updateOne(

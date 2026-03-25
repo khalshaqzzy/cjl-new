@@ -15,8 +15,9 @@ Purpose: repo snapshot after POS QR continuation UX, focused failed-notification
 - expanded manual WhatsApp fallback eligibility in backend so all failed notification event types can open a prefilled `wa.me` deep link
 - changed admin notification receipt fallback download from PDF to PNG
 - kept authenticated customer portal receipt download as PDF
+- changed automatic WhatsApp order-confirmed media send from PNG to PDF while keeping admin fallback download on PNG
 - replaced the old split receipt rendering logic with a shared backend receipt view model used by:
-  - WhatsApp order-confirmed image send
+  - WhatsApp order-confirmed PDF send
   - admin fallback PNG download
   - portal PDF download
 - significantly refreshed receipt aesthetics and structure across PNG/PDF outputs

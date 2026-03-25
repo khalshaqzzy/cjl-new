@@ -351,7 +351,7 @@ export const createCustomer = async (input: CreateCustomerInput): Promise<Create
     const oneTimeLogin = await createCustomerMagicLink(customer._id, "registration_welcome", session)
     const preparedMessage = await buildPreparedMessage("welcome", {
       customerName,
-      customerPhone: customer.phone,
+      customerPhone: normalizePhoneLabel(customer.phone) || customer.phone,
       laundryName: settings.business.laundryName,
       autoLoginUrl: oneTimeLogin.url,
     }, session)
@@ -461,7 +461,7 @@ export const updateCustomerIdentity = async (customerId: string, input: UpdateCu
     const settings = await getSettingsDocument(session)
     const preparedMessage = await buildPreparedMessage("account_info", {
       customerName,
-      customerPhone: normalizedPhone,
+      customerPhone: normalizePhoneLabel(normalizedPhone) || normalizedPhone,
       laundryName: settings.business.laundryName
     }, session)
 

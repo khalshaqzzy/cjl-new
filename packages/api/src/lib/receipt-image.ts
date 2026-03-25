@@ -75,10 +75,8 @@ export const renderReceiptImage = async (receipt: ReceiptRenderModel) => {
       <rect width="1080" height="${height}" fill="url(#page)" />
       <rect x="38" y="38" width="1004" height="${height - 76}" rx="42" fill="#ffffff" />
       <rect x="72" y="72" width="936" height="168" rx="34" fill="url(#header)" />
-      <rect x="72" y="220" width="936" height="10" rx="5" fill="#f97316" />
-
       <text x="118" y="136" font-family="Arial, Helvetica, sans-serif" font-size="56" font-weight="700" fill="#ffffff">${escapeHtml(receipt.laundryName)}</text>
-      <text x="118" y="184" font-family="Arial, Helvetica, sans-serif" font-size="28" fill="#fdba74">Premium Laundry Receipt</text>
+      <text x="118" y="184" font-family="Arial, Helvetica, sans-serif" font-size="28" fill="#fdba74">Smart Laundry Receipt</text>
       <rect x="824" y="100" width="126" height="42" rx="21" fill="#ffffff" />
       <text x="887" y="128" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#111827">LUNAS</text>
       <text x="118" y="214" font-family="Arial, Helvetica, sans-serif" font-size="18" letter-spacing="3" fill="#d1d5db">CJ LAUNDRY POS</text>

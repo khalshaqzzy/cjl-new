@@ -38,6 +38,14 @@ const gatewayControls = {
   },
   nextPairingNetworkFailure: false,
   forceUnauthorizedForPairing: false,
+  lastSendPayload: null as null | {
+    toPhone?: string
+    notificationId?: string
+    media?: {
+      mimeType?: string
+      filename?: string
+    }
+  },
 }
 
 const startGatewayServer = async () => {
@@ -129,7 +137,12 @@ const startGatewayServer = async () => {
         const payload = JSON.parse(requestBody || "{}") as {
           toPhone?: string
           notificationId?: string
+          media?: {
+            mimeType?: string
+            filename?: string
+          }
         }
+        gatewayControls.lastSendPayload = payload
 
         if (!gatewayState.connected) {
           sendJson(503, {
@@ -518,6 +531,8 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       notification.eventType === "welcome" && notification.customerName === upperCustomerName
   )
   assert.match(welcomeNotification.preparedMessage, /auto-login\?token=/)
+  assert.match(welcomeNotification.preparedMessage, new RegExp(`Nomor HP: ${customerPhone}`))
+  assert.doesNotMatch(welcomeNotification.preparedMessage, new RegExp(`\\+62${customerPhone.slice(1)}`))
 
   result = await requestJson(`/v1/admin/customers/${customerId}/points`, {
     method: "POST",
@@ -665,6 +680,9 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       notification.orderCode === confirmFirst.payload.order.orderCode
   )
   assert.ok(confirmNotification)
+  assert.equal(gatewayControls.lastSendPayload?.notificationId, confirmNotification.notificationId)
+  assert.equal(gatewayControls.lastSendPayload?.media?.mimeType, "application/pdf")
+  assert.equal(gatewayControls.lastSendPayload?.media?.filename, `${confirmNotification.orderCode}-receipt.pdf`)
 
   let receiptResponse = await fetch(`${baseUrl}/v1/admin/notifications/${confirmNotification.notificationId}/receipt`, {
     headers: { Cookie: adminCookie! }
@@ -899,8 +917,8 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       displayName: upperCustomerName,
       providerAck: 1,
       hasMedia: true,
-      mediaMimeType: "image/png",
-      mediaName: "receipt.png",
+      mediaMimeType: "application/pdf",
+      mediaName: "receipt.pdf",
       notificationId: confirmNotification.notificationId,
       orderCode: confirmFirst.payload.order.orderCode
     })

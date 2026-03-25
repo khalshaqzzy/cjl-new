@@ -164,9 +164,6 @@ export const renderReceiptPdf = async (receipt: ReceiptRenderModel) => {
   doc
     .roundedRect(32, 32, pageWidth - 64, 108, 22)
     .fill(palette.dark)
-  doc
-    .roundedRect(32, 126, pageWidth - 64, 8, 4)
-    .fill(palette.warm)
 
   doc
     .font("Helvetica-Bold")
@@ -179,7 +176,7 @@ export const renderReceiptPdf = async (receipt: ReceiptRenderModel) => {
     .font("Helvetica")
     .fontSize(10)
     .fillColor("#fdba74")
-    .text("Premium Laundry Receipt", 52, 82)
+    .text("Smart Laundry Receipt", 52, 82)
   doc
     .roundedRect(296, 48, 92, 28, 14)
     .fill("#ffffff")

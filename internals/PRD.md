@@ -130,7 +130,7 @@ Customer laundry yang:
 - Satuan berat disimpan minimal 2 digit desimal, tetapi UI default menampilkan 1 digit desimal.
 - Berat order wajib diisi untuk semua order, meskipun tidak semua layanan menggunakan harga per kg.
 - Harga `Setrika` dihitung dari berat order yang sama.
-- Receipt order-confirmed dikirim melalui WhatsApp sebagai image; portal customer tetap menyediakan download PDF, sedangkan admin outbox fallback untuk failed order-confirmed menyediakan download image agar mudah diteruskan ke WhatsApp.
+- Receipt order-confirmed yang dikirim otomatis oleh bot WhatsApp berupa file PDF; portal customer tetap menyediakan download PDF, sedangkan admin outbox fallback untuk failed order-confirmed menyediakan download image agar mudah diteruskan secara manual ke WhatsApp.
 - Output receipt final memakai data transaksi dari order, tetapi nama laundry, nomor kontak laundry, dan alamat diambil dari admin settings terbaru saat render.
 - Public portal tidak menampilkan nominal uang pada monthly summary.
 - Untuk menjaga privasi akibat login yang lemah, public portal default tetap tidak menonjolkan nominal uang pada dashboard/list views; nominal resmi tersedia pada halaman detail order terautentikasi dan PDF receipt, bukan pada direct status token page.
@@ -850,7 +850,7 @@ Must include:
 - redeemed points count if applicable,
 - new current point balance,
 - direct status link,
-- receipt image rendered on demand.
+- receipt PDF rendered on demand untuk pengiriman bot WhatsApp.
 - receipt PDF downloadable from authenticated portal order detail.
 - admin notification fallback receipt downloadable as image.
 

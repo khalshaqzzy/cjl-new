@@ -100,7 +100,7 @@ Status: complete in repo terms
 - non-blocking Next.js config warning for deprecated `eslint` key was removed
 - Turbopack workspace root is now explicit for both frontend apps
 - runtime mock initialization has been removed from key admin/settings/customer detail flows
-- receipt renderers now share one backend view model so PNG WhatsApp/admin fallback receipts and portal PDFs stay aligned in content hierarchy while using the latest business contact/address settings at render time
+- receipt renderers now share one backend view model so bot-sent PDF receipts, admin fallback PNG receipts, and portal PDFs stay aligned in content hierarchy while using the latest business contact/address settings at render time
 
 ### Phase 6: Local Containerization and Test Automation
 
