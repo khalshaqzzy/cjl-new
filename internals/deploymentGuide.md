@@ -389,6 +389,12 @@ This script will:
 - create the shared Caddy and Mongo bind-mount directories
 - enable UFW for SSH, HTTP, and HTTPS
 
+Ubuntu package note:
+
+- some images expose Docker Compose as `docker-compose-plugin`
+- others expose it as `docker-compose-v2`
+- the bootstrap script now auto-detects and installs whichever package exists on the target image
+
 ### 8.3 Run the bootstrap script on production
 
 Repeat the same process on the production VM:

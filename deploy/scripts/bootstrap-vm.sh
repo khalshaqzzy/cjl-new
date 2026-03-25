@@ -57,7 +57,12 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y ca-certificates curl git ufw docker.io docker-compose-plugin
+DOCKER_COMPOSE_PACKAGE="docker-compose-plugin"
+if ! apt-cache show "${DOCKER_COMPOSE_PACKAGE}" >/dev/null 2>&1; then
+  DOCKER_COMPOSE_PACKAGE="docker-compose-v2"
+fi
+
+apt-get install -y ca-certificates curl git ufw docker.io "${DOCKER_COMPOSE_PACKAGE}"
 
 systemctl enable docker
 systemctl start docker
