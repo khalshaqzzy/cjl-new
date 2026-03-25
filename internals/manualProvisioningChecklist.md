@@ -28,6 +28,7 @@ Purpose: short external checklist for provisioning staging and production before
 - confirm SSH login works for `cjl-staging-deploy`
 - confirm SSH login works for `cjl-production-deploy`
 - confirm `docker version` works when logged in as each deploy user
+- if Windows `ssh-keyscan` fails with unsupported KEX, capture the host key via a normal `ssh` connection and copy the matching line from `$HOME\\.ssh\\known_hosts`
 
 ## DNS
 

@@ -30,6 +30,7 @@ The repo now has:
 - backend integration coverage and frontend end-to-end coverage that pass from root test commands
 - branch-based CI and hosted deploy workflows committed in repo
 - root `typecheck` now bootstraps `@cjl/contracts` before workspace checks so clean CI runners resolve shared contracts reliably
+- CI now installs Playwright Chromium on GitHub runners before `npm test` so E2E does not depend on prewarmed browser caches
 - remote deploy assets for Caddy, Compose, release shipping, smoke checks, and rollback
 - hosted and local runtime env contracts updated for WhatsApp gateway auth and persistence
 
@@ -111,7 +112,7 @@ Status: complete in repo terms
 Status: complete in repo terms
 
 - CI workflow now validates test, build, and compose config
-- CI security scan now uses a resolvable `aquasecurity/trivy-action` release with an explicit Trivy CLI version pin
+- CI security scan now pins `aquasecurity/trivy-action` immutably by SHA and keeps an explicit Trivy CLI version pin
 - staging and production deploy workflows now exist with branch-based auto-deploy triggers
 - remote deploy assets now exist for Caddy, Compose, runtime env contracts, smoke checks, and rollback
 - hosted deployment model is now fixed as SSH-orchestrated VM-local builds
@@ -135,4 +136,5 @@ Focus:
 - hosted rollout is now blocked more by real-device validation than by missing WhatsApp implementation code
 - production hardening now includes structured runtime logging, typed error envelopes, token-hash persistence, origin checks, Mongo-backed rate limiting, and CI security gates
 - clean-checkout CI validation no longer depends on a prebuilt committed `packages/contracts/dist` artifact
+- clean-checkout CI validation now also provisions the required Playwright Chromium binary explicitly before E2E starts
 - the next meaningful milestone is no longer repo implementation; it is successful staging execution of the new readiness checklist and rollback path

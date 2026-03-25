@@ -37,8 +37,10 @@ Purpose: repo snapshot after WhatsApp runtime integration, customer magic-login 
   - WhatsApp gateway remains a documented temporary root-runtime exception pending staging validation
 - expanded CI and deploy workflows with lint, typecheck, audit, secret scanning, Trivy, CodeQL, dependency review, and rollback-on-smoke-failure automation
 - fixed the CI contract-resolution path so root `npm run typecheck` now builds `@cjl/contracts` before workspace typechecks on clean runners
-- corrected the CI Trivy step to a resolvable `aquasecurity/trivy-action` release and pinned the Trivy CLI version explicitly
+- corrected the CI Trivy step to an immutable `aquasecurity/trivy-action` SHA pin and kept the Trivy CLI version explicit
+- added explicit GitHub runner provisioning for Playwright Chromium before `npm test`
 - added ADR `docs/adr/0008-ux-first-production-hardening-baseline.md`
+- added ADR `docs/adr/0009-ci-runner-reproducibility-and-tool-provisioning.md`
 - added `internals/productionReadinessChecklist.md` as the final pre-production gate
 
 ## Verification Run
@@ -65,6 +67,7 @@ All passed at session end.
 - hosted staging and production domains are now canonical on `cjlaundry.com`, not `cjlaundry.site`
 - deploy workflows now render hosted WhatsApp runtime vars so first VM rollout includes `WHATSAPP_ENABLED=true` and the gateway token
 - CI now self-builds shared contracts during root typecheck instead of assuming `packages/contracts/dist` already exists in the checkout
+- CI now also installs Playwright Chromium explicitly instead of assuming the runner cache already contains the browser binary
 - the gateway-paired WhatsApp number and the customer-facing admin contact list are now intentionally separate settings concepts
 - if legacy settings lack `adminWhatsappContacts`, backend read/update paths backfill from `publicContactPhone`, then `publicWhatsapp`, then fallback `087780563875`
 - one-time customer magic links are stored server-side and deactivated per token only after a successful login session is saved

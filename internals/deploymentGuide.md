@@ -444,6 +444,18 @@ Save the full output lines into:
 - `STAGING_VM_SSH_KNOWN_HOSTS`
 - `PRODUCTION_VM_SSH_KNOWN_HOSTS`
 
+Windows OpenSSH note:
+
+- some Windows `ssh-keyscan` builds fail against newer Ubuntu images with errors like `unsupported KEX method sntrup761x25519-sha512@openssh.com`
+- if that happens, use normal SSH once to accept the host key locally:
+
+```powershell
+ssh -o StrictHostKeyChecking=accept-new -o HashKnownHosts=no <user>@<vm-host> "exit"
+```
+
+- then read the matching line from `$HOME\.ssh\known_hosts` and paste that value into the GitHub environment secret
+- if needed, use WSL or Git Bash for `ssh-keyscan -H <vm-host>` instead of Windows PowerShell OpenSSH
+
 ## 9. Step 5: Configure DNS
 
 All hosted domains for one environment point to the same VM. Caddy routes traffic to the correct internal service by hostname.
