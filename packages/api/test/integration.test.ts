@@ -706,6 +706,19 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.state, "connected")
   assert.equal(result.payload.connected, true)
 
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    result = await requestJson("/v1/admin/whatsapp/reconnect", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: adminCookie!
+      },
+      body: JSON.stringify({})
+    })
+    assert.equal(result.payload.state, "connected")
+    assert.equal(result.payload.connected, true)
+  }
+
   result = await requestJson("/v1/admin/whatsapp/pairing-code", {
     method: "POST",
     headers: {

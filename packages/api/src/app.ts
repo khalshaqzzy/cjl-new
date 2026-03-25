@@ -412,8 +412,10 @@ export const createApp = () => {
   )
   const whatsappAdminLimiter = buildLimiter(
     "admin-whatsapp",
-    10,
-    "Terlalu banyak percobaan pada kontrol WhatsApp admin"
+    20,
+    "Terlalu banyak percobaan pada kontrol WhatsApp admin",
+    (req) => String(req.session.adminUserId ?? req.ip),
+    true
   )
 
   app.get("/health", (_req, res) => {

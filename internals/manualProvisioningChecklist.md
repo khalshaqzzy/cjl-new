@@ -48,9 +48,9 @@ Purpose: short external checklist for provisioning staging and production before
 - add staging `known_hosts`
 - add production `known_hosts`
 - add all staging Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
-- add all staging WhatsApp secrets including `WHATSAPP_GATEWAY_TOKEN`
+- add all staging WhatsApp secrets including `WHATSAPP_GATEWAY_TOKEN` and `STAGING_DEPLOY_RESET_TOKEN`
 - add all production Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
-- add all production WhatsApp secrets including `WHATSAPP_GATEWAY_TOKEN`
+- add all production WhatsApp secrets including `WHATSAPP_GATEWAY_TOKEN` and `PRODUCTION_DEPLOY_RESET_TOKEN`
 
 ## Validation
 
@@ -61,6 +61,7 @@ Purpose: short external checklist for provisioning staging and production before
 - staging `/ready` shows release metadata and dependency state
 - staging API responses expose `X-Request-Id`
 - staging API and WhatsApp gateway logs are structured JSON
+- staging GitHub Actions log shows identical `WHATSAPP_GATEWAY_TOKEN` fingerprints for `api` and `whatsapp-gateway`
 - staging rollback is tested against a known-bad release
 - staging WhatsApp status page can generate pairing material
 - staging WhatsApp reconnect still works after restart

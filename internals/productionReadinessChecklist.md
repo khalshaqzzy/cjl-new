@@ -23,6 +23,8 @@ Purpose: final gate checklist before the first production push after observabili
 - no placeholder secrets remain in staging or production runtime envs
 - `SESSION_SECRET` is unique per environment
 - `WHATSAPP_GATEWAY_TOKEN` is unique per environment
+- GitHub Actions deploy logs show matching `WHATSAPP_GATEWAY_TOKEN` fingerprints for `api` and `whatsapp-gateway`
+- `DEPLOY_RESET_TOKEN` exists per hosted environment and is treated as a destructive rotation secret
 - `ADMIN_BOOTSTRAP_PASSWORD` is present, non-placeholder, and stored only in runtime secrets
 - `SESSION_COOKIE_SECURE=true` in hosted env
 - `TRUST_PROXY=1` or `true` in hosted env
@@ -67,6 +69,7 @@ Purpose: final gate checklist before the first production push after observabili
   - `500`
   - `503`
 - real-device WhatsApp pairing, reconnect, and outbound delivery flow are validated
+- deploy operators understand that rotating `*_DEPLOY_RESET_TOKEN` wipes persistent hosted data before rebuild
 - magic-link redeem still works without extra customer friction
 - customer portal session still renews on sliding 30-day behavior
 

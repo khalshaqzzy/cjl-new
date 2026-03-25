@@ -41,6 +41,7 @@ Confirm all are true on the selected release commit:
 - staging DNS resolves correctly
 - GitHub `staging` environment secrets are populated and current
 - staging runtime secrets do not contain placeholder values
+- staging `STAGING_DEPLOY_RESET_TOKEN` is unchanged unless the rollout explicitly intends to wipe persistent data
 - `internals/productionReadinessChecklist.md` items needed for staging are ready to execute
 - WhatsApp operator/device is available for pairing and message validation if needed
 
@@ -53,6 +54,7 @@ Confirm all are true on the selected release commit:
 5. monitor these stages in the workflow:
    - release archive upload
    - runtime env render and upload
+   - `WHATSAPP_GATEWAY_TOKEN` fingerprint parity log
    - remote deploy script
    - internal container readiness wait
    - smoke checks
@@ -78,6 +80,7 @@ Confirm all are true on the selected release commit:
 - API logs are structured JSON
 - WhatsApp gateway logs are structured JSON
 - error responses include `message`, `error.code`, and `error.requestId`
+- deploy log shows the same `WHATSAPP_GATEWAY_TOKEN` fingerprint for `api` and `whatsapp-gateway`
 
 ### 5.3 Security and hardening
 
@@ -139,6 +142,7 @@ Decision:
 - production VM is reachable over SSH
 - production DNS resolves correctly
 - GitHub `production` environment secrets are current
+- production `PRODUCTION_DEPLOY_RESET_TOKEN` is unchanged unless the rollout explicitly intends to wipe persistent data
 - first-hour monitoring owner is assigned
 - backup rollback operator is assigned
 
@@ -151,6 +155,7 @@ Decision:
    - previous release capture
    - release archive upload
    - runtime env render and upload
+   - `WHATSAPP_GATEWAY_TOKEN` fingerprint parity log
    - remote deploy script
    - internal container readiness wait
    - smoke checks

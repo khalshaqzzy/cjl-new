@@ -46,9 +46,13 @@ Purpose: repo snapshot after WhatsApp runtime integration, customer magic-login 
 - added `internals/productionReadinessChecklist.md` as the final pre-production gate
 - stabilized admin WhatsApp pairing controls so QR and pairing-code modes are explicit, stale QR material is cleared during code mode, and operators can use `Reset Session` to recover a stuck auth volume
 - changed gateway-control error handling so admin now sees real gateway `4xx` messages and token-mismatch diagnostics instead of one generic pairing failure
+- relaxed admin WhatsApp control throttling so repeated successful reconnect or pairing actions no longer exhaust the same limiter bucket, while failed attempts are still rate-limited
 - normalized business/admin phone fields to canonical `08...` storage on backend read/write paths and made customer-facing public contact resolve from the primary admin WhatsApp contact consistently
 - verified through backend integration coverage that landing, portal, address, pairing-code, reset-session, and gateway error semantics now follow the canonical settings/runtime model
 - added ADR `docs/adr/0010-whatsapp-pairing-controls-and-canonical-business-contact-normalization.md`
+- updated staging and production deploy workflows to print a safe `WHATSAPP_GATEWAY_TOKEN` fingerprint for both `api` and `whatsapp-gateway`, so runtime token parity can be confirmed directly from GitHub Actions logs
+- added destructive `*_DEPLOY_RESET_TOKEN` secrets plus VM-side fingerprint tracking so an intentional secret rotation tears down containers and removes persistent data directories before rebuilding from scratch
+- added ADR `docs/adr/0011-deploy-reset-token-and-gateway-token-fingerprint-visibility.md`
 
 ## Verification Run
 
@@ -73,6 +77,7 @@ All passed at session end.
 - hosted runtime now depends on a persistent `${SHARED_DIR}/whatsapp-auth` mount for session survival
 - hosted staging and production domains are now canonical on `cjlaundry.com`, not `cjlaundry.site`
 - deploy workflows now render hosted WhatsApp runtime vars so first VM rollout includes `WHATSAPP_ENABLED=true` and the gateway token
+- deploy workflows now also require `*_DEPLOY_RESET_TOKEN`; the first deploy after introducing that secret intentionally wipes persistent hosted data because there is no prior fingerprint file yet
 - deploy workflows and runtime env examples now expect `*_ADMIN_BOOTSTRAP_PASSWORD` instead of the old hash-based secret name
 - CI now self-builds shared contracts during root typecheck instead of assuming `packages/contracts/dist` already exists in the checkout
 - CI now also installs Playwright Chromium explicitly instead of assuming the runner cache already contains the browser binary
@@ -87,10 +92,12 @@ All passed at session end.
 - `/ready` now exposes release metadata and dependency state and should be treated as the primary runtime triage endpoint
 - first production push should stay blocked until `internals/productionReadinessChecklist.md` is fully executed on staging
 - API/admin/public containers are expected to run non-root in hosted environments; the gateway root exception is temporary and must be revisited after staging permission validation
+- GitHub Actions now surfaces a short, non-secret fingerprint of `WHATSAPP_GATEWAY_TOKEN`; operators should use that before assuming pairing failures are caused by the device session itself
 
 ## Recommended Next Start
 
 1. provision or refresh the staging VM secrets and run the first full staging deploy using the hardened CI and rollback path
-2. save a fresh production-like settings payload on staging using `08...` numbers and a new address, then verify landing and portal reflect the changes immediately
-3. execute `internals/productionReadinessChecklist.md` on staging, including request-id tracing, rollback proof, error-code validation, and security-header checks
-4. validate real-device welcome WA, magic-link open and QR scan usability, reconnect behavior, `Reset Session`, and WhatsApp auth-volume persistence before touching production
+2. confirm the GitHub Actions deploy log prints the same `WHATSAPP_GATEWAY_TOKEN` fingerprint for `api` and `whatsapp-gateway`, then only continue WhatsApp debugging if parity is proven
+3. save a fresh production-like settings payload on staging using `08...` numbers and a new address, then verify landing and portal reflect the changes immediately
+4. execute `internals/productionReadinessChecklist.md` on staging, including request-id tracing, rollback proof, error-code validation, and security-header checks
+5. validate real-device welcome WA, magic-link open and QR scan usability, reconnect behavior, `Reset Session`, and WhatsApp auth-volume persistence before touching production

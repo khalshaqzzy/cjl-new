@@ -5,10 +5,12 @@ APP_ENV="${1:?APP_ENV is required}"
 RELEASE_SHA="${2:?RELEASE_SHA is required}"
 BASE_DIR="${3:?BASE_DIR is required}"
 RUNTIME_ENV_FILE="${4:?RUNTIME_ENV_FILE is required}"
+DEPLOY_RESET_FINGERPRINT="${5:?DEPLOY_RESET_FINGERPRINT is required}"
 
 RELEASE_DIR="${BASE_DIR}/releases/${RELEASE_SHA}"
 COMPOSE_FILE="${RELEASE_DIR}/deploy/api/docker-compose.remote.yml"
 CURRENT_LINK="${BASE_DIR}/current"
+RESET_FINGERPRINT_FILE="${BASE_DIR}/shared/deploy-reset.fingerprint"
 
 compose() {
   docker compose \
@@ -59,6 +61,16 @@ wait_for_service() {
   done
 }
 
+full_reset_stack() {
+  echo "Running full container reset for ${APP_ENV}."
+  compose down --remove-orphans --volumes || true
+  rm -rf \
+    "${BASE_DIR}/shared/caddy-data" \
+    "${BASE_DIR}/shared/caddy-config" \
+    "${BASE_DIR}/shared/mongo-data" \
+    "${BASE_DIR}/shared/whatsapp-auth"
+}
+
 if [[ ! -d "${RELEASE_DIR}" ]]; then
   echo "Release directory not found: ${RELEASE_DIR}" >&2
   exit 1
@@ -74,6 +86,16 @@ if [[ ! -f "${RUNTIME_ENV_FILE}" ]]; then
   exit 1
 fi
 
+PREVIOUS_DEPLOY_RESET_FINGERPRINT=""
+if [[ -f "${RESET_FINGERPRINT_FILE}" ]]; then
+  PREVIOUS_DEPLOY_RESET_FINGERPRINT="$(cat "${RESET_FINGERPRINT_FILE}")"
+fi
+
+if [[ "${PREVIOUS_DEPLOY_RESET_FINGERPRINT}" != "${DEPLOY_RESET_FINGERPRINT}" ]]; then
+  echo "Deploy reset fingerprint changed; removing containers and persistent volumes."
+  full_reset_stack
+fi
+
 mkdir -p \
   "${BASE_DIR}/shared" \
   "${BASE_DIR}/shared/caddy-data" \
@@ -82,6 +104,8 @@ mkdir -p \
   "${BASE_DIR}/shared/whatsapp-auth"
 
 compose up -d --build --remove-orphans
+
+printf '%s\n' "${DEPLOY_RESET_FINGERPRINT}" > "${RESET_FINGERPRINT_FILE}"
 
 wait_for_service mongo 120
 wait_for_service api 240

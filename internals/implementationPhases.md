@@ -36,6 +36,7 @@ The repo now has:
 - WhatsApp gateway runtime now imports `whatsapp-web.js` through CommonJS-safe interop so hosted Node ESM startup matches local development behavior
 - remote deploy assets for Caddy, Compose, release shipping, smoke checks, and rollback
 - hosted and local runtime env contracts updated for WhatsApp gateway auth and persistence
+- hosted deploy workflows now fingerprint `WHATSAPP_GATEWAY_TOKEN` parity in GitHub Actions logs and support a destructive reset-token path that rebuilds the stack from empty persistent data when intentionally rotated
 
 ## Phase Snapshot
 
@@ -139,6 +140,7 @@ Focus:
 - multiple lockfiles still exist in the monorepo, but explicit Turbopack root removed the earlier workspace-root warning blocker
 - hosted rollout is now blocked more by real-device validation than by missing WhatsApp implementation code
 - production hardening now includes structured runtime logging, typed error envelopes, token-hash persistence, origin checks, Mongo-backed rate limiting, and CI security gates
+- admin WhatsApp control throttling now keys by authenticated admin and only counts failed control attempts, so repeated successful reconnect/pairing operations no longer consume the same abuse budget
 - clean-checkout CI validation no longer depends on a prebuilt committed `packages/contracts/dist` artifact
 - clean-checkout CI validation now also provisions the required Playwright Chromium binary explicitly before E2E starts
 - the next meaningful milestone is no longer repo implementation; it is successful staging execution of the new readiness checklist and rollback path

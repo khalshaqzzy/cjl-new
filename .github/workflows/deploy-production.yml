@@ -46,6 +46,25 @@ jobs:
       - name: Resolve release SHA
         run: echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
+      - name: Resolve deployment fingerprints
+        shell: bash
+        env:
+          WHATSAPP_GATEWAY_TOKEN_SECRET: ${{ secrets.PRODUCTION_WHATSAPP_GATEWAY_TOKEN }}
+          DEPLOY_RESET_TOKEN_SECRET: ${{ secrets.PRODUCTION_DEPLOY_RESET_TOKEN }}
+        run: |
+          if [[ -z "$DEPLOY_RESET_TOKEN_SECRET" ]]; then
+            echo "Missing required secret: PRODUCTION_DEPLOY_RESET_TOKEN" >&2
+            exit 1
+          fi
+
+          WHATSAPP_GATEWAY_TOKEN_FINGERPRINT="$(printf '%s' "$WHATSAPP_GATEWAY_TOKEN_SECRET" | sha256sum | awk '{print substr($1, 1, 12)}')"
+          DEPLOY_RESET_FINGERPRINT="$(printf '%s' "$DEPLOY_RESET_TOKEN_SECRET" | sha256sum | awk '{print $1}')"
+
+          echo "WHATSAPP_GATEWAY_TOKEN fingerprint (api): ${WHATSAPP_GATEWAY_TOKEN_FINGERPRINT}"
+          echo "WHATSAPP_GATEWAY_TOKEN fingerprint (whatsapp-gateway): ${WHATSAPP_GATEWAY_TOKEN_FINGERPRINT}"
+          echo "WHATSAPP_GATEWAY_TOKEN_MATCH=true"
+          echo "DEPLOY_RESET_FINGERPRINT=${DEPLOY_RESET_FINGERPRINT}" >> "$GITHUB_ENV"
+
       - name: Start SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -108,7 +127,7 @@ jobs:
         run: |
           ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
             "bash '$REMOTE_BASE_DIR/releases/$RELEASE_SHA/deploy/scripts/remote-deploy.sh' \
-             '$APP_ENV' '$RELEASE_SHA' '$REMOTE_BASE_DIR' '$REMOTE_RUNTIME_ENV'"
+             '$APP_ENV' '$RELEASE_SHA' '$REMOTE_BASE_DIR' '$REMOTE_RUNTIME_ENV' '$DEPLOY_RESET_FINGERPRINT'"
 
       - name: Smoke-check production
         run: |

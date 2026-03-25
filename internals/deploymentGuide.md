@@ -524,6 +524,7 @@ Open the `staging` environment, then use `Add secret` for each value below.
 | `STAGING_MONGO_REPLICA_KEY` | long alphanumeric or base64-safe internal Mongo replica-set key |
 | `STAGING_SESSION_SECRET` | long random secret |
 | `STAGING_WHATSAPP_GATEWAY_TOKEN` | shared internal token for API <-> WhatsApp gateway auth |
+| `STAGING_DEPLOY_RESET_TOKEN` | long random token used only by deploy workflow to decide whether to wipe containers and persistent volumes |
 | `STAGING_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
 | `STAGING_ADMIN_BOOTSTRAP_PASSWORD` | plaintext first admin password used for bootstrap seeding |
 
@@ -545,6 +546,7 @@ Open the `production` environment and add:
 | `PRODUCTION_MONGO_REPLICA_KEY` | long alphanumeric or base64-safe internal Mongo replica-set key |
 | `PRODUCTION_SESSION_SECRET` | long random secret |
 | `PRODUCTION_WHATSAPP_GATEWAY_TOKEN` | shared internal token for API <-> WhatsApp gateway auth |
+| `PRODUCTION_DEPLOY_RESET_TOKEN` | long random token used only by deploy workflow to decide whether to wipe containers and persistent volumes |
 | `PRODUCTION_ADMIN_BOOTSTRAP_USERNAME` | first admin username |
 | `PRODUCTION_ADMIN_BOOTSTRAP_PASSWORD` | plaintext first admin password used for bootstrap seeding |
 
@@ -562,6 +564,7 @@ Important:
 - GitHub now stores the plaintext bootstrap password and the API hashes it before storing it in MongoDB
 - on each hosted deploy/startup, the single `admin-primary` account is synchronized to the configured bootstrap username and password
 - generate a separate `*_MONGO_REPLICA_KEY` value and keep it stable for the life of that environment unless you intentionally rotate Mongo internal auth
+- generate a separate `*_DEPLOY_RESET_TOKEN` value and keep it stable unless you intentionally want the next deploy to destroy containers plus persistent data directories (`mongo-data`, `whatsapp-auth`, `caddy-data`, `caddy-config`)
 - staging and production boots now reject placeholder or obviously default values for critical secrets, so do not leave values like `replace-me` in any hosted secret
 
 ### 10.5 What GitHub will write onto the VM
@@ -617,6 +620,8 @@ Important first-deploy behavior:
 
 - `remote-deploy.sh` now waits for `mongo`, `api`, `whatsapp-gateway`, `admin-web`, `public-web`, and `caddy` to become healthy or running before GitHub starts the external smoke checks
 - the external smoke check now retries broader edge failures, including transient TLS handshake failures, because first-time Caddy ACME issuance can lag behind container startup on a clean VM
+- GitHub Actions logs now print a short SHA-256 fingerprint of `STAGING_WHATSAPP_GATEWAY_TOKEN` for both `api` and `whatsapp-gateway`, so you can confirm both services are using the same secret without exposing the raw token
+- if `STAGING_DEPLOY_RESET_TOKEN` changes compared with the last successful deploy, the workflow tears down the stack and deletes persistent data directories before rebuilding
 
 ### 11.3 Production deploy workflow
 
@@ -627,6 +632,8 @@ On a first production deploy, this distinction matters:
 - internal service readiness proves the stack is booted
 - public HTTPS readiness still depends on Caddy finishing certificate issuance for the public domains
 - the workflow now tolerates this warm-up window better, but DNS and ports `80` and `443` must still already be correct
+- GitHub Actions logs now print a short SHA-256 fingerprint of `PRODUCTION_WHATSAPP_GATEWAY_TOKEN` for both `api` and `whatsapp-gateway`, so you can verify parity without leaking the real token
+- if `PRODUCTION_DEPLOY_RESET_TOKEN` changes compared with the last successful deploy, the workflow destroys containers and deletes persistent data directories before recreating the stack
 
 ### 11.4 Why there is no image registry secret
 
