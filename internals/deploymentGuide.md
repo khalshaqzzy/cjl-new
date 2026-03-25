@@ -160,6 +160,11 @@ Mongo note:
 - `.github/workflows/deploy-staging.yml`
 - `.github/workflows/deploy-production.yml`
 
+### Operator checklists
+
+- `internals/productionReadinessChecklist.md`
+- `internals/releaseExecutionChecklist.md`
+
 ## 5. Step 1: Prepare Local Development First
 
 Do this before touching staging or production. It proves the repo is healthy on your machine.
@@ -620,6 +625,8 @@ So:
 
 Do not do this until all earlier steps are complete.
 
+For operator-friendly execution steps, run this section together with `internals/releaseExecutionChecklist.md`.
+
 ### 12.1 Final pre-flight checklist
 
 Before pushing for staging, confirm:
@@ -720,6 +727,8 @@ On staging, also confirm:
 ## 14. Step 10: First Production Rollout
 
 Only do this after staging is healthy and manually validated.
+
+For operator-friendly execution steps, run this section together with `internals/releaseExecutionChecklist.md`.
 
 ### 14.1 Pre-flight checklist
 

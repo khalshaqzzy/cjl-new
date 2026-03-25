@@ -49,6 +49,8 @@ Read these before planning or continuing implementation:
   - local/staging/production topology
 - `deploymentGuide.md`
   - canonical deployment, provisioning, secrets, rollback, and smoke-test runbook
+- `releaseExecutionChecklist.md`
+  - operator checklist for live staging and production rollout windows
 - `manualProvisioningChecklist.md`
   - short external provisioning checklist
 - `productionReadinessChecklist.md`
@@ -116,8 +118,9 @@ For most implementation sessions, read in this order:
 3. `internals/implementationPhases.md`
 4. the active kickoff file for the next target phase
 5. `internals/deploymentGuide.md` if the session touches environments, secrets, deploys, VMs, Vercel, or Firebase
-6. `internals/PRD.md` and the relevant frontend design doc if product behavior is involved
-7. relevant `docs/adr/` entries when the task touches architecture, contracts, runtime behavior, or deployment shape
+6. `internals/releaseExecutionChecklist.md` if the session is preparing or guiding a live rollout
+7. `internals/PRD.md` and the relevant frontend design doc if product behavior is involved
+8. relevant `docs/adr/` entries when the task touches architecture, contracts, runtime behavior, or deployment shape
 
 ## 4. When To Update Existing Files
 
