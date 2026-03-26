@@ -27,7 +27,7 @@ const steps = [
     number: '03',
     icon: Play,
     title: 'Mesin Berjalan',
-    description: 'Masukkan pakaian dan mesin siap bekerja. Proses cuci atau kering sekitar 45–60 menit.',
+    description: 'Masukkan pakaian dan mesin siap bekerja. Proses cuci atau kering sekitar 60-90 menit.',
     color: 'bg-pink-hot',
     textColor: 'text-pink-hot',
     bgLight: 'bg-pink-cloud',

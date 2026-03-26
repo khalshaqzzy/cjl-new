@@ -34,6 +34,8 @@ export function PortalShell({ children, title, showBack, backHref = '/portal', s
   const [resolvedSession, setResolvedSession] = useState(session)
   const [isSessionChecked, setIsSessionChecked] = useState(Boolean(session))
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const showBrandOnlyHeader =
+    !showBack && ['/portal/riwayat', '/portal/stamp', '/portal/leaderboard'].includes(pathname)
 
   useEffect(() => {
     if (session) {
@@ -162,12 +164,10 @@ export function PortalShell({ children, title, showBack, backHref = '/portal', s
               <div className="w-8 h-8 rounded-xl bg-gradient-primary flex items-center justify-center shadow-md shadow-pink-hot/20">
                 <span className="font-display font-bold text-sm text-white">CJ</span>
               </div>
-              <span className="font-display font-semibold text-text-strong text-sm">
-                {title || 'CJ Laundry'}
-              </span>
+              <span className="font-display font-semibold text-text-strong text-sm">CJ Laundry</span>
             </div>
           )}
-          {title && !showBack && (
+          {title && !showBack && !showBrandOnlyHeader && (
             <h1 className="flex-1 text-center font-display font-semibold text-text-strong text-sm">{title}</h1>
           )}
           {showBack && title && (

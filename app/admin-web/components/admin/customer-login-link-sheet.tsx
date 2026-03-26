@@ -81,17 +81,21 @@ export function CustomerLoginLinkSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="rounded-t-3xl" aria-describedby={undefined}>
-        <SheetHeader className="border-b border-line-base pb-4 text-left">
+      <SheetContent
+        side="bottom"
+        className="max-h-[calc(100svh-1rem)] gap-0 overflow-hidden rounded-t-3xl p-0"
+        aria-describedby={undefined}
+      >
+        <SheetHeader className="sticky top-0 z-10 border-b border-line-base bg-background pb-4 pr-14 text-left">
           <SheetTitle className="text-base font-semibold text-text-strong">{title}</SheetTitle>
           <SheetDescription className="text-sm text-text-muted">
             {customerName ? `${description} Customer: ${customerName}.` : description}
           </SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-4 py-5">
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
           <div className="rounded-3xl border border-line-base bg-bg-subtle p-4">
-            <div className="mx-auto flex aspect-square w-full max-w-[280px] items-center justify-center rounded-2xl bg-white shadow-sm">
+            <div className="mx-auto flex aspect-square w-full max-w-[240px] items-center justify-center rounded-2xl bg-white shadow-sm sm:max-w-[280px]">
               {isGenerating ? (
                 <div className="flex flex-col items-center gap-2 text-sm text-text-muted">
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -122,7 +126,7 @@ export function CustomerLoginLinkSheet({
           </div>
         </div>
 
-        <SheetFooter className="gap-2 sm:flex-col">
+        <SheetFooter className="gap-2 border-t border-line-base bg-background">
           {continueAction ? (
             <Button
               className="w-full rounded-xl bg-rose-600 font-semibold text-white hover:bg-rose-500 sm:flex-none"
@@ -133,7 +137,7 @@ export function CustomerLoginLinkSheet({
               {continueAction.label}
             </Button>
           ) : null}
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button variant="outline" className="flex-1 rounded-xl" onClick={handleCopy}>
               {copyState === "done" ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
               {copyState === "done" ? "Tersalin" : "Copy Link"}

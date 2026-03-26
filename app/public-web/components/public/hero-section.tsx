@@ -133,8 +133,8 @@ export function HeroSection({ whatsapp = "6287780563875" }: { whatsapp?: string 
 
           {/* Sub */}
           <p className="text-text-body text-lg sm:text-xl leading-relaxed mb-10 max-w-2xl">
-            Laundry self service dengan mesin modern, sistem stamp reward otomatis, dan status cucian real-time. Mulai dari{' '}
-            <span className="text-text-strong font-semibold">Rp 10.000</span> per mesin.
+            Laundry self service dengan mesin modern, sistem stamp reward otomatis, dan status cucian real-time.{' '}
+            <span className="text-text-strong font-semibold">Cuci sepuasnya mulai dari Rp. 10.000</span>.
           </p>
 
           {/* CTA row */}
@@ -179,13 +179,6 @@ export function HeroSection({ whatsapp = "6287780563875" }: { whatsapp?: string 
       {/* Bottom gradient fade */}
       <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-b from-transparent to-white pointer-events-none" />
 
-      {/* Scroll indicator */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 opacity-40">
-        <span className="text-xs text-text-muted font-medium tracking-widest uppercase">Scroll</span>
-        <div className="w-5 h-8 rounded-full border border-line-soft flex items-start justify-center p-1">
-          <div className="w-1 h-2 bg-pink-hot/60 rounded-full animate-bounce" />
-        </div>
-      </div>
     </section>
   )
 }

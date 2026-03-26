@@ -39,6 +39,21 @@ export function ContactSection({ laundryInfo }: ContactSectionProps) {
             </div>
             <h3 className="font-display font-bold text-text-strong text-lg mb-2">Alamat</h3>
             <p className="text-text-body text-sm leading-relaxed">{laundryInfo.address}</p>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="mt-5 h-auto px-0 text-pink-hot hover:bg-transparent hover:text-pink-rose font-semibold gap-2 group/map"
+              asChild
+            >
+              <a
+                href="https://maps.app.goo.gl/7XbBNoRGAZ3ucGPi9?g_st=ic"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Kunjungi CJ Laundry
+                <ArrowRight className="w-3.5 h-3.5 group-hover/map:translate-x-1 transition-transform" />
+              </a>
+            </Button>
           </div>
 
           {/* Hours */}

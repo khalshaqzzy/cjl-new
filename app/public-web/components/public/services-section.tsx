@@ -37,11 +37,11 @@ export function ServicesSection({ services }: ServicesSectionProps) {
           </div>
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <h2 className={cn('reveal font-display font-extrabold text-4xl sm:text-5xl lg:text-6xl text-text-strong leading-tight max-w-xl text-balance', isVisible && 'visible')}>
-              Harga Jelas,<br />
-              <span className="text-gradient-pink">Kualitas Nyata</span>
+              Harga Ekonomis,<br />
+              <span className="text-gradient-pink">Kualitas Terbaik.</span>
             </h2>
             <p className={cn('reveal reveal-right text-text-body text-lg max-w-sm lg:text-right leading-relaxed', isVisible && 'visible')}>
-              Semua harga sudah termasuk penggunaan mesin premium. Tidak ada biaya tersembunyi.
+              Di <strong className="font-semibold text-text-strong">CJ Laundry</strong> anda dapat cuci pakaian sepuasnya dengan mesin modern. Hasil cuciannya dijamin lebih bersih, rapih, dan higienis.
             </p>
           </div>
         </div>
@@ -111,11 +111,11 @@ export function ServicesSection({ services }: ServicesSectionProps) {
               <ArrowRight className="w-5 h-5 text-pink-hot group-hover:text-white transition-colors" />
             </div>
             <p className="font-semibold text-text-strong text-sm">Layanan Tambahan</p>
-            <p className="text-text-muted text-xs mt-1">Detergen, softener &amp; paket</p>
+            <p className="text-text-muted text-xs mt-1">Detergen, softener, paket &amp; setrika</p>
           </div>
 
           {/* Secondary service cards */}
-          {secondaryServices.slice(0, 3).map((service, i) => {
+          {secondaryServices.map((service, i) => {
             const Icon = iconMap[service.code] ?? Sparkles
             return (
               <div
@@ -141,11 +141,11 @@ export function ServicesSection({ services }: ServicesSectionProps) {
         </div>
 
         <p className="mt-8 text-center text-text-muted text-sm">
-          Semua harga sudah termasuk PPN.{' '}
+          Semua harga sudah termasuk layanan titip lho, kami akan bantu jadi kamu gaperlu nungguin.{' '}
           <Link href="#kontak" className="text-pink-hot hover:underline font-medium">
             Hubungi kami
           </Link>{' '}
-          untuk informasi paket khusus.
+          untuk informasi paket lainnya.
         </p>
       </div>
     </section>

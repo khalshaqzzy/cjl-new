@@ -24,9 +24,12 @@ The repo now has:
 - expanded admin dashboard reporting payload and UI
 - multi-contact admin WhatsApp settings with one customer-facing primary contact and legacy-settings backfill
 - landing page and other public contact surfaces now resolve from the primary admin contact with fallback `087780563875`
+- landing marketing copy, service presentation, and customer-facing address card now include the latest CJ Laundry wording plus a direct external Maps visit CTA
 - portal dashboard now includes a mobile-friendly `Chat Admin` selector and explicit mobile logout affordance
 - customer registration and customer detail now support one-time magic-login links plus admin QR display flows
 - customer auth now supports manual login plus one-time magic-link redeem with a sliding 30-day customer session while admin remains at 7 days
+- public login now mitigates mobile browser zoom carry-over into the portal by using mobile-safe input sizing and clearing active focus before redirect
+- top-level portal mobile headers now stay brand-first on history/stamp/leaderboard pages instead of duplicating page titles in the top bar
 - root-level Docker Compose topology for local full-stack runtime
 - backend integration coverage and frontend end-to-end coverage that pass from root test commands
 - branch-based CI and hosted deploy workflows committed in repo
@@ -73,6 +76,7 @@ Status: complete for current scope
 - POS now surfaces duplicate-phone selection feedback, preview failures, and post-confirmation shortcuts
 - POS and customer-detail flows can now show QR/login-link sheets backed by one-time customer magic links
 - POS QR registration flow now includes an explicit continue CTA so the cashier can proceed straight into service selection after showing the customer QR/login link
+- customer detail mobile hero action controls now wrap safely on narrow screens and QR/login sheets cap height with internal scroll so close controls stay reachable
 
 ### Phase 4: Public Surface Integration
 
@@ -87,7 +91,10 @@ Status: complete for current scope
 - authenticated portal order detail now exposes receipt-style itemized pricing plus refreshed PDF receipt download
 - public leaderboard and landing teaser now respect masked-by-default names with portal-controlled opt-in visibility
 - public login now redirects authenticated customers directly to the portal and protected shells render a visible session-check state
+- public login flow now actively prevents mobile focus-zoom from persisting into the portal after successful submit
 - portal dashboard now exposes an `Admin 1 / Admin 2 / ...` chat selector and a clearer mobile logout path
+- landing hero/services/contact sections now reflect the latest requested copy, visible ironing pricing, and direct `Kunjungi CJ Laundry` Maps navigation from the address card
+- portal mobile top bars for history, stamp, and leaderboard now keep the CJ Laundry brand visible without duplicating the page title already shown in content
 - public `/auto-login` now redeems one-time customer magic links and rejects reuse
 
 ### Phase 5: Post-Integration Stabilization

@@ -1,7 +1,7 @@
 # Session Handoff 2026-03-26
 
 Document status: Active  
-Purpose: repo snapshot after POS QR continuation UX, focused failed-notification recovery, and shared receipt-rendering refresh
+Purpose: repo snapshot after POS QR continuation UX, focused failed-notification recovery, shared receipt-rendering refresh, and public/admin mobile UX polish
 
 ## What This Session Completed
 
@@ -32,7 +32,23 @@ Purpose: repo snapshot after POS QR continuation UX, focused failed-notification
   - weight
   - item pricing/totals
   - loyalty values
+- refreshed public landing marketing content and customer-facing service messaging:
+  - hero pricing copy now uses the new `Cuci sepuasnya mulai dari Rp. 10.000` wording
+  - layanan/harga copy now emphasizes economical pricing plus best quality
+  - ironing is now visible in the public service grid
+  - the address card now exposes a direct `Kunjungi CJ Laundry` Maps CTA
+- updated additional landing/public content now present in repo:
+  - benefits copy reflects the newer self-service, LG machine, and comfort wording
+  - `Cara Kerja` timing now says `60-90 menit`
+  - landing FAQ payload now includes the added washer/dryer-only and drop-off/no-extra-fee answers
+- adjusted public auth/mobile UX:
+  - login inputs now use mobile-safe sizing and blur active focus before redirect so portal entry no longer inherits browser zoom
+  - portal mobile top bar now keeps `CJ Laundry` as the brand-first label on history/stamp/leaderboard pages
+- adjusted admin customer-detail mobile UX:
+  - action buttons in the profile hero now wrap instead of bleeding off-screen
+  - QR login sheets now cap viewport height and scroll internally so the close button remains reachable
 - added ADR `docs/adr/0012-live-settings-receipts-and-focused-notification-recovery.md`
+- added ADR `docs/adr/0013-mobile-surface-fit-and-brand-first-customer-ctas.md`
 - updated PRD and implementation/backlog internals to reflect the new operator flow and receipt policy
 
 ## Verification Run
@@ -40,6 +56,8 @@ Purpose: repo snapshot after POS QR continuation UX, focused failed-notification
 - `npm run typecheck`
 - `npm run test:backend`
 - `npm run test:e2e -- tests/e2e/full-stack.spec.ts --reporter=line`
+- `npm run typecheck --workspace @cjl/public-web`
+- `npm run typecheck --workspace @cjl/admin-web`
 
 All passed at session end.
 
@@ -50,6 +68,8 @@ All passed at session end.
 - live receipt output now reads current business identity from settings, so changing laundry phone/address should affect newly rendered historical receipts too
 - manual WhatsApp fallback no longer requires `order_confirmed` render status to be `ready`; it only needs a failed notification with a prepared message
 - the backend still retains manual-resolve endpoints for compatibility, but the default operator path is now the focused button set in the outbox UI
+- the public customer auth bug report about slight post-login portal zoom was handled in the login flow, not by adding scale logic to portal pages
+- the landing address card now owns the explicit external maps CTA for outlet visits, while WhatsApp remains the primary conversation CTA
 - the two `next-env.d.ts` files were touched by local Next.js/tooling state during verification and should not be treated as business-logic changes
 
 ## Recommended Next Start
@@ -57,4 +77,8 @@ All passed at session end.
 1. validate the new POS QR continue flow on staging with a real cashier/device workflow
 2. validate failed-send recovery on staging, especially the `wa.me` deep link plus manual PNG attachment path for `order_confirmed`
 3. save new staging business contact/address values and confirm landing, portal PDF receipt, and admin fallback PNG receipt all reflect them consistently
-4. keep the first production push blocked until the refreshed fallback/receipt behavior is exercised on staging with a real WhatsApp device
+4. validate the latest mobile UX polish on real devices during staging:
+   - login submit no longer leaves portal zoomed in
+   - history/stamp/leaderboard mobile top bars remain brand-first
+   - admin customer detail QR sheet remains fully usable on narrow screens
+5. keep the first production push blocked until the refreshed fallback/receipt behavior is exercised on staging with a real WhatsApp device

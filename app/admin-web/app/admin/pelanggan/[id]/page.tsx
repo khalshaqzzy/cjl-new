@@ -357,13 +357,13 @@ export default function CustomerDetailPage() {
         {/* Profile Hero */}
         <Card className="rounded-xl border-line-base shadow-card bg-bg-surface overflow-hidden">
           <div className="h-14 bg-gradient-to-r from-slate-50 to-rose-50 border-b border-line-base" />
-          <CardContent className="px-5 pb-5 -mt-7">
-            <div className="flex items-end justify-between gap-4">
+          <CardContent className="-mt-7 px-4 pb-5 sm:px-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex items-end gap-3">
                 <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white border-2 border-white shadow-card">
                   <User className="h-7 w-7 text-rose-600" />
                 </div>
-                <div className="pb-0.5">
+                <div className="min-w-0 pb-0.5">
                   <h2 className="text-base font-bold text-text-strong leading-tight">{customer.name}</h2>
                   <p className="text-xs text-text-muted flex items-center gap-1 mt-0.5">
                     <Phone className="h-3 w-3" />
@@ -371,19 +371,20 @@ export default function CustomerDetailPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-lg h-8 px-2.5 text-xs"
+                  className="h-9 min-w-[112px] flex-1 rounded-lg px-3 text-xs whitespace-nowrap sm:flex-none"
                   onClick={() => loadCustomerDetail().catch(() => undefined)}
                 >
-                  <><RefreshCw className="h-3.5 w-3.5 mr-1" />Refresh</>
+                  <RefreshCw className="mr-1 h-3.5 w-3.5" />
+                  Refresh
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-lg h-8 px-2.5 text-xs"
+                  className="h-9 min-w-[112px] flex-1 rounded-lg px-3 text-xs whitespace-nowrap sm:flex-none"
                   onClick={handleGenerateMagicLink}
                   disabled={isGeneratingMagicLink}
                 >
@@ -402,7 +403,7 @@ export default function CustomerDetailPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-lg h-8 px-2.5 text-xs"
+                  className="h-9 min-w-[112px] flex-1 rounded-lg px-3 text-xs whitespace-nowrap sm:flex-none"
                   onClick={() => {
                     setEditName(customer.name)
                     setEditPhone(customer.phone)

@@ -23,6 +23,13 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
 
+  const blurActiveField = () => {
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur()
+    }
+  }
+
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 80)
     return () => clearTimeout(t)
@@ -72,6 +79,8 @@ export default function LoginPage() {
     setIsLoading(true)
     try {
       await publicApi.login(phone, name)
+      blurActiveField()
+      await new Promise((resolve) => window.setTimeout(resolve, 75))
       router.push('/portal')
       return
     } catch (_error) {
@@ -81,7 +90,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen bg-bg-soft overflow-hidden flex items-center justify-center px-4 py-16">
+    <div className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-bg-soft px-4 py-6 sm:py-10">
       {/* Ambient glow blobs */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full blur-[140px] pointer-events-none bg-pink-hot/8" />
       <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full blur-[120px] pointer-events-none bg-pink-rose/6" />
@@ -114,9 +123,9 @@ export default function LoginPage() {
           {/* Top strip */}
           <div className="h-1 w-full bg-gradient-primary" />
 
-          <div className="p-8">
+          <div className="p-6 sm:p-8">
             {/* Logo */}
-            <div className="flex items-center gap-3 mb-8">
+            <div className="mb-6 flex items-center gap-3 sm:mb-8">
               <div className="relative w-11 h-11">
                 <div className="absolute inset-0 rounded-2xl bg-gradient-primary opacity-15 blur-md animate-pulse" />
                 <div className="relative w-11 h-11 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-lg shadow-pink-hot/25">
@@ -130,7 +139,7 @@ export default function LoginPage() {
             </div>
 
             {/* Heading */}
-            <div className="mb-8">
+            <div className="mb-6 sm:mb-8">
               <h1 className="font-display text-3xl font-bold text-text-strong leading-tight mb-2">
                 Selamat<br />
                 <span className="text-gradient-pink">Datang.</span>
@@ -161,7 +170,7 @@ export default function LoginPage() {
                     disabled={isLoading || isCheckingSession}
                     onFocus={() => setFocusedField('phone')}
                     onBlur={() => setFocusedField(null)}
-                    className="w-full bg-transparent pl-11 pr-4 py-3.5 text-text-strong placeholder-text-muted/50 text-sm outline-none"
+                    className="w-full bg-transparent py-3.5 pl-11 pr-4 text-base text-text-strong placeholder-text-muted/50 outline-none sm:text-sm"
                   />
                 </div>
               </div>
@@ -185,7 +194,7 @@ export default function LoginPage() {
                     disabled={isLoading || isCheckingSession}
                     onFocus={() => setFocusedField('name')}
                     onBlur={() => setFocusedField(null)}
-                    className="w-full bg-transparent pl-11 pr-4 py-3.5 text-text-strong placeholder-text-muted/50 text-sm outline-none"
+                    className="w-full bg-transparent py-3.5 pl-11 pr-4 text-base text-text-strong placeholder-text-muted/50 outline-none sm:text-sm"
                   />
                 </div>
               </div>
@@ -231,7 +240,7 @@ export default function LoginPage() {
         </div>
 
         {/* Feature pills */}
-        <div className="mt-6 flex items-center justify-center gap-3 flex-wrap">
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3 sm:mt-6">
           {features.map((f, i) => (
             <div
               key={f.label}

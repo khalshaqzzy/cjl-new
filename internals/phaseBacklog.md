@@ -15,8 +15,13 @@ Purpose: condensed next-work inventory after deployment workflow implementation
    - failed `order_confirmed` shows `Download Receipt` plus `Send Message`
    - failed non-receipt notifications show `Send Message` plus `Kirim Ulang`
    - `Send Message` opens a valid prefilled `wa.me` link
-8. Execute the full `productionReadinessChecklist.md` on staging before allowing the first production push.
-9. Decide whether the v1 in-process outbox remains sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
+8. Exercise the latest mobile/front-desk UX polish on real devices during staging:
+   - login submit should not leave the portal slightly zoomed in
+   - portal top bar on `Riwayat`, `Stamp`, and `Leaderboard` should stay brand-first
+   - the landing address card `Kunjungi CJ Laundry` Maps CTA should open correctly
+   - admin customer detail and QR login sheet should remain fully usable on narrow screens
+9. Execute the full `productionReadinessChecklist.md` on staging before allowing the first production push.
+10. Decide whether the v1 in-process outbox remains sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
 
 ## Lower Priority Follow-Ups
 

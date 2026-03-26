@@ -90,6 +90,14 @@ export const getLandingData = async (): Promise<LandingResponse> => {
       {
         question: "Apakah status order bisa dicek tanpa login?",
         answer: "Bisa, lewat link status order khusus yang dikirim via WhatsApp."
+      },
+      {
+        question: "Apakah bisa hanya cuci atau kering saja",
+        answer: "Bisa, namun untuk kering saja harus dari cucian mesin yaa"
+      },
+      {
+        question: "Apakah ada tambahan biaya kalau drop-off dan titip laundry?",
+        answer: "Fasilitas yang kami sediakan untuk drop-off dan bantu handling tidak dikenakan biaya tambahan"
       }
     ],
     leaderboardTeaser
