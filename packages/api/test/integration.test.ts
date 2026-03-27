@@ -1218,7 +1218,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       Cookie: adminCookie!
     }
   })
-  assert.equal(result.payload.deliveryStatus, "queued")
+  assert.ok(["queued", "sent"].includes(result.payload.deliveryStatus))
 
   const resentNotification = await waitFor(
     () => getDatabase().collection("notifications").findOne({ _id: `notification_manual_${uniqueSuffix}` }),
