@@ -3,7 +3,6 @@ import crypto from "node:crypto"
 import { DateTime } from "luxon"
 import type {
   AdminLaundryListResponse,
-  AdminLaundryOrder,
   AdminLaundryScope,
   AdminLaundrySort,
   AdminDashboardResponse,

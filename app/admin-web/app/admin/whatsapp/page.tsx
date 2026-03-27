@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Image from "next/image"
 import type {
   WhatsappChatSummary,
   WhatsappConnectionStatus,
@@ -287,9 +288,12 @@ export default function WhatsappAdminPage() {
 
                   {showQrCode ? (
                     <div className="flex flex-col items-center gap-3 rounded-2xl bg-white p-4">
-                      <img
-                        src={status?.qrCodeDataUrl}
+                      <Image
+                        src={status?.qrCodeDataUrl ?? ""}
                         alt="WhatsApp QR"
+                        width={224}
+                        height={224}
+                        unoptimized
                         className="h-56 w-56 rounded-2xl border border-line-base object-contain"
                       />
                       <p className="text-center text-xs text-text-muted">

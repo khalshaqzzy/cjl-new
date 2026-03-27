@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import QRCode from "qrcode"
 import { Button } from "@/components/ui/button"
 import {
@@ -102,9 +103,12 @@ export function CustomerLoginLinkSheet({
                   Menyiapkan QR...
                 </div>
               ) : qrCodeDataUrl ? (
-                <img
+                <Image
                   src={qrCodeDataUrl}
                   alt="QR login customer"
+                  width={280}
+                  height={280}
+                  unoptimized
                   className="h-full w-full rounded-2xl object-contain"
                 />
               ) : (

@@ -2,7 +2,6 @@
 
 import type {
   AdminLaundryListResponse,
-  AdminLaundryOrder,
   CreateCustomerResponse,
   AdminDashboardResponse,
   AdminLaundryScope,
