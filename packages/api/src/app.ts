@@ -8,6 +8,8 @@ import helmet from "helmet"
 import { MongoServerError } from "mongodb"
 import { ZodError } from "zod"
 import {
+  adminLaundryScopeSchema,
+  adminLaundrySortSchema,
   adminLoginInputSchema,
   confirmOrderInputSchema,
   createCustomerInputSchema,
@@ -52,9 +54,12 @@ import {
   getOrderById,
   getOrderPreview,
   getSettings,
+  listLaundryOrders,
   listActiveOrders,
   listCustomers,
   listNotifications,
+  markNotificationIgnored,
+  markNotificationManualCompleted,
   markNotificationManualResolved,
   markOrderDone,
   openManualWhatsappFallback,
@@ -591,6 +596,22 @@ export const createApp = () => {
     res.json(await listActiveOrders())
   }))
 
+  app.get("/v1/admin/orders/laundry", requireAdmin, asyncRoute(async (req, res) => {
+    const scope = adminLaundryScopeSchema.parse(req.query.scope ?? "active")
+    const sort = adminLaundrySortSchema.parse(req.query.sort ?? (scope === "active" ? "oldest" : "newest"))
+    const search = typeof req.query.search === "string" ? req.query.search : undefined
+    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined
+    const includeCancelled = req.query.includeCancelled === "true"
+    const statusQuery = typeof req.query.status === "string" ? req.query.status : "all"
+    const status = ["all", "active", "done", "cancelled"].includes(statusQuery) ? statusQuery as "all" | "active" | "done" | "cancelled" : "all"
+    const rawPageSize = Number(req.query.pageSize)
+    const defaultPageSize = scope === "history" ? 24 : 120
+    const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0
+      ? Math.min(Math.trunc(rawPageSize), scope === "history" ? 60 : 200)
+      : defaultPageSize
+    res.json(await listLaundryOrders({ scope, sort, search, includeCancelled, status, cursor, pageSize }))
+  }))
+
   app.get("/v1/admin/orders/:id", requireAdmin, asyncRoute(async (req, res) => {
     res.json(await getOrderById(getParam(req.params.id)))
   }))
@@ -638,6 +659,26 @@ export const createApp = () => {
     const result = await markNotificationManualResolved(notificationId, note)
     logger.info({
       event: "notification.manual_resolved",
+      notificationId,
+    })
+    res.json(result)
+  }))
+
+  app.post("/v1/admin/notifications/:id/manual-complete", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const notificationId = getParam(req.params.id)
+    const result = await markNotificationManualCompleted(notificationId)
+    logger.info({
+      event: "notification.manual_completed",
+      notificationId,
+    })
+    res.json(result)
+  }))
+
+  app.post("/v1/admin/notifications/:id/ignore", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const notificationId = getParam(req.params.id)
+    const result = await markNotificationIgnored(notificationId)
+    logger.info({
+      event: "notification.ignored",
       notificationId,
     })
     res.json(result)

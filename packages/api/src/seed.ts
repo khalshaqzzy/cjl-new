@@ -18,6 +18,17 @@ const resolveConfiguredAdminCredentials = () => ({
       : env.ADMIN_BOOTSTRAP_PASSWORD ?? env.ADMIN_PASSWORD,
 })
 
+const mergeServiceCatalog = (existingServices: SettingsDocument["services"]) => {
+  const defaultServices = defaultSettings().services
+  const existingByCode = new Map(existingServices.map((service) => [service.serviceCode, service]))
+  const mergedServices = defaultServices.map((defaultService) => existingByCode.get(defaultService.serviceCode) ?? defaultService)
+  const extraServices = existingServices.filter(
+    (service) => !defaultServices.some((defaultService) => defaultService.serviceCode === service.serviceCode)
+  )
+
+  return [...mergedServices, ...extraServices]
+}
+
 export const ensureSeedData = async () => {
   const db = getDatabase()
   const settingsCollection = db.collection<SettingsDocument>("settings")
@@ -83,6 +94,7 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
       address: existingSettings.business.address.trim(),
       operatingHours: existingSettings.business.operatingHours.trim(),
     }
+    const nextServices = mergeServiceCatalog(existingSettings.services)
 
     if (isLegacyMessageTemplate) {
       await settingsCollection.updateOne(
@@ -91,13 +103,15 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
           $set: {
             messageTemplates: defaultMessageTemplates,
             business: nextBusiness,
+            services: nextServices,
             updatedAt: new Date().toISOString()
           }
         }
       )
     } else if (
       shouldUpgradeWelcomeTemplate ||
-      JSON.stringify(nextBusiness) !== JSON.stringify(existingSettings.business)
+      JSON.stringify(nextBusiness) !== JSON.stringify(existingSettings.business) ||
+      JSON.stringify(nextServices) !== JSON.stringify(existingSettings.services)
     ) {
       await settingsCollection.updateOne(
         { _id: "app-settings" },
@@ -112,6 +126,7 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
                 }
               : {}),
             business: nextBusiness,
+            services: nextServices,
             updatedAt: new Date().toISOString(),
           }
         }
@@ -157,6 +172,8 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
   await db.collection("orders").createIndex({ orderCode: 1 }, { unique: true })
   await db.collection("orders").createIndex({ customerId: 1, createdAt: -1 })
   await db.collection("orders").createIndex({ status: 1, createdAt: -1 })
+  await db.collection("orders").createIndex({ activityAt: -1, _id: -1 })
+  await db.collection("orders").createIndex({ status: 1, activityAt: -1, _id: -1 })
   await db.collection("direct_order_tokens").createIndex({ tokenHash: 1 }, { unique: true })
   await db.collection("direct_order_tokens").createIndex({ orderId: 1 })
   await db.collection("notifications").createIndex({ businessKey: 1 }, { unique: true })
@@ -256,11 +273,18 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
 
   const orders = await db.collection("orders").find({}).toArray()
   for (const order of orders) {
+    const activityAt =
+      order.status === "Done"
+        ? order.completedAt ?? order.createdAt
+        : order.status === "Voided"
+          ? order.voidedAt ?? order.createdAt
+          : order.createdAt
     const customerName = formatCustomerName(order.customerName)
     const receiptCustomerName = formatCustomerName(order.receiptSnapshot?.customerName ?? order.customerName)
     if (
       customerName === order.customerName &&
-      receiptCustomerName === order.receiptSnapshot?.customerName
+      receiptCustomerName === order.receiptSnapshot?.customerName &&
+      activityAt === order.activityAt
     ) {
       continue
     }
@@ -270,7 +294,8 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
       {
         $set: {
           customerName,
-          "receiptSnapshot.customerName": receiptCustomerName
+          "receiptSnapshot.customerName": receiptCustomerName,
+          activityAt,
         }
       }
     )

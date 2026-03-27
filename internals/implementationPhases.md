@@ -20,8 +20,13 @@ The repo now has:
 - uppercase customer-name normalization plus repo-safe startup backfill for legacy customer/order/notification name snapshots
 - PDF receipt downloads for authenticated portal order detail and PNG receipt fallback downloads for failed admin order-confirmed notifications
 - manual WhatsApp fallback for failed notification sends with admin outbox action support
+- admin notification recovery now distinguishes `manual_resolved` vs `ignored`, with explicit `Mark as Done` and `Ignore` actions
+- admin shell now raises short failed-WA toast notifications via lightweight polling during active sessions
 - customer-controlled public leaderboard name visibility with masked-by-default display
 - expanded admin dashboard reporting payload and UI
+- POS now includes the new `Setrika Saja` and `Plastik Laundry` catalog items while keeping them off the public landing page
+- admin Laundry page now supports `Aktif`, `Hari Ini`, and `History` views with backend-driven search/filter/sort plus default-off cancelled visibility
+- admin Laundry read path now uses lifecycle-aware `activityAt`, startup backfill, and indexed paginated history responses to reduce order read amplification
 - multi-contact admin WhatsApp settings with one customer-facing primary contact and legacy-settings backfill
 - landing page and other public contact surfaces now resolve from the primary admin contact with fallback `087780563875`
 - landing marketing copy, service presentation, and customer-facing address card now include the latest CJ Laundry wording plus a direct external Maps visit CTA
@@ -71,9 +76,12 @@ Status: complete for current scope
 - admin logout now invalidates backend session instead of only navigating client-side
 - notification outbox UI now follows canonical backend fields and receipt download flow
 - notification outbox now follows a focused fallback UX: failed order-confirmed cards prioritize `Download Receipt` plus `Send Message`, while failed non-receipt cards prioritize `Send Message` plus `Kirim Ulang`
+- notification outbox now also supports explicit `Mark as Done` and `Ignore` actions with separate `Manual` vs `Ignored` tabs
 - admin dashboard now exposes the full PRD metric set plus top-customer visibility
+- admin dashboard now moves `Perlu Perhatian` above KPI cards and counts failed notifications from the full unresolved outbox set
 - customer list/search now relies on backend querying and machine-sort fields instead of brittle client-only filtering
 - POS now surfaces duplicate-phone selection feedback, preview failures, and post-confirmation shortcuts
+- POS step 2 and order summary now keep the selected customer identity visible at the top of the flow
 - POS and customer-detail flows can now show QR/login-link sheets backed by one-time customer magic links
 - POS QR registration flow now includes an explicit continue CTA so the cashier can proceed straight into service selection after showing the customer QR/login link
 - customer detail mobile hero action controls now wrap safely on narrow screens and QR/login sheets cap height with internal scroll so close controls stay reachable
@@ -117,6 +125,7 @@ Status: complete in repo terms
 - local and hosted Mongo Compose topologies now initialize a single-node replica set for transaction support
 - per-service Dockerfiles added for API and both frontend apps
 - backend integration suite added in `packages/api/test/integration.test.ts`
+- backend integration suite now also covers service-catalog seed merge, `activityAt` backfill, laundry history cursor pagination, and invalid-cursor validation
 - frontend end-to-end suite added in `tests/e2e/full-stack.spec.ts`
 - root scripts now cover `npm test`, `npm run test:backend`, `npm run test:e2e`, and Docker Compose helpers
 
@@ -153,3 +162,4 @@ Focus:
 - clean-checkout CI validation no longer depends on a prebuilt committed `packages/contracts/dist` artifact
 - clean-checkout CI validation now also provisions the required Playwright Chromium binary explicitly before E2E starts
 - the next meaningful milestone is no longer repo implementation; it is successful staging execution of the new readiness checklist and rollback path
+- a remaining repo hygiene gap is that backend test files are not yet covered by a dedicated TypeScript project config, so editor warnings on `packages/api/test/*.ts` are not fully enforced by root `typecheck`

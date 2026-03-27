@@ -1,8 +1,12 @@
 "use client"
 
 import type {
+  AdminLaundryListResponse,
+  AdminLaundryOrder,
   CreateCustomerResponse,
   AdminDashboardResponse,
+  AdminLaundryScope,
+  AdminLaundrySort,
   CustomerMagicLinkResponse,
   ConfirmOrderInput,
   CustomerSearchResult,
@@ -148,6 +152,42 @@ export const adminApi = {
       body: JSON.stringify(payload)
     }),
   listActiveOrders: () => apiFetch<import("@cjl/contracts").ActiveOrderCard[]>("/v1/admin/orders/active"),
+  listLaundryOrders: ({
+    scope,
+    search,
+    sort,
+    status,
+    includeCancelled,
+    cursor,
+    pageSize,
+  }: {
+    scope: AdminLaundryScope
+    search?: string
+    sort: AdminLaundrySort
+    status?: "all" | "active" | "done" | "cancelled"
+    includeCancelled?: boolean
+    cursor?: string
+    pageSize?: number
+  }) => {
+    const params = new URLSearchParams({ scope, sort })
+    if (search?.trim()) {
+      params.set("search", search.trim())
+    }
+    if (status && status !== "all") {
+      params.set("status", status)
+    }
+    if (includeCancelled) {
+      params.set("includeCancelled", "true")
+    }
+    if (cursor) {
+      params.set("cursor", cursor)
+    }
+    if (pageSize) {
+      params.set("pageSize", String(pageSize))
+    }
+
+    return apiFetch<AdminLaundryListResponse>(`/v1/admin/orders/laundry?${params.toString()}`)
+  },
   markOrderDone: (orderId: string, idempotencyKey?: string) =>
     apiFetch(`/v1/admin/orders/${orderId}/done`, {
       method: "POST",
@@ -162,11 +202,21 @@ export const adminApi = {
     }),
   listNotifications: () => apiFetch<NotificationRecord[]>("/v1/admin/notifications"),
   resendNotification: (notificationId: string) =>
-    apiFetch(`/v1/admin/notifications/${notificationId}/resend`, { method: "POST" }),
+    apiFetch<NotificationRecord>(`/v1/admin/notifications/${notificationId}/resend`, { method: "POST" }),
   manualResolveNotification: (notificationId: string, note: string) =>
-    apiFetch(`/v1/admin/notifications/${notificationId}/manual-resolve`, {
+    apiFetch<NotificationRecord>(`/v1/admin/notifications/${notificationId}/manual-resolve`, {
       method: "POST",
       body: JSON.stringify({ note })
+    }),
+  manualCompleteNotification: (notificationId: string) =>
+    apiFetch<NotificationRecord>(`/v1/admin/notifications/${notificationId}/manual-complete`, {
+      method: "POST",
+      body: JSON.stringify({})
+    }),
+  ignoreNotification: (notificationId: string) =>
+    apiFetch<NotificationRecord>(`/v1/admin/notifications/${notificationId}/ignore`, {
+      method: "POST",
+      body: JSON.stringify({})
     }),
   openManualWhatsappFallback: (notificationId: string) =>
     apiFetch<{ notification: NotificationRecord; whatsappUrl: string }>(

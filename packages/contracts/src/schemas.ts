@@ -7,6 +7,8 @@ export const serviceCodeSchema = z.enum([
   "softener",
   "wash_dry_fold_package",
   "ironing",
+  "ironing_only",
+  "laundry_plastic",
 ])
 
 export const pricingModelSchema = z.enum(["fixed", "per_kg"])
@@ -25,7 +27,11 @@ export const notificationDeliveryStatusSchema = z.enum([
   "sent",
   "failed",
   "manual_resolved",
+  "ignored",
 ])
+export const adminLaundryStatusSchema = z.enum(["Active", "Done", "Cancelled"])
+export const adminLaundryScopeSchema = z.enum(["active", "today", "history"])
+export const adminLaundrySortSchema = z.enum(["oldest", "newest"])
 export const notificationRenderStatusSchema = z.enum([
   "not_required",
   "pending",
@@ -166,6 +172,30 @@ export const activeOrderCardSchema = z.object({
   status: z.literal("Active"),
 })
 
+export const adminLaundryOrderSchema = z.object({
+  orderId: z.string(),
+  orderCode: z.string(),
+  customerName: z.string(),
+  phone: z.string(),
+  createdAtLabel: z.string(),
+  createdAtIso: z.string(),
+  completedAtLabel: z.string().optional(),
+  completedAtIso: z.string().optional(),
+  cancelledAtLabel: z.string().optional(),
+  cancelledAtIso: z.string().optional(),
+  weightKgLabel: z.string(),
+  serviceSummary: z.string(),
+  totalLabel: z.string(),
+  earnedStamps: z.number().int(),
+  redeemedPoints: z.number().int(),
+  status: adminLaundryStatusSchema,
+})
+
+export const adminLaundryListResponseSchema = z.object({
+  items: z.array(adminLaundryOrderSchema),
+  nextCursor: z.string().optional(),
+})
+
 export const orderHistoryItemSchema = z.object({
   orderId: z.string(),
   orderCode: z.string(),
@@ -206,6 +236,8 @@ export const notificationRecordSchema = z.object({
   preparedMessage: z.string(),
   manualResolutionNote: z.string().optional(),
   manualResolvedAt: z.string().optional(),
+  ignoredNote: z.string().optional(),
+  ignoredAt: z.string().optional(),
   receiptAvailable: z.boolean(),
   manualWhatsappAvailable: z.boolean(),
   providerMessageId: z.string().optional(),
@@ -546,6 +578,9 @@ export type OrderStatus = z.infer<typeof orderStatusSchema>
 export type PublicOrderStatus = z.infer<typeof publicOrderStatusSchema>
 export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>
 export type NotificationDeliveryStatus = z.infer<typeof notificationDeliveryStatusSchema>
+export type AdminLaundryStatus = z.infer<typeof adminLaundryStatusSchema>
+export type AdminLaundryScope = z.infer<typeof adminLaundryScopeSchema>
+export type AdminLaundrySort = z.infer<typeof adminLaundrySortSchema>
 export type NotificationRenderStatus = z.infer<typeof notificationRenderStatusSchema>
 export type ServiceSetting = z.infer<typeof serviceSettingSchema>
 export type AdminWhatsappContact = z.infer<typeof adminWhatsappContactSchema>
@@ -557,6 +592,8 @@ export type CreateCustomerResponse = z.infer<typeof createCustomerResponseSchema
 export type CustomerMagicLinkResponse = z.infer<typeof customerMagicLinkResponseSchema>
 export type OrderPreviewResponse = z.infer<typeof orderPreviewResponseSchema>
 export type ActiveOrderCard = z.infer<typeof activeOrderCardSchema>
+export type AdminLaundryOrder = z.infer<typeof adminLaundryOrderSchema>
+export type AdminLaundryListResponse = z.infer<typeof adminLaundryListResponseSchema>
 export type OrderHistoryItem = z.infer<typeof orderHistoryItemSchema>
 export type PointLedgerItem = z.infer<typeof pointLedgerItemSchema>
 export type NotificationRecord = z.infer<typeof notificationRecordSchema>

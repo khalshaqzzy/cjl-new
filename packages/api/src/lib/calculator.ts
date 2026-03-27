@@ -15,13 +15,13 @@ export const calculateOrderPreview = (
         throw new ValidationError(`Service ${item.serviceCode} tidak aktif`)
       }
 
-      const quantity = service.pricingModel === "per_kg" ? input.weightKg : item.quantity
-      const lineTotal = Math.round(quantity * service.price)
+      const billedQuantity = service.pricingModel === "per_kg" ? input.weightKg : item.quantity
+      const lineTotal = Math.round(billedQuantity * service.price)
 
       return {
         serviceCode: service.serviceCode,
         serviceLabel: service.displayName,
-        quantity: item.quantity,
+        quantity: billedQuantity,
         quantityLabel: service.pricingModel === "per_kg" ? `${input.weightKg.toFixed(1)} kg` : `${item.quantity} unit`,
         unitPrice: service.price,
         lineTotal,

@@ -18,6 +18,7 @@ import type {
   PointLedgerDocument
 } from "../types.js"
 import {
+  buildOrderServiceSummary,
   buildOrderReceiptPdf,
   findCustomerMagicLinkByToken,
   findDirectOrderTokenByToken,
@@ -71,13 +72,15 @@ export const getLandingData = async (): Promise<LandingResponse> => {
       address: settings.business.address,
       operatingHours: settings.business.operatingHours
     },
-    services: settings.services.filter((service) => service.isActive).map((service) => ({
+    services: settings.services
+      .filter((service) => service.isActive && !["ironing_only", "laundry_plastic"].includes(service.serviceCode))
+      .map((service) => ({
       code: service.serviceCode,
       name: service.displayName,
       price: service.price,
       priceModel: service.pricingModel === "fixed" ? "per_unit" : "per_kg",
       description: service.publicDescription
-    })),
+      })),
     faqs: [
       {
         question: "Bagaimana cara login ke portal pelanggan?",
@@ -196,7 +199,7 @@ export const getPublicDashboard = async (customerId: string): Promise<PublicDash
       status: "Active" as const,
       createdAtLabel: formatDateTime(order.createdAt),
       completedAtLabel: order.completedAt ? formatDateTime(order.completedAt) : undefined,
-      serviceSummary: order.items.map((item) => `${item.quantity}x ${item.serviceLabel}`).join(", "),
+      serviceSummary: buildOrderServiceSummary(order.items),
       weightKgLabel: formatWeightLabel(order.weightKg)
     })),
     monthlySummary
@@ -346,7 +349,7 @@ export const getDirectOrderStatus = async (token: string) => {
     completedAtLabel: order.completedAt ? formatDateTime(order.completedAt) : undefined,
     cancelledAtLabel: order.voidedAt ? formatDateTime(order.voidedAt) : undefined,
     cancellationSummary: order.voidReason,
-    serviceSummary: order.items.map((item) => `${item.quantity}x ${item.serviceLabel}`).join(", "),
+    serviceSummary: buildOrderServiceSummary(order.items),
     weightKgLabel: formatWeightLabel(order.weightKg),
     earnedStamps: order.earnedStamps,
     redeemedPoints: order.redeemedPoints,

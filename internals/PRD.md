@@ -1,7 +1,7 @@
 # CJ Laundry POS Web App v1 PRD
 
 Document status: Draft for implementation  
-Last updated: 2026-03-21  
+Last updated: 2026-03-28  
 Primary timezone: Asia/Jakarta  
 Primary currency: IDR  
 Scope type: MVP that is implementation-ready
@@ -11,7 +11,7 @@ Scope type: MVP that is implementation-ready
 CJ Laundry membutuhkan web app POS dengan dua surface utama:
 
 1. `admin.cjlaundry.com`
-   Untuk operasional laundry harian: registrasi customer, pembuatan order, pencatatan berat dan item layanan, auto-calculation harga, loyalty stamp/point, notifikasi WhatsApp, pemantauan laundry aktif, penyelesaian order, histori customer, penambahan poin manual, dan dashboard laporan.
+   Untuk operasional laundry harian: registrasi customer, pembuatan order, pencatatan berat dan item layanan, auto-calculation harga, loyalty stamp/point, notifikasi WhatsApp, pemantauan laundry aktif/hari ini/history operasional, penyelesaian order, histori customer, penambahan poin manual, dan dashboard laporan.
 2. `cjlaundry.com`
    Untuk customer: landing page brand yang informatif, login ringan tanpa password, pengecekan status laundry, stamp/poin, riwayat cuci, riwayat penukaran stamp, ringkasan aktivitas bulanan tanpa nominal uang, dan leaderboard publik.
 
@@ -146,7 +146,7 @@ Customer laundry yang:
 - Dashboard
 - Customer registration and customer search
 - Order creation and confirmation
-- Active laundry tab
+- Laundry tab with `Aktif`, `Hari Ini`, and `History`
 - Notification status / outbox
 - Customer detail / history tab
 - Manual point addition
@@ -172,13 +172,17 @@ Initial service catalog:
 | Softener | `softener` | fixed per unit | Rp 1.000 |
 | Paket Cuci Kering Lipat | `wash_dry_fold_package` | fixed per unit | Rp 35.000 |
 | Setrika | `ironing` | per kg | Rp 4.500/kg |
+| Setrika Saja | `ironing_only` | per kg | Rp 5.000/kg |
+| Plastik Laundry | `laundry_plastic` | fixed per unit | Rp 2.000 |
 
 Rules:
 
 - `washer`, `dryer`, `detergent`, `softener`, and `wash_dry_fold_package` use integer quantity.
-- `ironing` is a selectable service whose line total is `order_weight_kg x ironing_price_per_kg`.
+- `laundry_plastic` uses integer quantity.
+- `ironing` and `ironing_only` are selectable services whose line total is `order_weight_kg x service_price_per_kg`.
 - Admin settings may change prices and active status of catalog items, but may not change service codes or pricing model in v1.
 - Each confirmed order stores a price snapshot for every line item and for overall totals.
+- `ironing_only` and `laundry_plastic` are POS-only catalog items and must not appear on the public landing page service list in v1.
 
 ## 9. Information Architecture
 
@@ -187,7 +191,7 @@ Rules:
 - Login
 - Dashboard
 - Order / POS
-- Laundry Aktif
+- Laundry
 - Notifikasi
 - Pelanggan
 - Settings
@@ -273,9 +277,10 @@ Rules:
 11. If receipt generation or WhatsApp delivery fails:
    - order remains `Active`,
    - notification stays visible in admin outbox as pending or failed,
-   - failed `order_confirmed` handling should prioritize `Download Receipt` and `Send Message`,
-   - failed notifications without receipt should prioritize `Send Message` and `Kirim Ulang`,
-   - admin fallback must open a WhatsApp deep link with the prepared message already filled in.
+   - failed `order_confirmed` handling must expose `Send Message`, `Download Receipt`, `Resend Message`, `Mark as Done`, and `Ignore`,
+   - failed `welcome`, `account_info`, and `order_done` handling must expose `Send Message`, `Kirim Ulang`, `Mark as Done`, and `Ignore`,
+   - admin fallback must open a WhatsApp deep link with the prepared message already filled in,
+   - `Send Message` and `Mark as Done` classify the item as manual handling, while `Ignore` classifies it as ignored and removes it from failed operational counts.
 12. Successful WhatsApp confirmation message includes:
    - customer-friendly message,
    - order code,
@@ -288,21 +293,24 @@ Rules:
 
 ### 10.5 Active laundry to done
 
-1. Admin opens `Laundry Aktif`.
-2. Admin sees all `Active` orders.
-3. Admin selects one order and clicks `Done`.
-4. Backend updates:
+1. Admin opens the `Laundry` tab.
+2. Default view remains `Aktif` and shows all `Active` orders.
+3. Additional views:
+   - `Hari Ini` shows all orders created today, including completed orders, with `Cancelled` optional behind a `Show Cancelled` toggle that defaults off.
+   - `History` shows the full laundry history with search, intuitive status filters, sort controls, and the same default-off `Show Cancelled` toggle.
+4. Admin selects one active order and clicks `Done`.
+5. Backend updates:
    - order status to `Done`,
    - order completed timestamp,
    - order history visibility,
    - audit log,
    - WhatsApp completion notification record.
-5. WhatsApp done message includes:
+6. WhatsApp done message includes:
    - customer name,
    - order code,
    - timestamp pesanan masuk,
    - timestamp pesanan selesai.
-6. Jika delivery WA `order_done` gagal, order tetap `Done` dan admin outbox menyediakan fallback WhatsApp manual tanpa mengubah ulang business state order.
+7. Jika delivery WA `order_done` gagal, order tetap `Done` dan admin outbox menyediakan fallback WhatsApp manual tanpa mengubah ulang business state order.
 
 ### 10.6 Void/cancel confirmed order
 
@@ -452,12 +460,36 @@ Content goals:
 - Must handle duplicate names gracefully.
 - Search results should return quickly even with growing dataset.
 
+### 12.4 Laundry operations view
+
+- Default admin laundry view remains the current `Aktif` operational list.
+- `Hari Ini` must show all laundry created today, including `Done`, with section ordering optimized for operations:
+  - active first by oldest created,
+  - completed by newest completed,
+  - cancelled by newest cancelled when shown.
+- `History` must support:
+  - search by customer name, phone, or order code,
+  - intuitive status filters,
+  - newest-first default sort,
+  - optional cancelled visibility behind a default-off toggle,
+  - server-side pagination or cursor-based continuation so the admin UI does not need to read the full order collection on every history visit.
+- Admin operational list queries may use a lifecycle-aware activity timestamp so `Hari Ini` and `History` can be driven by the latest relevant order event (`created`, `done`, or `cancelled`) instead of repeated multi-field date scans.
+
 ### 12.4 Order builder
 
 - Customer selection is mandatory.
+- After a customer is selected, the POS flow must keep a visible customer summary at the top of later steps and confirmation surfaces.
+- The visible customer summary must include:
+  - customer name,
+  - customer phone number,
+  - current point balance when available,
+  - warning if the customer already has active orders.
 - Weight is mandatory and positive.
 - Qty defaults to zero for all services.
 - Setrika total auto-calculates from order weight.
+- POS service catalog must include:
+  - `Setrika Saja` at Rp 5.000/kg,
+  - `Plastik Laundry` at Rp 2.000/unit.
 - Order preview must show:
   - line items,
   - qty,
@@ -472,15 +504,27 @@ Content goals:
 ### 12.6 Notification status / outbox
 
 - Admin has a dedicated notification status page/outbox.
-- Outbox lists queued, sent, failed, and manually resolved notification records.
-- Failed order-confirmation notifications must expose:
-  - download fallback receipt,
-  - prefilled manual WhatsApp fallback link,
+- Outbox lists queued, sent, failed, manual, and ignored notification records.
+- Outbox must distinguish terminal manual handling from ignored handling in separate operator-friendly views.
+- Failed registration-style notifications (`welcome`, `account_info`, `order_done`) must expose:
+  - `Send Message`,
+  - `Kirim Ulang`,
+  - `Mark as Done`,
+  - `Ignore`,
   - latest failure reason,
   - timestamps of attempts.
-- Failed notifications without receipt must expose:
-  - prefilled manual WhatsApp fallback link,
-  - resend via bot.
+- Failed order-confirmation notifications must expose:
+  - `Send Message`,
+  - `Download Receipt`,
+  - `Resend Message`,
+  - `Mark as Done`,
+  - `Ignore`,
+  - latest failure reason,
+  - timestamps of attempts.
+- `Send Message` must open a backend-generated `wa.me` deep link with the prepared template already populated and classify the notification as manual handling.
+- `Mark as Done` must classify the notification as manual handling without retrying bot delivery.
+- `Ignore` must classify the notification as ignored without keeping it in the failed operational state.
+- Failed WhatsApp delivery must raise a short popup/toast notification during an active admin session.
 - Orders remain valid business records even if notification delivery is pending or failed.
 
 ### 12.7 Customer profile
@@ -527,6 +571,7 @@ Minimum dashboard metrics:
 - points redeemed,
 - top services,
 - top customers by confirmed orders or earned stamps.
+- `Perlu Perhatian` must appear above KPI cards so unresolved operational issues are visible before summary metrics.
 
 ## 13. Domain Model
 
@@ -877,15 +922,18 @@ Must include:
 
 - Message generation must be idempotent per business event.
 - Delivery retries must not duplicate business side effects.
-- Message status must be trackable as `queued`, `sent`, `failed`, or equivalent.
+- Message status must be trackable as `queued`, `sent`, `failed`, `manual_resolved`, and `ignored`.
 - Receipt render status and message delivery status must be tracked separately for order-confirmed notifications.
 - Failed or pending confirmation notifications must remain visible in admin outbox until successfully sent or manually resolved.
 - Admin outbox must support a focused recovery UX:
-  - failed `order_confirmed`: `Download Receipt` and `Send Message`
-  - failed non-receipt notifications: `Send Message` and `Kirim Ulang`
+  - failed `order_confirmed`: `Send Message`, `Download Receipt`, `Resend Message`, `Mark as Done`, and `Ignore`
+  - failed `welcome`, `account_info`, and `order_done`: `Send Message`, `Kirim Ulang`, `Mark as Done`, and `Ignore`
+- `Send Message` and `Mark as Done` must classify the item as manual handling.
+- `Ignore` must classify the item as ignored without counting as failed or sent.
 - Order business state must not roll back only because notification rendering or delivery failed.
 - WhatsApp session disconnect should surface operationally in admin monitoring/logs.
 - Session/auth artifacts for the WhatsApp bot must be persisted outside ephemeral container storage.
+- Admin UI should surface a short popup notification when a new failed WhatsApp notification is detected during an active session.
 
 ## 16. Security Requirements
 
@@ -1084,6 +1132,8 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - Customer search should feel near-instant for typical operator usage.
 - Admin order calculation should update immediately on input changes.
 - Order confirmation API should complete fast enough for front-desk use, while receipt generation and WA delivery may finish asynchronously after business commit.
+- Laundry `History` must not require loading the entire order collection for a normal operator session; use server-side pagination/cursoring and indexes aligned to the chosen activity timestamp.
+- Laundry operational filters should prefer index-friendly fields over repeated broad regex or multi-timestamp scans as order volume grows.
 
 ### 20.2 Reliability
 
@@ -1249,6 +1299,7 @@ These notes are intentionally prescriptive enough to reduce ambiguity, while sti
 - Prefer MongoDB transaction boundaries or an equivalent atomic write strategy around customer balance updates, order creation, and ledger writes.
 - Treat the points ledger as source of truth and stored balance as denormalized convenience.
 - Generate receipt and send WhatsApp asynchronously after the business transaction commits, but persist notification records synchronously.
+- For admin laundry read paths, prefer a denormalized lifecycle activity field such as `activityAt` and paginated read APIs before introducing heavier read models.
 - Use an outbox-like pattern or equivalent job queue semantics so message retries are safe.
 - Keep all pricing, point, redemption, and leaderboard logic in backend domain services.
 - Expose only read models needed by admin and public frontends.

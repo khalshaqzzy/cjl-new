@@ -57,6 +57,7 @@ Purpose: final gate checklist before the first production push after observabili
 
 - staging deploy finishes green
 - staging smoke check passes for admin, public, and API
+- first-start staging logs for the target release are reviewed for order `activityAt` backfill and index creation timing if legacy order data exists
 - forced bad release path proves automatic rollback works
 - request ID can be traced from browser/network response to container log line
 - expected error codes are validated on staging:
@@ -76,6 +77,7 @@ Purpose: final gate checklist before the first production push after observabili
 ## Production Go/No-Go
 
 - production release candidate commit already passed staging validation
+- staging proved the order `activityAt` backfill and new indexes do not cause unacceptable startup degradation on realistic data volume
 - previous healthy release SHA is known before deploy
 - first-hour production log review owner is assigned
 - first-hour review explicitly checks:

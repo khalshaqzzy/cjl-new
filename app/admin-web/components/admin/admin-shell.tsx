@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -25,7 +25,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { Toaster } from "@/components/ui/sonner"
 import { adminApi } from "@/lib/api"
+import { toast } from "sonner"
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -119,6 +121,7 @@ export function AdminShell({
   const [moreOpen, setMoreOpen] = useState(false)
   const [isSessionChecked, setIsSessionChecked] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const failedNotificationsPrimedRef = useRef(false)
 
   useEffect(() => {
     adminApi
@@ -135,6 +138,69 @@ export function AdminShell({
         router.replace("/")
       })
   }, [router])
+
+  useEffect(() => {
+    if (!isSessionChecked) {
+      return
+    }
+
+    const storageKey = "admin-seen-failed-notifications"
+    const pollMs = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost" ? 5_000 : 30_000
+    const readSeenIds = () => {
+      try {
+        return new Set<string>(JSON.parse(window.sessionStorage.getItem(storageKey) ?? "[]"))
+      } catch {
+        return new Set<string>()
+      }
+    }
+
+    const writeSeenIds = (ids: Set<string>) => {
+      window.sessionStorage.setItem(storageKey, JSON.stringify([...ids]))
+    }
+
+    const pollFailedNotifications = async () => {
+      try {
+        const notifications = await adminApi.listNotifications()
+        const failedNotifications = notifications.filter((notification) => notification.deliveryStatus === "failed")
+        const seenIds = readSeenIds()
+
+        if (!failedNotificationsPrimedRef.current) {
+          failedNotifications.forEach((notification) => seenIds.add(notification.notificationId))
+          writeSeenIds(seenIds)
+          failedNotificationsPrimedRef.current = true
+          return
+        }
+
+        for (const notification of failedNotifications) {
+          if (seenIds.has(notification.notificationId)) {
+            continue
+          }
+
+          seenIds.add(notification.notificationId)
+          toast.error(`WA gagal: ${notification.customerName}`, {
+            description: `${notification.orderCode ?? "Tanpa order"} • ${notification.eventType.replaceAll("_", " ")}`,
+            action: {
+              label: "Buka",
+              onClick: () => router.push("/admin/notifikasi"),
+            },
+          })
+        }
+
+        writeSeenIds(seenIds)
+      } catch {
+        // Background polling should stay silent.
+      }
+    }
+
+    void pollFailedNotifications()
+    const interval = window.setInterval(() => {
+      void pollFailedNotifications()
+    }, pollMs)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [isSessionChecked, router])
 
   if (!isSessionChecked) {
     return (
@@ -272,6 +338,7 @@ export function AdminShell({
           </div>
         </nav>
       </div>
+      <Toaster richColors position="top-right" />
     </div>
   )
 }

@@ -236,6 +236,33 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* Attention */}
+        {(failedNotifications > 0 || activeOrders.length > 5) && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-text-strong">Perlu Perhatian</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              {failedNotifications > 0 && (
+                <AttentionCard
+                  title="Notifikasi Gagal"
+                  count={failedNotifications}
+                  description="Ada notifikasi WhatsApp yang perlu ditangani"
+                  href="/admin/notifikasi"
+                  tone="warning"
+                />
+              )}
+              {activeOrders.length > 5 && (
+                <AttentionCard
+                  title="Order Menumpuk"
+                  count={activeOrders.length}
+                  description="Ada order aktif yang belum diselesaikan"
+                  href="/admin/laundry-aktif"
+                  tone="info"
+                />
+              )}
+            </div>
+          </div>
+        )}
+
         {/* KPI Cards */}
         {isLoading && (
           <div className="flex items-center gap-2 rounded-xl border border-line-base bg-bg-surface px-4 py-3 text-sm text-text-muted">
@@ -347,33 +374,6 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
-          </div>
-        )}
-
-        {/* Attention */}
-        {(failedNotifications > 0 || activeOrders.length > 5) && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-text-strong">Perlu Perhatian</h3>
-            <div className="grid gap-3 md:grid-cols-2">
-              {failedNotifications > 0 && (
-                <AttentionCard
-                  title="Notifikasi Gagal"
-                  count={failedNotifications}
-                  description="Ada notifikasi WhatsApp yang perlu ditangani"
-                  href="/admin/notifikasi"
-                  tone="warning"
-                />
-              )}
-              {activeOrders.length > 5 && (
-                <AttentionCard
-                  title="Order Menumpuk"
-                  count={activeOrders.length}
-                  description="Ada order aktif yang belum diselesaikan"
-                  href="/admin/laundry-aktif"
-                  tone="info"
-                />
-              )}
-            </div>
           </div>
         )}
 

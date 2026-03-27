@@ -25,6 +25,7 @@ import {
   Scale,
   Search,
   Shirt,
+  ShoppingBag,
   SprayCan,
   Star,
   User,
@@ -53,6 +54,8 @@ const serviceIcons: Record<string, typeof Shirt> = {
   softener: SprayCan,
   wash_dry_fold_package: Package,
   ironing: Shirt,
+  ironing_only: Shirt,
+  laundry_plastic: ShoppingBag,
 }
 
 const createServicePickerItem = (
@@ -170,6 +173,58 @@ function CustomerRow({ customer, onSelect }: { customer: CustomerSearchResult; o
   )
 }
 
+function SelectedCustomerSummary({
+  customer,
+  onClear,
+}: {
+  customer: CustomerSearchResult
+  onClear?: () => void
+}) {
+  return (
+    <div className="space-y-4" data-testid="pos-selected-customer-summary">
+      <div className="flex items-center gap-3 p-4 rounded-xl bg-rose-50 border border-rose-200">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-100 flex-shrink-0">
+          <User className="h-5 w-5 text-rose-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-text-strong" data-testid="pos-selected-customer-name">{customer.name}</p>
+          <p className="text-sm text-text-muted flex items-center gap-1">
+            <Phone className="h-3 w-3" />
+            {customer.phone}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="flex items-center gap-1 justify-end">
+              <Star className="h-3.5 w-3.5 text-warning" />
+              <span className="text-sm font-bold text-text-strong tabular-nums">{customer.currentPoints}</span>
+            </div>
+            <p className="text-[10px] text-text-muted">poin</p>
+          </div>
+          {onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-line-base hover:bg-bg-subtle transition-colors"
+            >
+              <X className="h-3.5 w-3.5 text-text-muted" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {customer.activeOrderCount > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-warning-bg border border-warning/20">
+          <div className="h-2 w-2 rounded-full bg-warning flex-shrink-0" />
+          <p className="text-xs text-warning font-medium">
+            Pelanggan ini memiliki {customer.activeOrderCount} order yang sedang aktif
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function StepCustomer({
   selectedCustomer,
   onSelect,
@@ -265,45 +320,7 @@ function StepCustomer({
           </div>
         )}
         {selectedCustomer ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-rose-50 border border-rose-200">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-100 flex-shrink-0">
-                <User className="h-5 w-5 text-rose-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-text-strong">{selectedCustomer.name}</p>
-                <p className="text-sm text-text-muted flex items-center gap-1">
-                  <Phone className="h-3 w-3" />
-                  {selectedCustomer.phone}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <div className="flex items-center gap-1 justify-end">
-                    <Star className="h-3.5 w-3.5 text-warning" />
-                    <span className="text-sm font-bold text-text-strong tabular-nums">{selectedCustomer.currentPoints}</span>
-                  </div>
-                  <p className="text-[10px] text-text-muted">poin</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={onClear}
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-white border border-line-base hover:bg-bg-subtle transition-colors"
-                >
-                  <X className="h-3.5 w-3.5 text-text-muted" />
-                </button>
-              </div>
-            </div>
-
-            {selectedCustomer.activeOrderCount > 0 && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-warning-bg border border-warning/20">
-                <div className="h-2 w-2 rounded-full bg-warning flex-shrink-0" />
-                <p className="text-xs text-warning font-medium">
-                  Pelanggan ini memiliki {selectedCustomer.activeOrderCount} order yang sedang aktif
-                </p>
-              </div>
-            )}
-          </div>
+          <SelectedCustomerSummary customer={selectedCustomer} onClear={onClear} />
         ) : (
           <div className="space-y-3">
             <div className="relative">
@@ -530,6 +547,9 @@ function StepServices({
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto">
+        <div className="px-4 pt-5 pb-1">
+          <SelectedCustomerSummary customer={customer} />
+        </div>
         <div className="px-4 pt-5 pb-4 border-b border-line-base">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-text-strong flex items-center gap-1.5"><Scale className="h-4 w-4 text-text-muted" />Berat Cucian</p>
@@ -657,10 +677,7 @@ function OrderSummarySheet({ open, onOpenChange, customer, preview, onConfirm, i
           <div className="flex items-center gap-2"><ReceiptText className="h-4 w-4 text-rose-600" /><SheetTitle className="text-base font-semibold text-text-strong">Konfirmasi Order</SheetTitle></div>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto py-4 space-y-4">
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-bg-subtle border border-line-base">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 flex-shrink-0"><User className="h-4 w-4 text-rose-600" /></div>
-            <div><p className="text-sm font-semibold text-text-strong">{customer.name}</p><p className="text-xs text-text-muted">{customer.phone}</p></div>
-          </div>
+          <SelectedCustomerSummary customer={customer} />
           <div className="rounded-xl border border-line-base overflow-hidden">
             {preview?.items.map((item, index) => {
               const Icon = serviceIcons[item.serviceCode] || Shirt

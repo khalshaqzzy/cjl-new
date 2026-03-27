@@ -95,10 +95,13 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(firstMagicLinkUrl).toContain("/auto-login?token=")
   await page.getByTestId("pos-continue-after-qr").click()
   await expect(page.getByTestId("pos-open-summary")).toBeVisible()
+  await expect(page.getByTestId("pos-selected-customer-summary")).toContainText(`+62${customerPhone.slice(1)}`)
 
   await page.getByTestId("pos-weight-input").fill("3")
   await page.getByTestId("service-plus-washer").click()
   await page.getByTestId("service-plus-dryer").click()
+  await page.getByTestId("service-toggle-ironing_only").click()
+  await page.getByTestId("service-plus-laundry_plastic").click()
   await page.getByTestId("pos-open-summary").click()
   await page.getByTestId("pos-confirm-order").click()
 
@@ -111,7 +114,14 @@ test("admin and public frontends stay fully integrated through the backend", asy
 
   expect(customer?._id).toBeTruthy()
 
-  await page.getByRole("button", { name: "Order Baru" }).click()
+  await page.goto("http://127.0.0.1:3101/admin/laundry-aktif")
+  await expect(page.getByText(orderCode)).toBeVisible()
+  await page.getByRole("tab", { name: "Hari Ini" }).click()
+  await expect(page.getByText("Show Cancelled")).toBeVisible()
+  await page.getByRole("tab", { name: "History" }).click()
+  await expect(page.getByRole("button", { name: "Semua" })).toBeVisible()
+
+  await page.goto("http://127.0.0.1:3101/admin/pos")
   await page.getByTestId("pos-open-create-customer").click()
   await page.getByTestId("pos-create-customer-name").fill(customerName)
   await page.getByTestId("pos-create-customer-phone").fill(customerPhone)
@@ -141,6 +151,8 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await publicPage.getByText(orderCode).click()
   await expect(publicPage.getByRole("heading", { name: "Detail Order" }).first()).toBeVisible()
   await expect(publicPage.getByText("Aktif")).toBeVisible()
+  await expect(publicPage.getByText("Setrika Saja", { exact: true })).toBeVisible()
+  await expect(publicPage.getByText("Plastik Laundry", { exact: true })).toBeVisible()
   await expect(publicPage.getByText("Rincian Receipt")).toBeVisible()
   await expect(publicPage.getByText("Subtotal")).toBeVisible()
   await expect(publicPage.getByText("Total", { exact: true })).toBeVisible()

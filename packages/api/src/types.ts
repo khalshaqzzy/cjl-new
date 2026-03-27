@@ -60,6 +60,7 @@ export type OrderDocument = {
   receiptSnapshot: OrderReceiptSnapshotDocument
   status: "Active" | "Done" | "Voided"
   createdAt: string
+  activityAt: string
   completedAt?: string
   voidedAt?: string
   voidReason?: string
@@ -94,6 +95,8 @@ export type NotificationDocument = {
   preparedMessage: string
   manualResolutionNote?: string
   manualResolvedAt?: string
+  ignoredNote?: string
+  ignoredAt?: string
   renderedReceipt?: string
   providerMessageId?: string
   providerChatId?: string

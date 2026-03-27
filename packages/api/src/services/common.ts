@@ -1,5 +1,6 @@
 import type { ClientSession, Filter } from "mongodb"
 import type {
+  AdminLaundryOrder,
   CustomerOrderDetail,
   CustomerProfile,
   NotificationRecord,
@@ -43,6 +44,17 @@ const notificationsCollection = () => db().collection<NotificationDocument>("not
 const canManualWhatsappFallback = (notification: NotificationDocument) => {
   return notification.deliveryStatus === "failed" && notification.preparedMessage.trim().length > 0
 }
+
+export const formatOrderItemSummary = (item: OrderDocument["items"][number]) => {
+  if (item.pricingModel === "per_kg") {
+    return `${formatWeightLabel(item.quantity)} ${item.serviceLabel}`
+  }
+
+  return `${item.quantity}x ${item.serviceLabel}`
+}
+
+export const buildOrderServiceSummary = (items: OrderDocument["items"]) =>
+  items.map(formatOrderItemSummary).join(", ")
 
 export const getSettingsDocument = async (session?: ClientSession) => {
   const settings = await db()
@@ -174,6 +186,8 @@ export const mapNotification = (notification: NotificationDocument): Notificatio
   preparedMessage: notification.preparedMessage,
   manualResolutionNote: notification.manualResolutionNote,
   manualResolvedAt: notification.manualResolvedAt ? formatDateTime(notification.manualResolvedAt) : undefined,
+  ignoredNote: notification.ignoredNote,
+  ignoredAt: notification.ignoredAt ? formatDateTime(notification.ignoredAt) : undefined,
   receiptAvailable:
     notification.eventType === "order_confirmed" &&
     (notification.renderStatus === "ready" || Boolean(notification.renderedReceipt)),
@@ -193,11 +207,30 @@ export const mapOrderHistory = (order: OrderDocument): OrderHistoryItem => ({
   cancelledAtLabel: order.voidedAt ? formatDateTime(order.voidedAt) : undefined,
   cancellationSummary: order.voidReason,
   weightKgLabel: formatWeightLabel(order.weightKg),
-  serviceSummary: order.items.map((item) => `${item.quantity}x ${item.serviceLabel}`).join(", "),
+  serviceSummary: buildOrderServiceSummary(order.items),
   totalLabel: formatCurrency(order.total),
   earnedStamps: order.earnedStamps,
   redeemedPoints: order.redeemedPoints,
   status: order.status === "Voided" ? "Cancelled" : order.status
+})
+
+export const mapAdminLaundryOrder = (order: OrderDocument): AdminLaundryOrder => ({
+  orderId: order._id,
+  orderCode: order.orderCode,
+  customerName: order.customerName,
+  phone: order.customerPhone,
+  createdAtLabel: formatRelativeLabel(order.createdAt),
+  createdAtIso: order.createdAt,
+  completedAtLabel: order.completedAt ? formatRelativeLabel(order.completedAt) : undefined,
+  completedAtIso: order.completedAt,
+  cancelledAtLabel: order.voidedAt ? formatRelativeLabel(order.voidedAt) : undefined,
+  cancelledAtIso: order.voidedAt,
+  weightKgLabel: formatWeightLabel(order.weightKg),
+  serviceSummary: buildOrderServiceSummary(order.items),
+  totalLabel: formatCurrency(order.total),
+  earnedStamps: order.earnedStamps,
+  redeemedPoints: order.redeemedPoints,
+  status: order.status === "Voided" ? "Cancelled" : order.status,
 })
 
 export const mapPointLedger = (entry: PointLedgerDocument): PointLedgerItem => ({
@@ -235,7 +268,7 @@ export const mapCustomerOrderDetail = (order: OrderDocument): CustomerOrderDetai
   cancelledAtLabel: order.voidedAt ? formatDateTime(order.voidedAt) : undefined,
   cancellationSummary: order.voidReason,
   weightKgLabel: formatWeightLabel(order.weightKg),
-  serviceSummary: order.items.map((item) => `${item.quantity}x ${item.serviceLabel}`).join(", "),
+  serviceSummary: buildOrderServiceSummary(order.items),
   earnedStamps: order.earnedStamps,
   redeemedPoints: order.redeemedPoints,
   subtotal: order.subtotal,
@@ -365,7 +398,11 @@ export const processNotification = async (notificationId: string) => {
     return
   }
 
-  if (notification.deliveryStatus === "sent" || notification.deliveryStatus === "manual_resolved") {
+  if (
+    notification.deliveryStatus === "sent" ||
+    notification.deliveryStatus === "manual_resolved" ||
+    notification.deliveryStatus === "ignored"
+  ) {
     return
   }
 
@@ -581,6 +618,8 @@ export const markNotificationForRetry = async (notificationId: string) => {
               latestFailureReason: "",
               manualResolutionNote: "",
               manualResolvedAt: "",
+              ignoredNote: "",
+              ignoredAt: "",
               renderedReceipt: "",
               providerMessageId: "",
               providerChatId: "",
@@ -594,6 +633,8 @@ export const markNotificationForRetry = async (notificationId: string) => {
               latestFailureReason: "",
               manualResolutionNote: "",
               manualResolvedAt: "",
+              ignoredNote: "",
+              ignoredAt: "",
               providerMessageId: "",
               providerChatId: "",
               providerAck: "",
@@ -615,7 +656,30 @@ export const markNotificationManualResolved = async (notificationId: string, not
         manualResolutionNote: note,
         manualResolvedAt: now,
         updatedAt: now
+      },
+      $unset: {
+        ignoredNote: "",
+        ignoredAt: "",
       }
+    }
+  )
+}
+
+export const markNotificationIgnored = async (notificationId: string, note: string) => {
+  const now = new Date().toISOString()
+  await notificationsCollection().updateOne(
+    { _id: notificationId },
+    {
+      $set: {
+        deliveryStatus: "ignored",
+        ignoredNote: note,
+        ignoredAt: now,
+        updatedAt: now,
+      },
+      $unset: {
+        manualResolutionNote: "",
+        manualResolvedAt: "",
+      },
     }
   )
 }

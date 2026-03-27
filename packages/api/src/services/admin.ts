@@ -2,6 +2,10 @@ import bcrypt from "bcryptjs"
 import crypto from "node:crypto"
 import { DateTime } from "luxon"
 import type {
+  AdminLaundryListResponse,
+  AdminLaundryOrder,
+  AdminLaundryScope,
+  AdminLaundrySort,
   AdminDashboardResponse,
   ConfirmOrderInput,
   CreateCustomerInput,
@@ -25,7 +29,7 @@ import { createId, createOpaqueToken, createOrderCode } from "../lib/ids.js"
 import { buildMaskedAlias, rebuildArchivedLeaderboard } from "../lib/leaderboard.js"
 import { normalizeName, normalizePhone, normalizePhoneLabel, normalizeWhatsappPhone } from "../lib/normalization.js"
 import { hashOpaqueToken, tokenLast4 } from "../lib/security.js"
-import { formatDateTime, formatRelativeLabel, formatWeightLabel, monthKeyFromIso, nowJakarta } from "../lib/time.js"
+import { formatDateTime, formatRelativeLabel, formatWeightLabel, monthKeyFromIso, nowJakarta, toIso } from "../lib/time.js"
 import type {
   AdminDocument,
   CustomerDocument,
@@ -38,17 +42,20 @@ import type {
 } from "../types.js"
 import {
   buildOrderReceipt,
+  buildOrderServiceSummary,
   buildCustomerSearchFilter,
   createCustomerMagicLink,
   getPrimaryAdminWhatsappContact,
   buildPreparedMessage,
   getSettingsDocument,
   insertPointLedger,
+  mapAdminLaundryOrder,
   mapCustomerProfile,
   mapCustomerSearch,
   mapNotification,
   mapOrderHistory,
   mapPointLedger,
+  markNotificationIgnored as markNotificationIgnoredRecord,
   markNotificationForRetry,
   markNotificationManualResolved as markNotificationManualResolvedRecord,
   queueNotification,
@@ -89,6 +96,72 @@ const phoneDigits = (phone: string) => normalizePhone(phone).replace(/\D/g, "")
 
 const sha256 = (payload: string) =>
   crypto.createHash("sha256").update(payload).digest("hex")
+
+const buildOrderSearchFilter = (query?: string) => {
+  if (!query?.trim()) {
+    return {}
+  }
+
+  const normalizedQuery = query.trim()
+  const digits = normalizedQuery.replace(/\D/g, "")
+  const clauses: Record<string, unknown>[] = [
+    { customerName: { $regex: normalizedQuery, $options: "i" } },
+    { orderCode: { $regex: normalizedQuery, $options: "i" } },
+  ]
+
+  if (digits) {
+    clauses.push({ customerPhone: { $regex: digits } })
+  } else {
+    clauses.push({ customerPhone: { $regex: normalizedQuery, $options: "i" } })
+  }
+
+  return { $or: clauses }
+}
+
+const resolveLaundryStatusFilter = (
+  status: "all" | "active" | "done" | "cancelled",
+  includeCancelled: boolean
+) => {
+  if (status === "active") {
+    return { status: "Active" as const }
+  }
+
+  if (status === "done") {
+    return { status: "Done" as const }
+  }
+
+  if (status === "cancelled") {
+    return { status: "Voided" as const }
+  }
+
+  return includeCancelled
+    ? { status: { $in: ["Active", "Done", "Voided"] } }
+    : { status: { $in: ["Active", "Done"] } }
+}
+
+const encodeLaundryCursor = (activityAt: string, orderId: string) =>
+  Buffer.from(JSON.stringify({ activityAt, orderId }), "utf8").toString("base64url")
+
+const decodeLaundryCursor = (cursor?: string) => {
+  if (!cursor) {
+    return null
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
+      activityAt?: string
+      orderId?: string
+    }
+
+    if (!decoded.activityAt || !decoded.orderId) {
+      return null
+    }
+
+    return decoded as { activityAt: string; orderId: string }
+  } catch {
+    return null
+  }
+}
 
 const createUniqueOrderCode = async (
   orderId: string,
@@ -180,7 +253,7 @@ export const verifyAdminPassword = async (admin: AdminDocument, password: string
 export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminDashboardResponse> => {
   const [orders, notifications, customers, pointLedger] = await Promise.all([
     db().collection<OrderDocument>("orders").find({}).toArray(),
-    db().collection<NotificationDocument>("notifications").find({}).sort({ createdAt: -1 }).limit(12).toArray(),
+    db().collection<NotificationDocument>("notifications").find({}).sort({ createdAt: -1 }).toArray(),
     db().collection<CustomerDocument>("customers").find({}).toArray(),
     db().collection<PointLedgerDocument>("point_ledgers").find({}).toArray()
   ])
@@ -268,7 +341,7 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
         createdAtLabel: formatRelativeLabel(order.createdAt),
         createdAtIso: order.createdAt,
         weightKgLabel: formatWeightLabel(order.weightKg),
-        serviceSummary: order.items.map((item) => `${item.quantity} ${item.serviceLabel}`).join(", "),
+        serviceSummary: buildOrderServiceSummary(order.items),
         earnedStamps: order.earnedStamps,
         redeemedPoints: order.redeemedPoints,
         status: "Active"
@@ -583,7 +656,13 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
     const orderId = createId("order")
     const directToken = createOpaqueToken()
     const orderCode = await createUniqueOrderCode(orderId, orderDate, session)
-    const serviceSummary = preview.activeItems.map((item) => `${item.quantity}x ${item.serviceLabel}`).join(", ")
+    const serviceSummary = preview.activeItems
+      .map((item) =>
+        item.pricingModel === "per_kg"
+          ? `${formatWeightLabel(item.quantity)} ${item.serviceLabel}`
+          : `${item.quantity}x ${item.serviceLabel}`
+      )
+      .join(", ")
     const receiptSnapshot = await buildOrderReceiptSnapshot(
       orderCode,
       customer.name,
@@ -616,7 +695,8 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
       resultingPointBalance: preview.resultingPointBalance,
       receiptSnapshot,
       status: "Active",
-      createdAt
+      createdAt,
+      activityAt: createdAt,
     }
 
     await db().collection<OrderDocument>("orders").insertOne(order, { session })
@@ -709,11 +789,93 @@ export const listActiveOrders = async () => {
     createdAtLabel: formatRelativeLabel(order.createdAt),
     createdAtIso: order.createdAt,
     weightKgLabel: formatWeightLabel(order.weightKg),
-    serviceSummary: order.items.map((item) => `${item.quantity} ${item.serviceLabel}`).join(", "),
+    serviceSummary: buildOrderServiceSummary(order.items),
     earnedStamps: order.earnedStamps,
     redeemedPoints: order.redeemedPoints,
     status: "Active" as const
   }))
+}
+
+export const listLaundryOrders = async ({
+  scope,
+  search,
+  sort,
+  status,
+  includeCancelled,
+  cursor,
+  pageSize,
+}: {
+  scope: AdminLaundryScope
+  search?: string
+  sort: AdminLaundrySort
+  status: "all" | "active" | "done" | "cancelled"
+  includeCancelled: boolean
+  cursor?: string
+  pageSize: number
+}): Promise<AdminLaundryListResponse> => {
+  const effectiveIncludeCancelled = includeCancelled || status === "cancelled"
+  const filters: Record<string, unknown>[] = [buildOrderSearchFilter(search)]
+  const sortField = scope === "active" ? "createdAt" : "activityAt"
+  const sortDirection = sort === "newest" ? -1 : 1
+
+  if (scope === "active") {
+    filters.push({ status: "Active" })
+  } else {
+    filters.push(resolveLaundryStatusFilter(status, effectiveIncludeCancelled))
+
+    if (scope === "today") {
+      const start = toIso(nowJakarta().startOf("day"))
+      const end = toIso(nowJakarta().endOf("day"))
+      filters.push({
+        activityAt: {
+          $gte: start,
+          $lte: end,
+        },
+      })
+    }
+  }
+
+  if (scope === "history") {
+    const decodedCursor = decodeLaundryCursor(cursor)
+    if (cursor && !decodedCursor) {
+      throw new ValidationError("Cursor history laundry tidak valid")
+    }
+
+    if (decodedCursor) {
+      filters.push(
+        sortDirection === -1
+          ? {
+              $or: [
+                { [sortField]: { $lt: decodedCursor.activityAt } },
+                { [sortField]: decodedCursor.activityAt, _id: { $lt: decodedCursor.orderId } },
+              ],
+            }
+          : {
+              $or: [
+                { [sortField]: { $gt: decodedCursor.activityAt } },
+                { [sortField]: decodedCursor.activityAt, _id: { $gt: decodedCursor.orderId } },
+              ],
+            }
+      )
+    }
+  }
+
+  const query = filters.filter((filter) => Object.keys(filter).length > 0)
+  const orders = await db()
+    .collection<OrderDocument>("orders")
+    .find(query.length > 0 ? { $and: query } : {})
+    .sort({ [sortField]: sortDirection, _id: sortDirection })
+    .limit(scope === "history" ? pageSize + 1 : pageSize)
+    .toArray()
+
+  const hasMore = scope === "history" && orders.length > pageSize
+  const nextPageSource = hasMore ? orders[pageSize - 1] : undefined
+  const items = hasMore ? orders.slice(0, pageSize) : orders
+
+  return {
+    items: items.map(mapAdminLaundryOrder),
+    nextCursor: nextPageSource ? encodeLaundryCursor(nextPageSource.activityAt, nextPageSource._id) : undefined,
+  }
 }
 
 export const getOrderById = async (orderId: string) => {
@@ -741,7 +903,7 @@ export const markOrderDone = async (orderId: string) =>
     const completedAt = new Date().toISOString()
     await db().collection<OrderDocument>("orders").updateOne(
       { _id: orderId },
-      { $set: { status: "Done", completedAt } },
+      { $set: { status: "Done", completedAt, activityAt: completedAt } },
       { session }
     )
     await saveAuditLog("order.done", "order", orderId, { completedAt }, session)
@@ -773,6 +935,7 @@ export const markOrderDone = async (orderId: string) =>
     return mapOrderHistory({
       ...order,
       status: "Done",
+      activityAt: completedAt,
       completedAt
     })
   })
@@ -797,7 +960,7 @@ export const voidOrder = async (orderId: string, input: VoidOrderInput) => {
 
     await db().collection<OrderDocument>("orders").updateOne(
       { _id: orderId },
-      { $set: { status: "Voided", voidedAt, voidReason: input.reason } },
+      { $set: { status: "Voided", voidedAt, voidReason: input.reason, activityAt: voidedAt } },
       { session }
     )
     await db().collection<CustomerDocument>("customers").updateOne(
@@ -867,6 +1030,7 @@ export const voidOrder = async (orderId: string, input: VoidOrderInput) => {
       order: {
         ...order,
         status: "Voided" as const,
+        activityAt: voidedAt,
         voidedAt,
         voidReason: input.reason
       },
@@ -895,6 +1059,30 @@ export const resendNotification = async (notificationId: string) => {
 
 export const markNotificationManualResolved = async (notificationId: string, note: string) => {
   await markNotificationManualResolvedRecord(notificationId, note)
+  const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
+  if (!notification) {
+    throw new NotFoundError("Notifikasi tidak ditemukan")
+  }
+
+  return mapNotification(notification)
+}
+
+export const markNotificationManualCompleted = async (notificationId: string) => {
+  const note = "Ditandai selesai oleh admin."
+  await markNotificationManualResolvedRecord(notificationId, note)
+  await saveAuditLog("notification.manual_completed", "notification", notificationId)
+  const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
+  if (!notification) {
+    throw new NotFoundError("Notifikasi tidak ditemukan")
+  }
+
+  return mapNotification(notification)
+}
+
+export const markNotificationIgnored = async (notificationId: string) => {
+  const note = "Diabaikan oleh admin."
+  await markNotificationIgnoredRecord(notificationId, note)
+  await saveAuditLog("notification.ignored", "notification", notificationId)
   const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
   if (!notification) {
     throw new NotFoundError("Notifikasi tidak ditemukan")

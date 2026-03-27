@@ -22,6 +22,7 @@ import {
   Plus,
   Save,
   Shirt,
+  ShoppingBag,
   Sparkles,
   SprayCan,
   Star,
@@ -38,6 +39,8 @@ const serviceIcons: Record<string, typeof Shirt> = {
   softener: SprayCan,
   wash_dry_fold_package: Package,
   ironing: Shirt,
+  ironing_only: Shirt,
+  laundry_plastic: ShoppingBag,
 }
 
 const createContactDraft = (): AdminWhatsappContact => ({

@@ -1296,3 +1296,527 @@ test("hosted env contract requires plaintext bootstrap password and accepts vali
     })
   )
 })
+
+test("seed adds missing service catalog entries without overwriting existing settings services", async () => {
+  const settingsCollection = getDatabase().collection("settings")
+  const originalSettings = await settingsCollection.findOne({ _id: "app-settings" })
+  assert.ok(originalSettings)
+
+  const customWasherPrice = 12345
+  const degradedServices = originalSettings.services
+    .filter((service: { serviceCode: string }) => !["ironing_only", "laundry_plastic"].includes(service.serviceCode))
+    .map((service: { serviceCode: string; price: number }) =>
+      service.serviceCode === "washer"
+        ? { ...service, price: customWasherPrice }
+        : service
+    )
+
+  try {
+    await settingsCollection.updateOne(
+      { _id: "app-settings" },
+      { $set: { services: degradedServices } }
+    )
+
+    await ensureSeedData()
+
+    const upgradedSettings = await settingsCollection.findOne({ _id: "app-settings" })
+    assert.ok(upgradedSettings)
+
+    const washerService = upgradedSettings.services.find((service: { serviceCode: string }) => service.serviceCode === "washer")
+    const ironingOnlyService = upgradedSettings.services.find((service: { serviceCode: string }) => service.serviceCode === "ironing_only")
+    const laundryPlasticService = upgradedSettings.services.find((service: { serviceCode: string }) => service.serviceCode === "laundry_plastic")
+
+    assert.equal(washerService?.price, customWasherPrice)
+    assert.equal(ironingOnlyService?.displayName, "Setrika Saja")
+    assert.equal(ironingOnlyService?.price, 5000)
+    assert.equal(laundryPlasticService?.displayName, "Plastik Laundry")
+    assert.equal(laundryPlasticService?.price, 2000)
+  } finally {
+    await settingsCollection.updateOne(
+      { _id: "app-settings" },
+      { $set: { services: originalSettings.services } }
+    )
+  }
+})
+
+test("seed backfills order activityAt from lifecycle timestamps", async () => {
+  const ordersCollection = getDatabase().collection("orders")
+  const uniqueSuffix = `activity-${Date.now().toString().slice(-6)}`
+  const createdAt = DateTime.now().setZone("Asia/Jakarta").minus({ days: 2 }).toUTC().toISO()
+  const completedAt = DateTime.now().setZone("Asia/Jakarta").minus({ days: 1, hours: 6 }).toUTC().toISO()
+  const voidedAt = DateTime.now().setZone("Asia/Jakarta").minus({ hours: 8 }).toUTC().toISO()
+  assert.ok(createdAt)
+  assert.ok(completedAt)
+  assert.ok(voidedAt)
+
+  const baseOrder = {
+    customerId: `customer_${uniqueSuffix}`,
+    customerName: "SEED ACTIVITY CUSTOMER",
+    customerPhone: "081234567890",
+    weightKg: 1,
+    items: [
+      {
+        serviceCode: "washer" as const,
+        serviceLabel: "Washer",
+        quantity: 1,
+        unitPrice: 10000,
+        pricingModel: "fixed" as const,
+        lineTotal: 10000,
+      }
+    ],
+    subtotal: 10000,
+    discount: 0,
+    total: 10000,
+    redeemedPoints: 0,
+    earnedStamps: 1,
+    resultingPointBalance: 1,
+  }
+
+  const insertedOrderIds = [
+    `order_active_${uniqueSuffix}`,
+    `order_done_${uniqueSuffix}`,
+    `order_void_${uniqueSuffix}`,
+  ]
+
+  try {
+    await ordersCollection.insertMany([
+      {
+        _id: insertedOrderIds[0],
+        orderCode: `CJ-ACT-${uniqueSuffix}-1`,
+        ...baseOrder,
+        receiptSnapshot: {
+          orderCode: `CJ-ACT-${uniqueSuffix}-1`,
+          customerName: "SEED ACTIVITY CUSTOMER",
+          serviceSummary: "1x Washer",
+          totalLabel: "Rp10.000",
+          createdAtLabel: "created",
+          laundryName: "CJ Laundry",
+          laundryPhone: "081234567890",
+        },
+        status: "Active" as const,
+        createdAt,
+      },
+      {
+        _id: insertedOrderIds[1],
+        orderCode: `CJ-ACT-${uniqueSuffix}-2`,
+        ...baseOrder,
+        receiptSnapshot: {
+          orderCode: `CJ-ACT-${uniqueSuffix}-2`,
+          customerName: "SEED ACTIVITY CUSTOMER",
+          serviceSummary: "1x Washer",
+          totalLabel: "Rp10.000",
+          createdAtLabel: "created",
+          laundryName: "CJ Laundry",
+          laundryPhone: "081234567890",
+        },
+        status: "Done" as const,
+        createdAt,
+        completedAt,
+      },
+      {
+        _id: insertedOrderIds[2],
+        orderCode: `CJ-ACT-${uniqueSuffix}-3`,
+        ...baseOrder,
+        receiptSnapshot: {
+          orderCode: `CJ-ACT-${uniqueSuffix}-3`,
+          customerName: "SEED ACTIVITY CUSTOMER",
+          serviceSummary: "1x Washer",
+          totalLabel: "Rp10.000",
+          createdAtLabel: "created",
+          laundryName: "CJ Laundry",
+          laundryPhone: "081234567890",
+        },
+        status: "Voided" as const,
+        createdAt,
+        voidedAt,
+        voidReason: "Seed test",
+      }
+    ])
+
+    await ensureSeedData()
+
+    const seededOrders = await ordersCollection.find({ _id: { $in: insertedOrderIds } }).toArray()
+    const seededActive = seededOrders.find((order) => order._id === insertedOrderIds[0])
+    const seededDone = seededOrders.find((order) => order._id === insertedOrderIds[1])
+    const seededVoided = seededOrders.find((order) => order._id === insertedOrderIds[2])
+
+    assert.equal(seededActive?.activityAt, createdAt)
+    assert.equal(seededDone?.activityAt, completedAt)
+    assert.equal(seededVoided?.activityAt, voidedAt)
+  } finally {
+    await ordersCollection.deleteMany({ _id: { $in: insertedOrderIds } })
+  }
+})
+
+test("laundry history validates cursor, oldest sort, and final page semantics", async () => {
+  let result = await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "admin123" })
+  })
+  const adminCookie = result.response.headers.get("set-cookie")
+  assert.ok(adminCookie)
+
+  const uniqueSuffix = `history-${Date.now().toString().slice(-6)}`
+  const customerName = `History Customer ${uniqueSuffix}`
+  const customerPhone = `08177${Date.now().toString().slice(-6)}`
+
+  result = await requestJson("/v1/admin/customers", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `history-create-${uniqueSuffix}`,
+    },
+    body: JSON.stringify({ name: customerName, phone: customerPhone })
+  })
+  const customerId = result.payload.customer.customerId as string
+
+  const payload = {
+    customerId,
+    weightKg: 1,
+    redeemCount: 0,
+    items: [
+      { serviceCode: "washer", quantity: 1, selected: true },
+      { serviceCode: "dryer", quantity: 0, selected: false },
+      { serviceCode: "detergent", quantity: 0, selected: false },
+      { serviceCode: "softener", quantity: 0, selected: false },
+      { serviceCode: "wash_dry_fold_package", quantity: 0, selected: false },
+      { serviceCode: "ironing", quantity: 0, selected: false },
+      { serviceCode: "ironing_only", quantity: 0, selected: false },
+      { serviceCode: "laundry_plastic", quantity: 0, selected: false }
+    ]
+  }
+
+  result = await requestJson("/v1/admin/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `history-order-1-${uniqueSuffix}`,
+    },
+    body: JSON.stringify(payload)
+  })
+  const olderOrderId = result.payload.order.orderId as string
+
+  result = await requestJson("/v1/admin/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `history-order-2-${uniqueSuffix}`,
+    },
+    body: JSON.stringify(payload)
+  })
+  const newerOrderId = result.payload.order.orderId as string
+
+  const olderIso = DateTime.now().setZone("Asia/Jakarta").minus({ hours: 2 }).toUTC().toISO()
+  const newerIso = DateTime.now().setZone("Asia/Jakarta").minus({ hours: 1 }).toUTC().toISO()
+  assert.ok(olderIso)
+  assert.ok(newerIso)
+
+  await getDatabase().collection("orders").updateOne(
+    { _id: olderOrderId },
+    { $set: { createdAt: olderIso, activityAt: olderIso } }
+  )
+  await getDatabase().collection("orders").updateOne(
+    { _id: newerOrderId },
+    { $set: { createdAt: newerIso, activityAt: newerIso } }
+  )
+
+  result = await requestJson("/v1/admin/orders/laundry?scope=history&sort=oldest&status=active&pageSize=1", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.items.length, 1)
+  assert.equal(result.payload.items[0].orderId, olderOrderId)
+  assert.ok(result.payload.nextCursor)
+
+  result = await requestJson(`/v1/admin/orders/laundry?scope=history&sort=oldest&status=active&pageSize=1&cursor=${encodeURIComponent(result.payload.nextCursor)}`, {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.items.length, 1)
+  assert.equal(result.payload.items[0].orderId, newerOrderId)
+  assert.equal(result.payload.nextCursor, undefined)
+
+  await requestJson("/v1/admin/orders/laundry?scope=history&sort=oldest&status=active&cursor=not-valid-base64", {
+    headers: { Cookie: adminCookie! },
+    expectedStatus: 422,
+  })
+})
+
+test("backend covers POS-only services, laundry filters, notification terminal states, and dashboard failed counts", async () => {
+  let result = await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "admin123" })
+  })
+  const adminCookie = result.response.headers.get("set-cookie")
+  assert.ok(adminCookie)
+
+  const uniqueSuffix = `coverage-${Date.now().toString().slice(-6)}`
+  const customerName = `Coverage Customer ${uniqueSuffix}`
+  const customerPhone = `08188${Date.now().toString().slice(-6)}`
+
+  result = await requestJson("/v1/public/landing")
+  const landingCodes = result.payload.services.map((service: { code: string }) => service.code)
+  assert.equal(landingCodes.includes("ironing_only"), false)
+  assert.equal(landingCodes.includes("laundry_plastic"), false)
+
+  result = await requestJson("/v1/admin/customers", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `coverage-create-${uniqueSuffix}`,
+    },
+    body: JSON.stringify({ name: customerName, phone: customerPhone })
+  })
+  const customerId = result.payload.customer.customerId as string
+
+  const specialtyPayload = {
+    customerId,
+    weightKg: 2,
+    redeemCount: 0,
+    items: [
+      { serviceCode: "washer", quantity: 0, selected: false },
+      { serviceCode: "dryer", quantity: 0, selected: false },
+      { serviceCode: "detergent", quantity: 0, selected: false },
+      { serviceCode: "softener", quantity: 0, selected: false },
+      { serviceCode: "wash_dry_fold_package", quantity: 0, selected: false },
+      { serviceCode: "ironing", quantity: 0, selected: false },
+      { serviceCode: "ironing_only", quantity: 1, selected: true },
+      { serviceCode: "laundry_plastic", quantity: 2, selected: true }
+    ]
+  }
+
+  result = await requestJson("/v1/admin/orders/preview", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(specialtyPayload)
+  })
+  assert.equal(result.payload.total, 14000)
+  assert.equal(result.payload.items.length, 2)
+  assert.equal(result.payload.items[0].serviceCode, "ironing_only")
+  assert.equal(result.payload.items[0].quantityLabel, "2.0 kg")
+  assert.equal(result.payload.items[1].serviceCode, "laundry_plastic")
+  assert.equal(result.payload.items[1].lineTotal, 4000)
+
+  result = await requestJson("/v1/admin/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `coverage-order-1-${uniqueSuffix}`,
+    },
+    body: JSON.stringify(specialtyPayload)
+  })
+  const firstOrderId = result.payload.order.orderId as string
+
+  result = await requestJson("/v1/admin/orders/laundry?scope=active&sort=oldest", {
+    headers: { Cookie: adminCookie! }
+  })
+  const activeLaundryOrder = result.payload.items.find((order: { orderId: string }) => order.orderId === firstOrderId)
+  assert.ok(activeLaundryOrder)
+  assert.equal(activeLaundryOrder.status, "Active")
+  assert.match(activeLaundryOrder.serviceSummary, /Setrika Saja/)
+  assert.match(activeLaundryOrder.serviceSummary, /Plastik Laundry/)
+
+  result = await requestJson(`/v1/admin/orders/${firstOrderId}/done`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `coverage-done-${uniqueSuffix}`,
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.status, "Done")
+
+  const yesterdayIso = DateTime.now().setZone("Asia/Jakarta").minus({ days: 1 }).toUTC().toISO()
+  assert.ok(yesterdayIso)
+  await getDatabase().collection("orders").updateOne(
+    { _id: firstOrderId },
+    { $set: { createdAt: yesterdayIso } }
+  )
+
+  const cancelledPayload = {
+    customerId,
+    weightKg: 1.5,
+    redeemCount: 0,
+    items: [
+      { serviceCode: "washer", quantity: 1, selected: true },
+      { serviceCode: "dryer", quantity: 1, selected: true },
+      { serviceCode: "detergent", quantity: 0, selected: false },
+      { serviceCode: "softener", quantity: 0, selected: false },
+      { serviceCode: "wash_dry_fold_package", quantity: 0, selected: false },
+      { serviceCode: "ironing", quantity: 0, selected: false },
+      { serviceCode: "ironing_only", quantity: 0, selected: false },
+      { serviceCode: "laundry_plastic", quantity: 0, selected: false }
+    ]
+  }
+
+  result = await requestJson("/v1/admin/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `coverage-order-2-${uniqueSuffix}`,
+    },
+    body: JSON.stringify(cancelledPayload)
+  })
+  const secondOrderId = result.payload.order.orderId as string
+
+  result = await requestJson(`/v1/admin/orders/${secondOrderId}/void`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `coverage-void-${uniqueSuffix}`,
+    },
+    body: JSON.stringify({
+      reason: "Coverage cancel",
+      notifyCustomer: false,
+    })
+  })
+  assert.equal(result.payload.status, "Cancelled")
+
+  await getDatabase().collection("orders").updateOne(
+    { _id: secondOrderId },
+    { $set: { createdAt: yesterdayIso } }
+  )
+
+  result = await requestJson("/v1/admin/orders/laundry?scope=today&sort=newest", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.ok(result.payload.items.some((order: { orderId: string; status: string }) => order.orderId === firstOrderId && order.status === "Done"))
+  assert.equal(result.payload.items.some((order: { orderId: string; status: string }) => order.orderId === secondOrderId && order.status === "Cancelled"), false)
+
+  result = await requestJson("/v1/admin/orders/laundry?scope=today&sort=newest&includeCancelled=true", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.ok(result.payload.items.some((order: { orderId: string; status: string }) => order.orderId === secondOrderId && order.status === "Cancelled"))
+
+  result = await requestJson("/v1/admin/orders/laundry?scope=history&sort=newest&includeCancelled=true&pageSize=1", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.items.length, 1)
+  assert.ok(result.payload.nextCursor)
+
+  result = await requestJson(`/v1/admin/orders/laundry?scope=history&sort=newest&includeCancelled=true&pageSize=1&cursor=${encodeURIComponent(result.payload.nextCursor)}`, {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.items.length, 1)
+
+  result = await requestJson("/v1/admin/orders/laundry?scope=history&sort=newest&status=done", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.ok(result.payload.items.some((order: { orderId: string; status: string }) => order.orderId === firstOrderId && order.status === "Done"))
+
+  result = await requestJson("/v1/admin/orders/laundry?scope=history&sort=newest&status=cancelled&includeCancelled=true", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.ok(result.payload.items.some((order: { orderId: string; status: string }) => order.orderId === secondOrderId && order.status === "Cancelled"))
+
+  result = await requestJson("/v1/public/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: customerPhone, name: customerName })
+  })
+  const publicCookie = result.response.headers.get("set-cookie")
+  assert.ok(publicCookie)
+
+  result = await requestJson(`/v1/public/me/orders/${firstOrderId}`, {
+    headers: { Cookie: publicCookie! }
+  })
+  assert.match(result.payload.serviceSummary, /Setrika Saja/)
+  assert.match(result.payload.serviceSummary, /Plastik Laundry/)
+  assert.equal(result.payload.items.some((item: { serviceCode: string }) => item.serviceCode === "ironing_only"), true)
+  assert.equal(result.payload.items.some((item: { serviceCode: string }) => item.serviceCode === "laundry_plastic"), true)
+
+  await getDatabase().collection("notifications").insertOne({
+    _id: `notification_complete_${uniqueSuffix}`,
+    customerName: customerName.toUpperCase(),
+    destinationPhone: `+62${customerPhone.slice(1)}`,
+    eventType: "order_done",
+    renderStatus: "not_required",
+    deliveryStatus: "failed",
+    latestFailureReason: "Coverage manual complete",
+    attemptCount: 1,
+    preparedMessage: "manual complete",
+    businessKey: `manual-complete:${uniqueSuffix}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  })
+
+  result = await requestJson(`/v1/admin/notifications/notification_complete_${uniqueSuffix}/manual-complete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.deliveryStatus, "manual_resolved")
+  assert.equal(result.payload.manualResolutionNote, "Ditandai selesai oleh admin.")
+
+  await getDatabase().collection("notifications").insertOne({
+    _id: `notification_ignore_${uniqueSuffix}`,
+    customerName: customerName.toUpperCase(),
+    destinationPhone: `+62${customerPhone.slice(1)}`,
+    orderId: secondOrderId,
+    orderCode: "IGNORE-COVERAGE",
+    eventType: "order_confirmed",
+    renderStatus: "ready",
+    deliveryStatus: "failed",
+    latestFailureReason: "Coverage ignore",
+    attemptCount: 1,
+    preparedMessage: "ignored fallback",
+    businessKey: `ignored:${uniqueSuffix}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  })
+
+  result = await requestJson(`/v1/admin/notifications/notification_ignore_${uniqueSuffix}/ignore`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.deliveryStatus, "ignored")
+  assert.equal(result.payload.ignoredNote, "Diabaikan oleh admin.")
+
+  const ignoredReceiptResponse = await fetch(`${baseUrl}/v1/admin/notifications/notification_ignore_${uniqueSuffix}/receipt`, {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(ignoredReceiptResponse.status, 200)
+
+  for (let index = 0; index < 13; index += 1) {
+    await getDatabase().collection("notifications").insertOne({
+      _id: `dashboard_failed_${uniqueSuffix}_${index}`,
+      customerName: customerName.toUpperCase(),
+      destinationPhone: `+62${customerPhone.slice(1)}`,
+      eventType: "welcome",
+      renderStatus: "not_required",
+      deliveryStatus: "failed",
+      latestFailureReason: `Coverage failed ${index}`,
+      attemptCount: 1,
+      preparedMessage: `failed ${index}`,
+      businessKey: `dashboard-failed:${uniqueSuffix}:${index}`,
+      createdAt: new Date(Date.now() - (index + 1) * 60_000).toISOString(),
+      updatedAt: new Date(Date.now() - (index + 1) * 60_000).toISOString()
+    })
+  }
+
+  result = await requestJson("/v1/admin/dashboard?window=daily", {
+    headers: { Cookie: adminCookie! }
+  })
+  const failedNotifications = result.payload.notifications.filter(
+    (notification: { deliveryStatus: string }) => notification.deliveryStatus === "failed"
+  )
+  assert.ok(failedNotifications.length >= 13)
+})

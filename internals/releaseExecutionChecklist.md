@@ -81,6 +81,7 @@ Confirm all are true on the selected release commit:
 - WhatsApp gateway logs are structured JSON
 - error responses include `message`, `error.code`, and `error.requestId`
 - deploy log shows the same `WHATSAPP_GATEWAY_TOKEN` fingerprint for `api` and `whatsapp-gateway`
+- first-start deploy logs are reviewed for order `activityAt` backfill and index creation timing if the environment contains legacy order data
 
 ### 5.3 Security and hardening
 
@@ -173,6 +174,7 @@ Decision:
 - admin login works
 - one customer-safe business flow works end to end
 - API logs and request IDs are visible
+- if this is the first rollout containing order `activityAt`, startup backfill/index creation completes without prolonged degradation
 
 ## 10. First-Hour Monitoring
 

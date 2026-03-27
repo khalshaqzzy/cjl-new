@@ -12,16 +12,21 @@ Purpose: condensed next-work inventory after deployment workflow implementation
 5. Verify settings persistence on staging with `08...` input across laundry phone, public contact, public WhatsApp, admin contacts, and address, then confirm landing, portal, portal PDF receipt, and admin fallback PNG receipt all reflect the saved values correctly.
 6. Validate the new customer magic-link flow on real devices: welcome WA link open, one-time redeem behavior, QR scan usability, and the POS `Lanjutkan ke POS` transition after QR display.
 7. Validate failed-notification operator recovery on staging:
-   - failed `order_confirmed` shows `Download Receipt` plus `Send Message`
-   - failed non-receipt notifications show `Send Message` plus `Kirim Ulang`
+   - failed `order_confirmed` shows `Send Message`, `Download Receipt`, `Resend Message`, `Mark as Done`, and `Ignore`
+   - failed non-receipt notifications show `Send Message`, `Kirim Ulang`, `Mark as Done`, and `Ignore`
    - `Send Message` opens a valid prefilled `wa.me` link
+   - `Mark as Done` lands in the `Manual` tab and `Ignore` lands in the `Ignored` tab
 8. Exercise the latest mobile/front-desk UX polish on real devices during staging:
    - login submit should not leave the portal slightly zoomed in
    - portal top bar on `Riwayat`, `Stamp`, and `Leaderboard` should stay brand-first
    - the landing address card `Kunjungi CJ Laundry` Maps CTA should open correctly
    - admin customer detail and QR login sheet should remain fully usable on narrow screens
-9. Execute the full `productionReadinessChecklist.md` on staging before allowing the first production push.
-10. Decide whether the v1 in-process outbox remains sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
+   - admin POS should keep selected customer identity visible throughout service selection and order confirmation
+   - admin Laundry tabs should behave correctly for `Aktif`, `Hari Ini`, `History`, and default-off cancelled visibility
+9. During staging deploy, observe first-start behavior for the new order `activityAt` backfill and index creation on realistic data volume before allowing the first production push.
+10. Execute the full `productionReadinessChecklist.md` on staging before allowing the first production push.
+11. Decide whether the v1 in-process outbox remains sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
+12. Decide whether admin notification polling should move to a delta/summary endpoint so `AdminShell` and dashboard stop re-reading the full notifications collection.
 
 ## Lower Priority Follow-Ups
 
@@ -31,6 +36,7 @@ Purpose: condensed next-work inventory after deployment workflow implementation
 4. Decide whether frontend images should stay `next start` based or move to standalone output for leaner hosted runtime images.
 5. Decide whether the frozen landing page should later be brought into stricter PRD wording parity or remain a deliberate marketing exception.
 6. Decide whether destructive reset-token rotation should later support narrower wipes, such as WhatsApp auth only, instead of always removing Mongo and Caddy state too.
+7. Add a dedicated backend-test TypeScript config and script, for example `packages/api/tsconfig.test.json` plus a root script such as `npm run typecheck:backend-tests`, so VS Code diagnostics on `packages/api/test/*.ts` are enforced consistently in CI.
 
 ## Explicitly Out Of Scope From This Session
 
@@ -38,3 +44,4 @@ Purpose: condensed next-work inventory after deployment workflow implementation
 - running the first live production rollout
 - staging validation of the new real WhatsApp runtime
 - production-scale hardening beyond the new 30-day customer session and one-time login token model
+- notification read-model optimization beyond the current laundry-order amplification reduction

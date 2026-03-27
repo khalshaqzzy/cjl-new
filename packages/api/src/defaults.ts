@@ -132,6 +132,20 @@ export const defaultSettings = (): SettingsDocument => ({
       price: 4500,
       isActive: true,
       publicDescription: "Setrika rapi profesional"
+    },
+    {
+      serviceCode: "ironing_only",
+      displayName: "Setrika Saja",
+      pricingModel: "per_kg",
+      price: 5000,
+      isActive: true,
+    },
+    {
+      serviceCode: "laundry_plastic",
+      displayName: "Plastik Laundry",
+      pricingModel: "fixed",
+      price: 2000,
+      isActive: true,
     }
   ],
   messageTemplates: defaultMessageTemplates,
