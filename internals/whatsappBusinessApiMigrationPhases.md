@@ -173,24 +173,19 @@ Body text:
 ```text
 Halo {{customer_name}}!
 
-Selamat datang di CJ Laundry. Akun pelanggan Anda sudah berhasil terdaftar.
+Selamat datang di CJ Laundry. Nomor pelanggan Anda sudah berhasil terdaftar.
 
 Website CJ Laundry:
 https://cjlaundry.com
 
 Di website tersebut Anda bisa:
-- login ke customer portal
 - cek status laundry
 - lihat riwayat order
 - cek poin / stamp
 - lihat leaderboard pelanggan
 
-Gunakan data berikut untuk login:
-Nomor HP: {{customer_phone}}
-Nama: {{customer_name}}
-
-Login otomatis sekali pakai:
-{{auto_login_url}}
+Nomor terdaftar:
+{{registered_phone}}
 
 Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
 ```
@@ -198,8 +193,7 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
 Named parameter examples:
 
 - `customer_name` = `BUDI SANTOSO`
-- `customer_phone` = `081234567890`
-- `auto_login_url` = `https://cjlaundry.com/auto-login?token=abc123`
+- `registered_phone` = `081234567890`
 
 ### 6.3 Template 2: `cjl_order_confirmed_v1`
 
@@ -244,7 +238,7 @@ Named parameter examples:
 
 - `customer_name` = `BUDI SANTOSO`
 - `order_code` = `CJ-260402-001`
-- `created_at` = `2 Apr 2026 10:35`
+- `created_at` = `2 Apr 2026, 10:35`
 - `weight_kg_label` = `3.0 kg`
 - `service_summary` = `1x Washer, 1x Dryer, 3.0 kg Setrika`
 - `total_label` = `Rp 24.500`
@@ -279,8 +273,8 @@ Named parameter examples:
 
 - `customer_name` = `BUDI SANTOSO`
 - `order_code` = `CJ-260402-001`
-- `created_at` = `2 Apr 2026 10:35`
-- `completed_at` = `2 Apr 2026 14:20`
+- `created_at` = `2 Apr 2026, 10:35`
+- `completed_at` = `2 Apr 2026, 14:20`
 
 ### 6.5 Template 4: `cjl_order_void_notice_v1`
 
@@ -295,12 +289,14 @@ Input values for WhatsApp Manager:
 Body text:
 
 ```text
-Halo {{customer_name}}.
+Halo pelanggan CJ Laundry.
 
-Order dengan kode {{order_code}} dibatalkan.
+Order atas nama {{customer_name}} dengan kode {{order_code}} dibatalkan.
 
-Alasan:
+Alasan pembatalan:
 {{reason}}
+
+Silakan hubungi CJ Laundry bila Anda memerlukan bantuan lebih lanjut.
 ```
 
 Named parameter examples:
@@ -326,10 +322,10 @@ Halo {{customer_name}}!
 
 Data akun CJ Laundry Anda sudah diperbarui.
 
-Nomor login terbaru:
+Nomor pelanggan terbaru:
 {{customer_phone}}
 
-Silakan gunakan nomor tersebut bersama nama terdaftar Anda saat login ke portal customer.
+Silakan simpan nomor terbaru ini untuk kebutuhan komunikasi dengan CJ Laundry.
 ```
 
 Named parameter examples:
@@ -403,6 +399,14 @@ Tasks:
 Acceptance gate:
 
 - all five templates are approved, or all blockers are isolated to documented copy issues only
+
+Current status snapshot:
+
+- completed operationally on 2026-04-02
+- all five templates are active in WhatsApp Manager
+- `cjl_welcome_v1` is active as `MARKETING`
+- `cjl_order_confirmed_v1`, `cjl_order_done_v1`, `cjl_order_void_notice_v1`, and `cjl_account_info_v1` are active as `UTILITY`
+- template IDs still need to be copied into the repo registry if the operator has not recorded them yet
 
 ### Phase 2: Provider Abstraction and Data Model Expansion
 

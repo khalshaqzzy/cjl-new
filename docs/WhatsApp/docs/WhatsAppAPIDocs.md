@@ -56,6 +56,13 @@ Semua referensi eksternal di bawah ini berasal dari dokumentasi resmi Meta yang 
 Sumber official tambahan di repo:
 
 - [`docs/WhatsApp/docs/WhatsApp Cloud API.postman_collection.json`](./WhatsApp%20Cloud%20API.postman_collection.json)
+- [`docs/WhatsApp/docs/WhatsAppTemplateRegistry.md`](./WhatsAppTemplateRegistry.md)
+
+Catatan Phase 1:
+
+- Phase 1 hanya menyiapkan registry template, sample receipt approval asset, dan approval tracking.
+- Phase 1 tidak mengubah active runtime `whatsapp-web.js` gateway, `settings.messageTemplates`, outbox delivery path, atau deploy topology saat ini.
+- Phase 1 sekarang selesai secara operasional: semua lima template aktif di WhatsApp Manager, dengan satu exception penting bahwa `cjl_welcome_v1` aktif sebagai `MARKETING`.
 
 Catatan versi:
 
@@ -85,7 +92,7 @@ Untuk kebutuhan CJ Laundry, yang relevan adalah:
 
 | Event | Trigger bisnis saat ini | Keterangan |
 | --- | --- | --- |
-| `welcome` | customer baru berhasil dibuat | berisi data login pelanggan + one-time auto-login link |
+| `welcome` | customer baru berhasil dibuat | runtime saat ini menyiapkan data login pelanggan + one-time auto-login link, tetapi draft Meta `UTILITY` round-one sengaja tidak memakai link tersebut |
 | `order_confirmed` | order berhasil dikonfirmasi | berisi ringkasan order, poin, direct status link, dan saat ini mengirim PDF receipt |
 | `order_done` | order ditandai selesai | berisi waktu order masuk dan selesai |
 | `order_void_notice` | void/cancel dengan `notifyCustomer=true` | notifikasi koreksi operasional |
@@ -147,6 +154,7 @@ Konsekuensi untuk CJ Laundry:
 
 - seluruh notifikasi operasional CJ Laundry sebaiknya dimodelkan sebagai **utility templates**
 - copy template harus tetap transaksional, informatif, dan tidak menyisipkan promosi
+- exception repo fact saat ini: `cjl_welcome_v1` yang aktif di WhatsApp Manager tetap tercatat sebagai `MARKETING`, jadi implementasi nanti harus membaca kategori approved dari registry, bukan mengasumsikan semua event non-order otomatis `UTILITY`
 
 ### 6.3 Delivery ordering tidak dijamin
 
@@ -264,11 +272,11 @@ Catatan praktis:
 
 | Event | Trigger app saat ini | Bentuk pesan saat ini | Rekomendasi Cloud API | Alasan |
 | --- | --- | --- | --- | --- |
-| `welcome` | customer created | text dengan login info + `autoLoginUrl` | utility template, body text + optional URL button | sering dikirim di luar window; konten transaksional |
+| `welcome` | customer created | runtime saat ini punya text login info + `autoLoginUrl` | body-only welcome template yang aktif saat ini tercatat sebagai marketing | approved outcome nyata di WhatsApp Manager harus dianggap source of truth walaupun intent awalnya utility-safe |
 | `order_confirmed` | order confirmed | text + PDF receipt + status link | utility template dengan `DOCUMENT` header, body params, status URL button atau link di body | menjaga atomisitas pesan dan menghindari masalah ordering |
 | `order_done` | order marked done | text update waktu selesai | utility template body-only | konten update operasional |
 | `order_void_notice` | void with notify | text koreksi | utility template body-only | transaksional jika murni koreksi |
-| `account_info` | customer identity updated | text info akun terbaru | utility template body-only, optional login link | konten update akun, bukan promo |
+| `account_info` | customer identity updated | text info akun terbaru | utility template body-only tanpa login wording | konten update akun, bukan promo maupun auth |
 
 ### 9.1 Catatan khusus `order_confirmed`
 
@@ -291,22 +299,29 @@ Baseline desain yang direkomendasikan:
 
 Rekomendasi:
 
-- category: `UTILITY`
+- preferred design intent: `UTILITY`
 - komponen minimal:
   - `BODY`
-- komponen opsional:
-  - `URL` button untuk portal atau magic login
 
-Parameter minimum yang perlu tersedia saat send:
+Parameter minimum untuk draft utility round-one:
 
 - `customerName`
-- `customerPhone`
-- `autoLoginUrl` atau `portalUrl`
+- `customerPhone` sebagai nomor terdaftar yang ditampilkan ulang
+
+Copy guidance untuk tetap `UTILITY`:
+
+- boleh menyebut bahwa nomor pelanggan sudah terdaftar
+- boleh menyebut website CJ Laundry dan capability umum seperti cek status atau riwayat
+- jangan sertakan kredensial login eksplisit
+- jangan sertakan one-time auto-login link pada round one
+- jangan menulis instruksi login langsung seperti `Gunakan data berikut untuk login`
 
 Catatan:
 
-- jika `autoLoginUrl` dipakai langsung di body, validasi panjang message dan template review copy
-- bila ingin UX lebih rapi, button URL lebih baik daripada menaruh banyak link mentah
+- runtime app saat ini masih menyiapkan `autoLoginUrl` untuk welcome flow
+- tetapi untuk Phase 1 template approval, field itu sebaiknya tidak dipakai pada template `UTILITY`
+- bila tim nanti tetap ingin mengirim one-time login link via template resmi, perlakukan itu sebagai keputusan kategori/template terpisah
+- actual Phase 1 outcome yang sudah aktif di WhatsApp Manager adalah `MARKETING`, sehingga implementasi nanti harus mengikuti registry approved category alih-alih intent awal
 
 ### 10.2 `order_confirmed`
 
@@ -360,14 +375,18 @@ Rekomendasi:
 - category: `UTILITY`
 - komponen minimal:
   - `BODY`
-- komponen opsional:
-  - URL button ke portal login / auto-login
 
 Parameter minimum:
 
 - `customerName`
 - `customerPhone`
-- optional `autoLoginUrl`
+
+Copy guidance:
+
+- fokus pada konfirmasi bahwa data akun pelanggan berubah
+- tampilkan nomor terbaru yang tercatat
+- jangan gunakan wording seperti `nomor login`, `login`, atau `auto-login`
+- jangan tambahkan CTA portal/login pada round one
 
 ### 10.5 `order_void_notice`
 
