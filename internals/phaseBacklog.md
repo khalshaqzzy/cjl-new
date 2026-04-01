@@ -5,6 +5,8 @@ Purpose: condensed next-work inventory after deployment workflow implementation
 
 ## Next Recommended Items
 
+0. If CJ Laundry chooses to migrate to the official WhatsApp Business Platform before further rollout work, follow `internals/whatsappBusinessApiMigrationPhases.md` and treat the current `whatsapp-web.js` gateway as deprecated code only, not as a runtime to preserve.
+
 1. Provision the real staging VM, DNS records, and GitHub staging secrets, then execute the first staging rollout.
 2. Validate hosted replica-set initialization, including correct `MONGO_REPLICA_KEY`, `WHATSAPP_GATEWAY_TOKEN`, deploy reset token wiring, `/ready`, TLS issuance, and branch-based deploy behavior on staging before touching production.
 3. Pair the real CJ Laundry number through the admin WhatsApp status page on staging and verify `Generate Pairing Code`, `Reset Session`, and reconnect behavior against a real device.

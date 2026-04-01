@@ -157,6 +157,8 @@ Focus:
 - automated testing is now in scope for local repo verification and is implemented
 - multiple lockfiles still exist in the monorepo, but explicit Turbopack root removed the earlier workspace-root warning blocker
 - hosted rollout is now blocked more by real-device validation than by missing WhatsApp implementation code
+- the repo now also has a dedicated migration plan for moving from the current `whatsapp-web.js` sidecar to the official WhatsApp Business Platform in `internals/whatsappBusinessApiMigrationPhases.md`
+- if the official migration is prioritized before the first production rollout, treat the current gateway/pairing runtime as deprecated code to retain in-repo, not as a runtime path to preserve
 - production hardening now includes structured runtime logging, typed error envelopes, token-hash persistence, origin checks, Mongo-backed rate limiting, and CI security gates
 - admin WhatsApp control throttling now keys by authenticated admin and only counts failed control attempts, so repeated successful reconnect/pairing operations no longer consume the same abuse budget
 - clean-checkout CI validation no longer depends on a prebuilt committed `packages/contracts/dist` artifact
