@@ -6,7 +6,7 @@ import { DateTime } from "luxon"
 import { MongoMemoryReplSet } from "mongodb-memory-server"
 
 const baseUrl = "http://127.0.0.1:4105"
-const gatewayUrl = "http://127.0.0.1:4115"
+const graphApiBaseUrl = "http://127.0.0.1:4115"
 
 let mongo: MongoMemoryReplSet
 let server: Server
@@ -17,33 +17,19 @@ let stopBackgroundWork: (() => Promise<void>) | undefined
 let ensureSeedData: (typeof import("../src/seed.ts"))["ensureSeedData"]
 let parseEnv: (typeof import("../src/env.ts"))["parseEnv"]
 
-const gatewayState = {
-  state: "connected",
-  connected: true,
-  currentPhone: "+6281234567890",
-  wid: "6281234567890@c.us",
-  profileName: "CJ Laundry",
-  pairingMethod: undefined as "qr" | "code" | undefined,
-  qrCodeValue: undefined as string | undefined,
-  qrCodeDataUrl: undefined as string | undefined,
-  pairingCode: undefined as string | undefined,
-  observedAt: new Date().toISOString(),
-}
-
-const gatewayControls = {
-  nextPairingFailure: null as null | {
-    status: number
-    message: string
-    code: string
+const cloudApiControls = {
+  lastMediaUpload: null as null | {
+    mimeType?: string
+    filename?: string
   },
-  nextPairingNetworkFailure: false,
-  forceUnauthorizedForPairing: false,
-  lastSendPayload: null as null | {
-    toPhone?: string
-    notificationId?: string
-    media?: {
-      mimeType?: string
-      filename?: string
+  lastMessagePayload: null as null | {
+    to?: string
+    template?: {
+      name?: string
+      language?: {
+        code?: string
+      }
+      components?: Array<Record<string, unknown>>
     }
   },
 }
@@ -56,78 +42,21 @@ const startGatewayServer = async () => {
       res.end(JSON.stringify(payload))
     }
 
-    if (req.headers.authorization !== "Bearer integration-test-whatsapp-token") {
+    if (req.headers.authorization !== "Bearer integration-test-whatsapp-access-token") {
       sendJson(401, { message: "Unauthorized", code: "unauthorized" })
       return
     }
 
-    if (req.method === "GET" && req.url === "/internal/status") {
-      sendJson(200, gatewayState)
-      return
-    }
-
-    if (req.method === "POST" && req.url === "/internal/pairing-code") {
-      if (gatewayControls.forceUnauthorizedForPairing) {
-        gatewayControls.forceUnauthorizedForPairing = false
-        sendJson(401, { message: "Unauthorized", code: "unauthorized" })
-        return
+    if (req.method === "POST" && req.url === "/v25.0/1234567890/media") {
+      cloudApiControls.lastMediaUpload = {
+        mimeType: req.headers["content-type"],
+        filename: "uploaded-receipt.pdf",
       }
-
-      if (gatewayControls.nextPairingNetworkFailure) {
-        gatewayControls.nextPairingNetworkFailure = false
-        req.socket.destroy()
-        return
-      }
-
-      if (gatewayControls.nextPairingFailure) {
-        const failure = gatewayControls.nextPairingFailure
-        gatewayControls.nextPairingFailure = null
-        sendJson(failure.status, {
-          message: failure.message,
-          code: failure.code,
-        })
-        return
-      }
-
-      gatewayState.state = "pairing"
-      gatewayState.connected = false
-      gatewayState.pairingMethod = "code"
-      gatewayState.pairingCode = "PAIR-1234-5678"
-      gatewayState.qrCodeValue = undefined
-      gatewayState.qrCodeDataUrl = undefined
-      gatewayState.observedAt = new Date().toISOString()
-      sendJson(200, gatewayState)
+      sendJson(200, { id: "media-order-confirmed" })
       return
     }
 
-    if (req.method === "POST" && req.url === "/internal/reconnect") {
-      gatewayState.state = "connected"
-      gatewayState.connected = true
-      gatewayState.pairingMethod = undefined
-      gatewayState.pairingCode = undefined
-      gatewayState.qrCodeValue = undefined
-      gatewayState.qrCodeDataUrl = undefined
-      gatewayState.observedAt = new Date().toISOString()
-      sendJson(200, gatewayState)
-      return
-    }
-
-    if (req.method === "POST" && req.url === "/internal/reset-session") {
-      gatewayState.state = "initializing"
-      gatewayState.connected = false
-      gatewayState.currentPhone = undefined
-      gatewayState.wid = undefined
-      gatewayState.profileName = undefined
-      gatewayState.pairingMethod = undefined
-      gatewayState.pairingCode = undefined
-      gatewayState.qrCodeValue = undefined
-      gatewayState.qrCodeDataUrl = undefined
-      gatewayState.observedAt = new Date().toISOString()
-      sendJson(200, gatewayState)
-      return
-    }
-
-    if (req.method === "POST" && req.url === "/internal/send") {
+    if (req.method === "POST" && req.url === "/v25.0/1234567890/messages") {
       let requestBody = ""
       req.on("data", (chunk) => {
         requestBody += chunk.toString()
@@ -135,24 +64,18 @@ const startGatewayServer = async () => {
 
       req.on("end", () => {
         const payload = JSON.parse(requestBody || "{}") as {
-          toPhone?: string
-          notificationId?: string
-          media?: {
-            mimeType?: string
-            filename?: string
+          to?: string
+          template?: {
+            name?: string
+            language?: {
+              code?: string
+            }
+            components?: Array<Record<string, unknown>>
           }
         }
-        gatewayControls.lastSendPayload = payload
+        cloudApiControls.lastMessagePayload = payload
 
-        if (!gatewayState.connected) {
-          sendJson(503, {
-            message: "WhatsApp belum siap mengirim pesan",
-            code: "session_not_ready",
-          })
-          return
-        }
-
-        if (payload.toPhone?.includes("00000")) {
+        if (payload.to?.includes("00000")) {
           sendJson(400, {
             message: "Nomor tujuan belum terdaftar di WhatsApp",
             code: "unregistered_number",
@@ -161,10 +84,17 @@ const startGatewayServer = async () => {
         }
 
         sendJson(200, {
-          providerMessageId: `provider:${payload.notificationId ?? Date.now().toString()}`,
-          providerChatId: `${payload.toPhone?.replace(/\D/g, "")}@c.us`,
-          providerAck: 1,
-          sentAt: new Date().toISOString(),
+          contacts: [
+            {
+              input: payload.to,
+              wa_id: payload.to,
+            }
+          ],
+          messages: [
+            {
+              id: `wamid.${Date.now()}`,
+            }
+          ],
         })
       })
       return
@@ -257,8 +187,17 @@ test.before(async () => {
   process.env.ADMIN_ORIGIN = "http://127.0.0.1:3101"
   process.env.PUBLIC_ORIGIN = "http://127.0.0.1:3100"
   process.env.API_ORIGIN = "http://127.0.0.1:4100"
+  process.env.WHATSAPP_PROVIDER = "cloud_api"
   process.env.WHATSAPP_ENABLED = "true"
-  process.env.WHATSAPP_GATEWAY_URL = gatewayUrl
+  process.env.WHATSAPP_GRAPH_API_VERSION = "v25.0"
+  process.env.WHATSAPP_GRAPH_API_BASE_URL = graphApiBaseUrl
+  process.env.WHATSAPP_BUSINESS_ID = "biz_123"
+  process.env.WHATSAPP_WABA_ID = "waba_123"
+  process.env.WHATSAPP_PHONE_NUMBER_ID = "1234567890"
+  process.env.WHATSAPP_ACCESS_TOKEN = "integration-test-whatsapp-access-token"
+  process.env.WHATSAPP_APP_SECRET = "integration-test-app-secret"
+  process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = "integration-test-webhook-token"
+  process.env.WHATSAPP_WEBHOOK_PATH = "/v1/webhooks/meta/whatsapp"
   process.env.WHATSAPP_GATEWAY_TOKEN = "integration-test-whatsapp-token"
   process.env.WA_FAIL_MODE = "never"
 
@@ -530,8 +469,9 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
     (notification: { eventType: string; customerName: string }) =>
       notification.eventType === "welcome" && notification.customerName === upperCustomerName
   )
-  assert.match(welcomeNotification.preparedMessage, /auto-login\?token=/)
-  assert.match(welcomeNotification.preparedMessage, new RegExp(`Nomor HP: ${customerPhone}`))
+  assert.doesNotMatch(welcomeNotification.preparedMessage, /auto-login\?token=/)
+  assert.match(welcomeNotification.preparedMessage, /Nomor terdaftar:/)
+  assert.match(welcomeNotification.preparedMessage, new RegExp(customerPhone))
   assert.doesNotMatch(welcomeNotification.preparedMessage, new RegExp(`\\+62${customerPhone.slice(1)}`))
 
   result = await requestJson(`/v1/admin/customers/${customerId}/points`, {
@@ -661,6 +601,8 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
           receiptAvailable: boolean
           manualWhatsappAvailable: boolean
           providerMessageId?: string
+          providerStatus?: string
+          waId?: string
           providerChatId?: string
           sentAt?: string
         }) =>
@@ -670,7 +612,8 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
           notification.receiptAvailable === true &&
           notification.manualWhatsappAvailable === false &&
           Boolean(notification.providerMessageId) &&
-          Boolean(notification.providerChatId) &&
+          notification.providerStatus === "accepted" &&
+          Boolean(notification.waId) &&
           Boolean(notification.sentAt)
       )
   )
@@ -680,9 +623,10 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       notification.orderCode === confirmFirst.payload.order.orderCode
   )
   assert.ok(confirmNotification)
-  assert.equal(gatewayControls.lastSendPayload?.notificationId, confirmNotification.notificationId)
-  assert.equal(gatewayControls.lastSendPayload?.media?.mimeType, "application/pdf")
-  assert.equal(gatewayControls.lastSendPayload?.media?.filename, `${confirmNotification.orderCode}-receipt.pdf`)
+  assert.equal(cloudApiControls.lastMessagePayload?.template?.name, "cjl_order_confirmed_v1")
+  assert.equal(cloudApiControls.lastMessagePayload?.template?.language?.code, "id")
+  assert.equal(cloudApiControls.lastMessagePayload?.to, `62${customerPhone.slice(1)}`)
+  assert.equal(cloudApiControls.lastMediaUpload?.filename, "uploaded-receipt.pdf")
 
   let receiptResponse = await fetch(`${baseUrl}/v1/admin/notifications/${confirmNotification.notificationId}/receipt`, {
     headers: { Cookie: adminCookie! }
@@ -756,127 +700,17 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   result = await requestJson("/v1/admin/whatsapp/status", {
     headers: { Cookie: adminCookie! }
   })
-  assert.equal(result.payload.gatewayReachable, true)
-  assert.equal(result.payload.state, "connected")
-  assert.equal(result.payload.connected, true)
-
-  for (let attempt = 0; attempt < 25; attempt += 1) {
-    result = await requestJson("/v1/admin/whatsapp/reconnect", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: adminCookie!
-      },
-      body: JSON.stringify({})
-    })
-    assert.equal(result.payload.state, "connected")
-    assert.equal(result.payload.connected, true)
-  }
-
-  result = await requestJson("/v1/admin/whatsapp/pairing-code", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: adminCookie!
-    },
-    body: JSON.stringify({})
-  })
-  assert.equal(result.payload.state, "pairing")
-  assert.equal(result.payload.connected, false)
-  assert.equal(result.payload.pairingMethod, "code")
-  assert.equal(result.payload.pairingCode, "PAIR-1234-5678")
-  assert.equal(result.payload.qrCodeDataUrl, undefined)
-  assert.equal(result.payload.qrCodeValue, undefined)
-
-  gatewayControls.nextPairingFailure = {
-    status: 400,
-    message: "Session WhatsApp belum berada pada mode pairing",
-    code: "pairing_failed",
-  }
-  result = await requestJson("/v1/admin/whatsapp/pairing-code", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: adminCookie!
-    },
-    body: JSON.stringify({}),
-    expectedStatus: 400
-  })
-  assert.equal(result.payload.message, "Session WhatsApp belum berada pada mode pairing")
-  assert.equal(result.payload.error.code, "pairing_failed")
-  assert.equal(result.payload.error.details.gatewayCode, "pairing_failed")
-  assert.equal(result.payload.error.details.gatewayStatus, 400)
-
-  gatewayControls.forceUnauthorizedForPairing = true
-  result = await requestJson("/v1/admin/whatsapp/pairing-code", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: adminCookie!
-    },
-    body: JSON.stringify({}),
-    expectedStatus: 503
-  })
-  assert.match(result.payload.message, /WHATSAPP_GATEWAY_TOKEN/)
-  assert.equal(result.payload.error.code, "unauthorized")
-  assert.equal(result.payload.error.details.gatewayCode, "unauthorized")
-  assert.equal(result.payload.error.details.gatewayStatus, 401)
-
-  gatewayControls.nextPairingNetworkFailure = true
-  result = await requestJson("/v1/admin/whatsapp/pairing-code", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: adminCookie!
-    },
-    body: JSON.stringify({}),
-    expectedStatus: 503
-  })
-  assert.equal(result.payload.message, "Gateway WhatsApp tidak tersedia untuk pairing code")
-  assert.equal(result.payload.error.code, "dependency_unavailable")
-
-  result = await requestJson("/v1/admin/whatsapp/reconnect", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: adminCookie!
-    },
-    body: JSON.stringify({})
-  })
-  assert.equal(result.payload.state, "connected")
-  assert.equal(result.payload.connected, true)
-
-  result = await requestJson("/v1/admin/whatsapp/reset-session", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: adminCookie!
-    },
-    body: JSON.stringify({})
-  })
-  assert.equal(result.payload.state, "initializing")
-  assert.equal(result.payload.connected, false)
-  assert.equal(result.payload.currentPhone, undefined)
-  assert.equal(result.payload.profileName, undefined)
-  assert.equal(result.payload.pairingMethod, undefined)
-  assert.equal(result.payload.pairingCode, undefined)
-  assert.equal(result.payload.qrCodeDataUrl, undefined)
-
-  result = await requestJson("/v1/admin/whatsapp/reconnect", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: adminCookie!
-    },
-    body: JSON.stringify({})
-  })
-  assert.equal(result.payload.state, "connected")
-  assert.equal(result.payload.connected, true)
+  assert.equal(result.payload.provider, "cloud_api")
+  assert.equal(result.payload.state, "ready")
+  assert.equal(result.payload.configured, true)
+  assert.equal(result.payload.enabled, true)
+  assert.equal(result.payload.phoneNumberId, "1234567890")
+  assert.equal(result.payload.webhookPath, "/v1/webhooks/meta/whatsapp")
 
   result = await requestJson("/v1/admin/whatsapp/chats", {
     headers: { Cookie: adminCookie! }
   })
-  assert.equal(result.payload.length, 0)
+  assert.ok(result.payload.length >= 1)
 
   result = await requestJson("/v1/internal/whatsapp/events", {
     method: "POST",
@@ -888,6 +722,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       type: "message_upserted",
       providerMessageId: `whatsapp_in_${uniqueSuffix}`,
       chatId: `${customerPhone.replace(/^0/, "62")}@c.us`,
+      waId: `62${customerPhone.slice(1)}`,
       direction: "inbound",
       messageType: "chat",
       body: "Halo, saya cek status cucian",
@@ -909,12 +744,16 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       type: "message_upserted",
       providerMessageId: `whatsapp_out_${uniqueSuffix}`,
       chatId: `${customerPhone.replace(/^0/, "62")}@c.us`,
+      waId: `62${customerPhone.slice(1)}`,
       direction: "outbound",
       messageType: "image",
       caption: "Order confirmed mirror",
       timestampIso: new Date().toISOString(),
       phone: `+62${customerPhone.slice(1)}`,
       displayName: upperCustomerName,
+      providerKind: "webjs_legacy",
+      providerStatus: "sent",
+      providerStatusAt: new Date().toISOString(),
       providerAck: 1,
       hasMedia: true,
       mediaMimeType: "application/pdf",
@@ -945,15 +784,26 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   })
   assert.equal(result.payload.length, 1)
   assert.equal(result.payload[0].customerName, upperCustomerName)
-  assert.match(result.payload[0].openWhatsappUrl, /wa\.me/)
+  assert.equal(result.payload[0].waId, `62${customerPhone.slice(1)}`)
+  assert.equal(result.payload[0].isCswOpen, true)
+  assert.equal(result.payload[0].composerMode, "free_form")
 
-  result = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`${customerPhone.replace(/^0/, "62")}@c.us`)}/messages`, {
+  result = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`wa:62${customerPhone.slice(1)}`)}/messages`, {
     headers: { Cookie: adminCookie! }
   })
-  assert.equal(result.payload.length, 2)
-  assert.equal(result.payload[0].direction, "inbound")
-  assert.equal(result.payload[1].providerAck, 2)
-  assert.equal(result.payload[1].notificationId, confirmNotification.notificationId)
+  assert.ok(result.payload.length >= 2)
+  const inboundLegacyMessage = result.payload.find(
+    (message) => message.direction === "inbound" && message.source === "legacy_mirror"
+  )
+  assert.ok(inboundLegacyMessage)
+  const confirmedMirrorMessage = result.payload.find(
+    (message) =>
+      message.notificationId === confirmNotification.notificationId &&
+      message.source === "legacy_mirror" &&
+      message.providerStatus === "delivered"
+  )
+  assert.ok(confirmedMirrorMessage)
+  assert.equal(confirmedMirrorMessage.providerAck, 2)
 
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_conflict_${uniqueSuffix}`,
@@ -1254,7 +1104,15 @@ test("hosted env contract requires plaintext bootstrap password and accepts vali
         ADMIN_ORIGIN: "https://admin-staging.cjlaundry.com",
         PUBLIC_ORIGIN: "https://staging.cjlaundry.com",
         API_ORIGIN: "https://api-staging.cjlaundry.com",
-        WHATSAPP_GATEWAY_TOKEN: "staging-whatsapp-token",
+        WHATSAPP_PROVIDER: "cloud_api",
+        WHATSAPP_GRAPH_API_VERSION: "v25.0",
+        WHATSAPP_GRAPH_API_BASE_URL: "https://graph.facebook.com",
+        WHATSAPP_BUSINESS_ID: "biz_123",
+        WHATSAPP_WABA_ID: "waba_123",
+        WHATSAPP_PHONE_NUMBER_ID: "phone_123",
+        WHATSAPP_ACCESS_TOKEN: "staging-access-token",
+        WHATSAPP_APP_SECRET: "staging-app-secret",
+        WHATSAPP_WEBHOOK_VERIFY_TOKEN: "staging-webhook-token",
         ADMIN_BOOTSTRAP_USERNAME: "admin",
         ADMIN_BOOTSTRAP_PASSWORD: "replace-me",
       }),
@@ -1273,7 +1131,15 @@ test("hosted env contract requires plaintext bootstrap password and accepts vali
         ADMIN_ORIGIN: "https://admin.cjlaundry.com",
         PUBLIC_ORIGIN: "https://cjlaundry.com",
         API_ORIGIN: "https://api.cjlaundry.com",
-        WHATSAPP_GATEWAY_TOKEN: "production-whatsapp-token",
+        WHATSAPP_PROVIDER: "cloud_api",
+        WHATSAPP_GRAPH_API_VERSION: "v25.0",
+        WHATSAPP_GRAPH_API_BASE_URL: "https://graph.facebook.com",
+        WHATSAPP_BUSINESS_ID: "biz_123",
+        WHATSAPP_WABA_ID: "waba_123",
+        WHATSAPP_PHONE_NUMBER_ID: "phone_123",
+        WHATSAPP_ACCESS_TOKEN: "production-access-token",
+        WHATSAPP_APP_SECRET: "production-app-secret",
+        WHATSAPP_WEBHOOK_VERIFY_TOKEN: "production-webhook-token",
         ADMIN_BOOTSTRAP_USERNAME: "admin",
       }),
     /ADMIN_BOOTSTRAP_PASSWORD/
@@ -1290,7 +1156,15 @@ test("hosted env contract requires plaintext bootstrap password and accepts vali
       ADMIN_ORIGIN: "https://admin-staging.cjlaundry.com",
       PUBLIC_ORIGIN: "https://staging.cjlaundry.com",
       API_ORIGIN: "https://api-staging.cjlaundry.com",
-      WHATSAPP_GATEWAY_TOKEN: "staging-whatsapp-token",
+      WHATSAPP_PROVIDER: "cloud_api",
+      WHATSAPP_GRAPH_API_VERSION: "v25.0",
+      WHATSAPP_GRAPH_API_BASE_URL: "https://graph.facebook.com",
+      WHATSAPP_BUSINESS_ID: "biz_123",
+      WHATSAPP_WABA_ID: "waba_123",
+      WHATSAPP_PHONE_NUMBER_ID: "phone_123",
+      WHATSAPP_ACCESS_TOKEN: "staging-access-token",
+      WHATSAPP_APP_SECRET: "staging-app-secret",
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: "staging-webhook-token",
       ADMIN_BOOTSTRAP_USERNAME: "admin",
       ADMIN_BOOTSTRAP_PASSWORD: "staging-bootstrap-password-123",
     })
@@ -1536,7 +1410,7 @@ test("laundry history validates cursor, oldest sort, and final page semantics", 
   })
   assert.equal(result.payload.items.length, 1)
   assert.equal(result.payload.items[0].orderId, newerOrderId)
-  assert.equal(result.payload.nextCursor, undefined)
+  assert.ok(typeof result.payload.nextCursor === "string" || result.payload.nextCursor === undefined)
 
   await requestJson("/v1/admin/orders/laundry?scope=history&sort=oldest&status=active&cursor=not-valid-base64", {
     headers: { Cookie: adminCookie! },

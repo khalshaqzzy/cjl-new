@@ -78,6 +78,13 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await page.getByTestId("settings-admin-contact-primary-1").click()
   await page.getByRole("button", { name: "Simpan" }).click()
   await expect(page.getByText("Pengaturan berhasil disimpan.")).toBeVisible()
+  await expect(page.getByText("Blok Pesan WhatsApp")).not.toBeVisible()
+
+  await page.goto("http://127.0.0.1:3101/admin/whatsapp")
+  await expect(page.getByText("Cloud API Provider Health")).toBeVisible()
+  await expect(page.getByText("Generate Pairing Code")).not.toBeVisible()
+  await expect(page.getByText("Pairing Material")).not.toBeVisible()
+  await expect(page.getByText(/Ack /)).not.toBeVisible()
 
   const landingPage = await browser.newPage()
   await landingPage.goto("http://127.0.0.1:3100/")

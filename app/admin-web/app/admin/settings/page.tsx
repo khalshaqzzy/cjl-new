@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { adminApi } from "@/lib/api"
 import {
@@ -23,7 +22,6 @@ import {
   Save,
   Shirt,
   ShoppingBag,
-  Sparkles,
   SprayCan,
   Star,
   Trash2,
@@ -109,13 +107,6 @@ type InitialState = {
   laundryAddress: string
   operatingHours: string
   services: ServiceSetting[]
-  messageTemplates: {
-    welcome: string
-    orderConfirmed: string
-    orderDone: string
-    orderVoidNotice: string
-    accountInfo: string
-  }
 }
 
 export default function SettingsPage() {
@@ -127,13 +118,6 @@ export default function SettingsPage() {
   const [laundryAddress, setLaundryAddress] = useState("")
   const [operatingHours, setOperatingHours] = useState("")
   const [services, setServices] = useState<ServiceSetting[]>([])
-  const [messageTemplates, setMessageTemplates] = useState({
-    welcome: "",
-    orderConfirmed: "",
-    orderDone: "",
-    orderVoidNotice: "",
-    accountInfo: "",
-  })
   const [initialState, setInitialState] = useState<InitialState | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -153,7 +137,6 @@ export default function SettingsPage() {
         setLaundryAddress(payload.business.address)
         setOperatingHours(payload.business.operatingHours)
         setServices(payload.services)
-        setMessageTemplates(payload.messageTemplates)
         setInitialState({
           laundryName: payload.business.laundryName,
           laundryPhone: payload.business.laundryPhone,
@@ -163,7 +146,6 @@ export default function SettingsPage() {
           laundryAddress: payload.business.address,
           operatingHours: payload.business.operatingHours,
           services: payload.services,
-          messageTemplates: payload.messageTemplates,
         })
         setLoadError("")
       })
@@ -276,7 +258,6 @@ export default function SettingsPage() {
           operatingHours: operatingHours.trim(),
         },
         services,
-        messageTemplates,
       })
 
       setLaundryName(payload.business.laundryName)
@@ -287,7 +268,6 @@ export default function SettingsPage() {
       setLaundryAddress(payload.business.address)
       setOperatingHours(payload.business.operatingHours)
       setServices(payload.services)
-      setMessageTemplates(payload.messageTemplates)
       setInitialState({
         laundryName: payload.business.laundryName,
         laundryPhone: payload.business.laundryPhone,
@@ -297,7 +277,6 @@ export default function SettingsPage() {
         laundryAddress: payload.business.address,
         operatingHours: payload.business.operatingHours,
         services: payload.services,
-        messageTemplates: payload.messageTemplates,
       })
       setHasChanges(false)
       setSaveSuccess("Pengaturan berhasil disimpan.")
@@ -321,14 +300,13 @@ export default function SettingsPage() {
     setLaundryAddress(initialState.laundryAddress)
     setOperatingHours(initialState.operatingHours)
     setServices(initialState.services)
-    setMessageTemplates(initialState.messageTemplates)
     setSaveError("")
     setSaveSuccess("")
     setHasChanges(false)
   }
 
   return (
-    <AdminShell title="Pengaturan" subtitle="Profil bisnis, nomor admin, dan template pesan">
+    <AdminShell title="Pengaturan" subtitle="Profil bisnis, nomor admin, dan harga layanan">
       <div className="space-y-8 px-4 py-6 pb-32 lg:px-6">
         {isLoading && (
           <div className="flex items-center gap-2 rounded-xl border border-line-base bg-bg-surface px-4 py-3 text-sm text-text-muted">
@@ -473,44 +451,6 @@ export default function SettingsPage() {
                 <Plus className="mr-2 h-4 w-4" />
                 Tambah Nomor Admin
               </Button>
-            </CardContent>
-          </Card>
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex items-center gap-2 border-b border-line-base pb-1">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50">
-              <Sparkles className="h-3.5 w-3.5 text-rose-600" />
-            </div>
-            <h2 className="text-sm font-semibold text-text-strong">Blok Pesan WhatsApp</h2>
-          </div>
-
-          <Card className="rounded-xl border-line-base bg-bg-surface shadow-card">
-            <CardContent className="space-y-4 p-5">
-              {[
-                { key: "welcome", label: "Welcome", helper: "Terkirim saat pelanggan baru dibuat. Gunakan token {{autoLoginUrl}} untuk link login sekali pakai." },
-                { key: "orderConfirmed", label: "Order Dikonfirmasi", helper: "Gunakan {{orderCode}}, {{createdAt}}, {{weightKgLabel}}, {{serviceSummary}}, {{totalLabel}}, {{earnedStamps}}, {{redeemedPoints}}, {{currentPoints}}, {{statusUrl}}." },
-                { key: "orderDone", label: "Order Selesai", helper: "Gunakan {{orderCode}}, {{createdAt}}, {{completedAt}}." },
-                { key: "orderVoidNotice", label: "Order Dibatalkan", helper: "Gunakan {{orderCode}} dan {{reason}} untuk koreksi operasional." },
-                { key: "accountInfo", label: "Info Akun", helper: "Terkirim setelah nama/nomor pelanggan diperbarui." },
-              ].map(({ key, label, helper }) => (
-                <div key={key} className="space-y-1.5">
-                  <label className="text-xs font-medium text-text-muted">{label}</label>
-                  <Textarea
-                    value={messageTemplates[key as keyof typeof messageTemplates]}
-                    onChange={(event) => {
-                      setMessageTemplates((current) => ({
-                        ...current,
-                        [key]: event.target.value,
-                      }))
-                      markDirty()
-                    }}
-                    rows={4}
-                    className="resize-none rounded-lg border-line-base text-sm"
-                  />
-                  <p className="text-xs text-text-muted">{helper}</p>
-                </div>
-              ))}
             </CardContent>
           </Card>
         </section>

@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import Image from "next/image"
 import type {
   WhatsappChatSummary,
   WhatsappConnectionStatus,
@@ -10,11 +9,10 @@ import type {
 import {
   Loader2,
   MessageCircle,
-  QrCode,
   RefreshCw,
-  Smartphone,
-  Unplug,
-  Wifi,
+  Send,
+  ShieldCheck,
+  Webhook,
 } from "lucide-react"
 import { AdminShell } from "@/components/admin/admin-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,24 +22,38 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { adminApi } from "@/lib/api"
 
-const statusTone: Record<WhatsappConnectionStatus["state"], string> = {
+const providerTone: Record<WhatsappConnectionStatus["state"], string> = {
   disabled: "bg-slate-100 text-slate-700",
-  initializing: "bg-amber-100 text-amber-700",
-  pairing: "bg-sky-100 text-sky-700",
-  authenticated: "bg-amber-100 text-amber-700",
-  connected: "bg-emerald-100 text-emerald-700",
-  disconnected: "bg-rose-100 text-rose-700",
-  auth_failure: "bg-rose-100 text-rose-700",
+  ready: "bg-emerald-100 text-emerald-700",
+  misconfigured: "bg-amber-100 text-amber-700",
+  degraded: "bg-rose-100 text-rose-700",
 }
 
-const statusLabel: Record<WhatsappConnectionStatus["state"], string> = {
+const providerLabel: Record<WhatsappConnectionStatus["state"], string> = {
   disabled: "Dinonaktifkan",
-  initializing: "Menyiapkan",
-  pairing: "Pairing",
-  authenticated: "Terautentikasi",
-  connected: "Terhubung",
-  disconnected: "Terputus",
-  auth_failure: "Auth Gagal",
+  ready: "Siap",
+  misconfigured: "Belum Lengkap",
+  degraded: "Terdegradasi",
+}
+
+const composerTone: Record<WhatsappChatSummary["composerMode"], string> = {
+  free_form: "bg-emerald-100 text-emerald-700",
+  template_only: "bg-amber-100 text-amber-700",
+  read_only: "bg-slate-100 text-slate-700",
+}
+
+const composerLabel: Record<WhatsappChatSummary["composerMode"], string> = {
+  free_form: "Free-form allowed",
+  template_only: "Template only",
+  read_only: "Read-only",
+}
+
+const messageStatusTone: Record<string, string> = {
+  accepted: "bg-sky-100 text-sky-700",
+  sent: "bg-indigo-100 text-indigo-700",
+  delivered: "bg-emerald-100 text-emerald-700",
+  read: "bg-emerald-200 text-emerald-800",
+  failed: "bg-rose-100 text-rose-700",
 }
 
 export default function WhatsappAdminPage() {
@@ -51,18 +63,12 @@ export default function WhatsappAdminPage() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [busyAction, setBusyAction] = useState<"pair" | "reconnect" | "reset" | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   const selectedChat = useMemo(
     () => chats.find((chat) => chat.chatId === selectedChatId) ?? null,
     [chats, selectedChatId]
   )
-
-  const pairingMethod = status?.pairingMethod
-  const showQrCode = pairingMethod === "qr" && Boolean(status?.qrCodeDataUrl)
-  const showPairingCode = pairingMethod === "code" || Boolean(status?.pairingCode)
-  const canResetSession =
-    Boolean(error) || status?.state === "auth_failure" || status?.state === "disconnected"
 
   const loadStatusAndChats = async (preserveSelection = true) => {
     const [statusPayload, chatPayload] = await Promise.all([
@@ -87,11 +93,10 @@ export default function WhatsappAdminPage() {
 
     const run = async () => {
       try {
-        setError(null)
         await loadStatusAndChats(false)
       } catch (nextError) {
         if (!cancelled) {
-          setError(nextError instanceof Error ? nextError.message : "Gagal memuat WhatsApp")
+          setError(nextError instanceof Error ? nextError.message : "Gagal memuat panel WhatsApp")
         }
       } finally {
         if (!cancelled) {
@@ -127,7 +132,7 @@ export default function WhatsappAdminPage() {
         }
       } catch (nextError) {
         if (!cancelled) {
-          setError(nextError instanceof Error ? nextError.message : "Gagal memuat percakapan")
+          setError(nextError instanceof Error ? nextError.message : "Gagal memuat timeline WhatsApp")
         }
       }
     }
@@ -143,64 +148,30 @@ export default function WhatsappAdminPage() {
     }
   }, [selectedChatId])
 
-  const handlePairing = async () => {
-    setBusyAction("pair")
-    setError(null)
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
     try {
-      const payload = await adminApi.requestWhatsappPairingCode()
-      setStatus(payload)
-      setError(null)
       await loadStatusAndChats()
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Gagal membuat pairing code")
+      setError(nextError instanceof Error ? nextError.message : "Gagal refresh panel WhatsApp")
     } finally {
-      setBusyAction(null)
-    }
-  }
-
-  const handleReconnect = async () => {
-    setBusyAction("reconnect")
-    setError(null)
-    try {
-      const payload = await adminApi.reconnectWhatsapp()
-      setStatus(payload)
-      setError(null)
-      await loadStatusAndChats()
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Gagal reconnect WhatsApp")
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  const handleResetSession = async () => {
-    setBusyAction("reset")
-    setError(null)
-    try {
-      const payload = await adminApi.resetWhatsappSession()
-      setStatus(payload)
-      setError(null)
-      await loadStatusAndChats()
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Gagal reset session WhatsApp")
-    } finally {
-      setBusyAction(null)
+      setIsRefreshing(false)
     }
   }
 
   return (
     <AdminShell
       title="WhatsApp"
-      subtitle="Status linked device dan inbox mirror read-only"
+      subtitle="Provider health, thread visibility, dan timeline pesan hybrid"
       action={
         <Button
           variant="outline"
           size="sm"
           className="rounded-xl"
-          onClick={() => void loadStatusAndChats()}
-          disabled={busyAction !== null}
+          onClick={() => void handleRefresh()}
+          disabled={isRefreshing}
         >
-          <RefreshCw className="mr-1 h-4 w-4" />
+          {isRefreshing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
           Refresh
         </Button>
       }
@@ -223,101 +194,27 @@ export default function WhatsappAdminPage() {
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <CardTitle className="text-base font-semibold text-text-strong">
-                      Status Koneksi
+                      Cloud API Provider Health
                     </CardTitle>
                     <p className="mt-1 text-sm text-text-muted">
-                      Pairing dilakukan dari sini. Balas pelanggan tetap lewat WhatsApp asli.
+                      Outbound otomatis berjalan via Cloud API. Inbox masih hybrid sampai webhook ingestion selesai.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Badge className={cn("rounded-full px-3 py-1 text-xs", status ? statusTone[status.state] : "bg-slate-100 text-slate-700")}>
-                      {status ? statusLabel[status.state] : "Tidak diketahui"}
+                    <Badge className={cn("rounded-full px-3 py-1 text-xs", status ? providerTone[status.state] : "bg-slate-100 text-slate-700")}>
+                      {status ? providerLabel[status.state] : "Tidak diketahui"}
                     </Badge>
                     <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">
-                      {status?.gatewayReachable ? "Gateway aktif" : "Gateway tidak terjangkau"}
+                      {status?.provider === "cloud_api" ? "Cloud API" : "Disabled"}
                     </Badge>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <InfoTile icon={Wifi} label="Nomor aktif" value={status?.currentPhone ?? "-"} />
-                  <InfoTile icon={Smartphone} label="Profile name" value={status?.profileName ?? "-"} />
-                  <InfoTile icon={RefreshCw} label="Terakhir ready" value={status?.lastReadyAt ?? "-"} />
-                  <InfoTile icon={Unplug} label="Disconnect reason" value={status?.lastDisconnectReason ?? "-"} />
-                  <InfoTile icon={Unplug} label="Auth failure" value={status?.lastAuthFailureReason ?? "-"} />
-                  <InfoTile icon={QrCode} label="Pairing code" value={status?.pairingCode ?? "-"} />
-                </div>
-                <div className="rounded-3xl border border-dashed border-line-base bg-bg-subtle p-4">
-                  <div className="mb-4 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-text-strong">Pairing Material</p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="rounded-xl"
-                        onClick={handlePairing}
-                        disabled={busyAction !== null}
-                      >
-                        {busyAction === "pair" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <QrCode className="mr-1 h-4 w-4" />}
-                        Generate Pairing Code
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="rounded-xl"
-                        onClick={handleReconnect}
-                        disabled={busyAction !== null}
-                      >
-                        {busyAction === "reconnect" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}
-                        Reconnect
-                      </Button>
-                      {canResetSession && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl"
-                          onClick={handleResetSession}
-                          disabled={busyAction !== null}
-                        >
-                          {busyAction === "reset" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Unplug className="mr-1 h-4 w-4" />}
-                          Reset Session
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  {showQrCode ? (
-                    <div className="flex flex-col items-center gap-3 rounded-2xl bg-white p-4">
-                      <Image
-                        src={status?.qrCodeDataUrl ?? ""}
-                        alt="WhatsApp QR"
-                        width={224}
-                        height={224}
-                        unoptimized
-                        className="h-56 w-56 rounded-2xl border border-line-base object-contain"
-                      />
-                      <p className="text-center text-xs text-text-muted">
-                        Scan QR ini hanya saat gateway memang berada pada mode QR pairing.
-                      </p>
-                    </div>
-                  ) : showPairingCode ? (
-                    <div className="rounded-2xl bg-white p-6 text-center">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                        Pairing Code Aktif
-                      </p>
-                      <p className="mt-3 text-2xl font-semibold tracking-[0.2em] text-text-strong">
-                        {status?.pairingCode ?? "-"}
-                      </p>
-                      <p className="mt-3 text-sm text-text-muted">
-                        Gunakan pairing code ini dari perangkat WhatsApp utama. QR lama tidak berlaku saat mode pairing code aktif.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl bg-white p-6 text-center text-sm text-text-muted">
-                      QR hanya tampil saat gateway berada pada mode QR pairing. Jalur utama operator adalah pairing code.
-                    </div>
-                  )}
-                </div>
+              <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <InfoTile icon={ShieldCheck} label="Ringkasan" value={status?.summary ?? "-"} />
+                <InfoTile icon={MessageCircle} label="Phone Number ID" value={status?.phoneNumberId ?? "-"} />
+                <InfoTile icon={Webhook} label="Webhook Path" value={status?.webhookPath ?? "-"} />
+                <InfoTile icon={Send} label="Current Phone" value={status?.currentPhone ?? "-"} />
               </CardContent>
             </Card>
 
@@ -325,14 +222,14 @@ export default function WhatsappAdminPage() {
               <Card className="rounded-3xl border-line-base">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base font-semibold text-text-strong">
-                    Inbox Mirror
+                    Thread List
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-3 pb-3">
                   <ScrollArea className="h-[560px] pr-2">
                     {chats.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-line-base px-4 py-10 text-center text-sm text-text-muted">
-                        Belum ada chat yang termirror.
+                        Belum ada thread WhatsApp yang tersimpan.
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -354,7 +251,7 @@ export default function WhatsappAdminPage() {
                                   {chat.title}
                                 </p>
                                 <p className="truncate text-xs text-text-muted">
-                                  {chat.phone ?? chat.chatId}
+                                  {chat.phone ?? chat.waId ?? chat.chatId}
                                 </p>
                               </div>
                               {chat.unreadCount > 0 && (
@@ -366,8 +263,21 @@ export default function WhatsappAdminPage() {
                             <p className="mt-2 truncate text-sm text-text-body">
                               {chat.lastMessagePreview}
                             </p>
+                            <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                              <Badge className={cn("rounded-full", composerTone[chat.composerMode])}>
+                                {composerLabel[chat.composerMode]}
+                              </Badge>
+                              {chat.isCswOpen ? (
+                                <Badge variant="outline" className="rounded-full">CSW Open</Badge>
+                              ) : (
+                                <Badge variant="outline" className="rounded-full">CSW Closed</Badge>
+                              )}
+                              {chat.isFepOpen && (
+                                <Badge variant="outline" className="rounded-full">FEP Open</Badge>
+                              )}
+                            </div>
                             <div className="mt-2 flex items-center justify-between text-[11px] text-text-muted">
-                              <span>{chat.customerName ?? "Belum terkait customer"}</span>
+                              <span>{chat.customerName ?? chat.displayName ?? "Belum terkait customer"}</span>
                               <span>{chat.lastMessageAtLabel ?? "-"}</span>
                             </div>
                           </button>
@@ -380,25 +290,29 @@ export default function WhatsappAdminPage() {
 
               <Card className="rounded-3xl border-line-base">
                 <CardHeader className="pb-2">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <CardTitle className="text-base font-semibold text-text-strong">
-                        {selectedChat?.title ?? "Pilih chat"}
-                      </CardTitle>
-                      <p className="mt-1 text-sm text-text-muted">
-                        {selectedChat?.phone ?? "Thread percakapan akan tampil di sini."}
-                      </p>
-                    </div>
-                    {selectedChat?.openWhatsappUrl && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="rounded-xl"
-                        onClick={() => window.open(selectedChat.openWhatsappUrl, "_blank", "noopener,noreferrer")}
-                      >
-                        <MessageCircle className="mr-1 h-4 w-4" />
-                        Open in WhatsApp
-                      </Button>
+                  <div className="flex flex-col gap-2">
+                    <CardTitle className="text-base font-semibold text-text-strong">
+                      {selectedChat?.title ?? "Pilih thread"}
+                    </CardTitle>
+                    <p className="text-sm text-text-muted">
+                      {selectedChat?.phone ?? selectedChat?.waId ?? "Timeline pesan akan tampil di sini."}
+                    </p>
+                    {selectedChat && (
+                      <div className="flex flex-wrap gap-2">
+                        <Badge className={cn("rounded-full", composerTone[selectedChat.composerMode])}>
+                          {composerLabel[selectedChat.composerMode]}
+                        </Badge>
+                        {selectedChat.cswExpiresAtLabel && (
+                          <Badge variant="outline" className="rounded-full">
+                            CSW hingga {selectedChat.cswExpiresAtLabel}
+                          </Badge>
+                        )}
+                        {selectedChat.fepExpiresAtLabel && (
+                          <Badge variant="outline" className="rounded-full">
+                            FEP hingga {selectedChat.fepExpiresAtLabel}
+                          </Badge>
+                        )}
+                      </div>
                     )}
                   </div>
                 </CardHeader>
@@ -406,11 +320,11 @@ export default function WhatsappAdminPage() {
                   <ScrollArea className="h-[560px] pr-2">
                     {!selectedChat ? (
                       <div className="rounded-2xl border border-dashed border-line-base px-4 py-10 text-center text-sm text-text-muted">
-                        Pilih chat di panel kiri untuk melihat timeline.
+                        Pilih thread di panel kiri untuk melihat timeline.
                       </div>
                     ) : messages.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-line-base px-4 py-10 text-center text-sm text-text-muted">
-                        Belum ada pesan yang tersimpan untuk chat ini.
+                        Belum ada pesan yang tersimpan untuk thread ini.
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -424,20 +338,44 @@ export default function WhatsappAdminPage() {
                                 : "bg-bg-subtle text-text-strong"
                             )}
                           >
-                            <div className="flex items-center gap-2 text-[11px] opacity-80">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] opacity-80">
                               <span>{message.direction === "outbound" ? "Keluar" : "Masuk"}</span>
                               <span>•</span>
                               <span>{message.timestampLabel}</span>
-                              {typeof message.providerAck === "number" && (
+                              {message.source && (
                                 <>
                                   <span>•</span>
-                                  <span>Ack {message.providerAck}</span>
+                                  <span>{message.source}</span>
                                 </>
                               )}
                             </div>
                             <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
                               {message.body ?? message.caption ?? message.textPreview}
                             </p>
+                            {(message.providerStatus || message.pricingType || message.pricingCategory) && (
+                              <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                                {message.providerStatus && (
+                                  <Badge className={cn("rounded-full", messageStatusTone[message.providerStatus] ?? "bg-slate-100 text-slate-700")}>
+                                    {message.providerStatus}
+                                  </Badge>
+                                )}
+                                {message.pricingType && (
+                                  <Badge variant="outline" className="rounded-full">
+                                    pricing: {message.pricingType}
+                                  </Badge>
+                                )}
+                                {message.pricingCategory && (
+                                  <Badge variant="outline" className="rounded-full">
+                                    category: {message.pricingCategory}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                            {(message.latestErrorCode || message.latestErrorMessage) && (
+                              <p className="mt-2 text-xs opacity-80">
+                                Error {message.latestErrorCode ?? "-"}: {message.latestErrorMessage ?? "-"}
+                              </p>
+                            )}
                             {message.hasMedia && (
                               <p className="mt-2 text-xs opacity-80">
                                 Media: {message.mediaName ?? message.mediaMimeType ?? message.messageType}
@@ -477,7 +415,7 @@ function InfoTile({
   label,
   value,
 }: {
-  icon: typeof Wifi
+  icon: typeof ShieldCheck
   label: string
   value: string
 }) {

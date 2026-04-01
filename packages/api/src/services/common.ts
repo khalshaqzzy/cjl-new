@@ -12,12 +12,13 @@ import { env } from "../env.js"
 import { getDatabase } from "../db.js"
 import { createId, createOpaqueToken } from "../lib/ids.js"
 import { formatCurrency } from "../lib/formatters.js"
-import { compileTemplate, shouldForceNotificationFailure } from "../lib/notifications.js"
+import { shouldForceNotificationFailure } from "../lib/notifications.js"
 import { renderReceiptImageBase64 } from "../lib/receipt-image.js"
 import { formatCustomerName, normalizeName, normalizePhoneLabel } from "../lib/normalization.js"
 import { createReceiptRenderModel, renderReceiptPdf } from "../lib/receipts.js"
 import { hashOpaqueToken, maskPhone, tokenLast4 } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel } from "../lib/time.js"
+import { buildTemplateParams } from "../lib/whatsapp-template-registry.js"
 import { DependencyError, NotFoundError, ValidationError } from "../errors.js"
 import { logger, serializeError } from "../logger.js"
 import { getRequestContext } from "../request-context.js"
@@ -192,7 +193,15 @@ export const mapNotification = (notification: NotificationDocument): Notificatio
     notification.eventType === "order_confirmed" &&
     (notification.renderStatus === "ready" || Boolean(notification.renderedReceipt)),
   manualWhatsappAvailable: canManualWhatsappFallback(notification),
+  providerKind: notification.providerKind,
   providerMessageId: notification.providerMessageId,
+  providerStatus: notification.providerStatus,
+  providerStatusAt: notification.providerStatusAt ? formatDateTime(notification.providerStatusAt) : undefined,
+  waId: notification.waId,
+  pricingType: notification.pricingType,
+  pricingCategory: notification.pricingCategory,
+  latestErrorCode: notification.latestErrorCode,
+  latestErrorMessage: notification.latestErrorMessage,
   providerChatId: notification.providerChatId,
   providerAck: notification.providerAck,
   sentAt: notification.sentAt ? formatDateTime(notification.sentAt) : undefined,
@@ -291,19 +300,99 @@ export const mapCustomerOrderDetail = (order: OrderDocument): CustomerOrderDetai
 
 export const buildPreparedMessage = async (
   eventType: NotificationDocument["eventType"],
-  params: Record<string, string | number | undefined>,
-  session?: ClientSession
+  params: Record<string, string>
 ) => {
-  const settings = await getSettingsDocument(session)
-  const template = {
-    welcome: settings.messageTemplates.welcome,
-    order_confirmed: settings.messageTemplates.orderConfirmed,
-    order_done: settings.messageTemplates.orderDone,
-    order_void_notice: settings.messageTemplates.orderVoidNotice,
-    account_info: settings.messageTemplates.accountInfo
-  }[eventType]
+  return buildTemplateParams(eventType, params).preparedMessage
+}
 
-  return compileTemplate(template, params)
+const rehydrateNotificationTemplateContent = async (notification: NotificationDocument) => {
+  const customer =
+    notification.customerId
+      ? await db().collection<CustomerDocument>("customers").findOne({ _id: notification.customerId })
+      : null
+
+  const order =
+    notification.orderId
+      ? await db().collection<OrderDocument>("orders").findOne({ _id: notification.orderId })
+      : null
+
+  const normalizedPhone =
+    normalizePhoneLabel(customer?.phone || notification.destinationPhone) ||
+    customer?.phone ||
+    notification.destinationPhone
+
+  let params: Record<string, string>
+  switch (notification.eventType) {
+    case "welcome":
+      params = {
+        customer_name: customer?.name ?? notification.customerName,
+        registered_phone: normalizedPhone,
+      }
+      break
+    case "account_info":
+      params = {
+        customer_name: customer?.name ?? notification.customerName,
+        customer_phone: normalizedPhone,
+      }
+      break
+    case "order_confirmed":
+      if (!order || !order.directToken) {
+        throw new ValidationError("Data order untuk template order_confirmed tidak tersedia")
+      }
+      params = {
+        customer_name: order.customerName,
+        order_code: order.orderCode,
+        created_at: formatDateTime(order.createdAt),
+        weight_kg_label: formatWeightLabel(order.weightKg),
+        service_summary: buildOrderServiceSummary(order.items),
+        total_label: formatCurrency(order.total),
+        earned_stamps: String(order.earnedStamps),
+        redeemed_points: String(order.redeemedPoints),
+        current_points: String(order.resultingPointBalance),
+        status_url: `${env.PUBLIC_ORIGIN}/status/${order.directToken}`,
+      }
+      break
+    case "order_done":
+      if (!order || !order.completedAt) {
+        throw new ValidationError("Data order selesai untuk template order_done tidak tersedia")
+      }
+      params = {
+        customer_name: order.customerName,
+        order_code: order.orderCode,
+        created_at: formatDateTime(order.createdAt),
+        completed_at: formatDateTime(order.completedAt),
+      }
+      break
+    case "order_void_notice":
+      if (!order) {
+        throw new ValidationError("Data order void untuk template order_void_notice tidak tersedia")
+      }
+      params = {
+        customer_name: order.customerName,
+        order_code: order.orderCode,
+        reason: order.voidReason ?? notification.latestFailureReason ?? "Dibatalkan oleh admin",
+      }
+      break
+  }
+
+  const preparedMessage = await buildPreparedMessage(notification.eventType, params)
+
+  await notificationsCollection().updateOne(
+    { _id: notification._id },
+    {
+      $set: {
+        templateParams: params,
+        preparedMessage,
+        updatedAt: new Date().toISOString(),
+      }
+    }
+  )
+
+  return {
+    ...notification,
+    templateParams: params,
+    preparedMessage,
+  }
 }
 
 export const insertPointLedger = async (entry: PointLedgerDocument, session?: ClientSession) => {
@@ -464,6 +553,10 @@ export const processNotification = async (notificationId: string) => {
     return
   }
 
+  if (!notification.templateParams) {
+    notification = await rehydrateNotificationTemplateContent(notification)
+  }
+
   try {
     logger.info({
       event: "notification.delivery.attempted",
@@ -472,11 +565,7 @@ export const processNotification = async (notificationId: string) => {
       destinationPhone: maskPhone(notification.destinationPhone),
     })
     const whatsappAttachment = await buildWhatsappReceiptAttachment(notification)
-    const delivery = await sendNotificationToWhatsapp(
-      notification,
-      notification.preparedMessage,
-      whatsappAttachment
-    )
+    const delivery = await sendNotificationToWhatsapp(notification, whatsappAttachment)
 
     await notificationsCollection().updateOne(
       { _id: notificationId },
@@ -485,9 +574,11 @@ export const processNotification = async (notificationId: string) => {
           deliveryStatus: "sent",
           lastAttemptAt: now,
           updatedAt: now,
+          providerKind: delivery.providerKind,
           providerMessageId: delivery.providerMessageId,
-          providerChatId: delivery.providerChatId,
-          providerAck: delivery.providerAck,
+          providerStatus: delivery.providerStatus,
+          providerStatusAt: delivery.providerStatusAt,
+          waId: delivery.waId,
           sentAt: delivery.sentAt,
         },
         $unset: {
@@ -502,7 +593,7 @@ export const processNotification = async (notificationId: string) => {
       notificationId,
       eventType: notification.eventType,
       providerMessageId: delivery.providerMessageId,
-      providerChatId: delivery.providerChatId,
+      providerStatus: delivery.providerStatus,
     })
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Gagal mengirim WhatsApp"
@@ -516,7 +607,9 @@ export const processNotification = async (notificationId: string) => {
 
     await markNotificationFailed(notificationId, reason, {
       deliveryStatus: "failed",
+      latestErrorMessage: reason,
       ...(gatewayErrorCode ? { gatewayErrorCode } : {}),
+      ...(gatewayErrorCode ? { latestErrorCode: gatewayErrorCode } : {}),
     })
     logger.error({
       event: "notification.delivery.failed",
@@ -621,7 +714,15 @@ export const markNotificationForRetry = async (notificationId: string) => {
               ignoredNote: "",
               ignoredAt: "",
               renderedReceipt: "",
+              providerKind: "",
               providerMessageId: "",
+              providerStatus: "",
+              providerStatusAt: "",
+              waId: "",
+              pricingType: "",
+              pricingCategory: "",
+              latestErrorCode: "",
+              latestErrorMessage: "",
               providerChatId: "",
               providerAck: "",
               sentAt: "",
@@ -635,7 +736,15 @@ export const markNotificationForRetry = async (notificationId: string) => {
               manualResolvedAt: "",
               ignoredNote: "",
               ignoredAt: "",
+              providerKind: "",
               providerMessageId: "",
+              providerStatus: "",
+              providerStatusAt: "",
+              waId: "",
+              pricingType: "",
+              pricingCategory: "",
+              latestErrorCode: "",
+              latestErrorMessage: "",
               providerChatId: "",
               providerAck: "",
               sentAt: "",

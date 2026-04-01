@@ -41,10 +41,11 @@ This plan also assumes the baseline guide in [`docs/WhatsApp/docs/WhatsAppAPIDoc
   - `providerAck`
   - `providerChatId`
   - pairing / reconnect / reset-session admin controls
-- The current admin WhatsApp surface is intentionally read-only.
-- Current local and hosted compose files boot `whatsapp-gateway` as a first-class service.
-- Current integration tests stub the internal gateway and assert `@c.us` chat IDs plus numeric ack semantics.
-- Current deploy scripts explicitly wait for `whatsapp-gateway` readiness and provision `whatsapp-auth` storage.
+- Those dependencies now exist only as legacy bridge compatibility, not as active target-state runtime behavior.
+- The current admin WhatsApp surface is now provider-health plus hybrid thread/message visibility rather than pairing control.
+- Current local and hosted compose files no longer boot `whatsapp-gateway` as an active runtime service.
+- Current integration tests now stub Cloud API sends directly and only keep the internal event bridge for legacy mirrored-data coverage.
+- Current deploy scripts no longer wait for `whatsapp-gateway` readiness or provision `whatsapp-auth` as an active runtime dependency.
 
 These facts mean the migration is not just an adapter swap. It is a coordinated change across:
 
@@ -414,6 +415,12 @@ Goal:
 
 - make the API provider-agnostic enough to support Cloud API without breaking current business flows
 
+Status snapshot:
+
+- implemented on 2026-04-02 for the current repo scope
+- contracts, persistence types, settings contract narrowing, and admin template-editor removal are completed
+- legacy bridge fields remain for compatibility, but no new feature work should extend them
+
 Primary files/modules to change:
 
 - `packages/api/src/env.ts`
@@ -475,6 +482,15 @@ Acceptance gate:
 Goal:
 
 - replace automatic notification delivery from gateway HTTP calls to direct Graph API calls
+
+Status snapshot:
+
+- implemented on 2026-04-02 for automatic outbound notifications
+- approved-template registry now drives Cloud payload selection
+- `order_confirmed` now uses the document-header template path
+- admin WhatsApp no longer exposes pairing/reconnect/reset-session controls
+- local and hosted runtime topology no longer boot `whatsapp-gateway`
+- webhook verification and inbound/status ingestion are still pending in later phases
 
 Primary files/modules to change:
 
@@ -662,6 +678,12 @@ Acceptance gate:
 
 - CI validates Cloud API behavior without needing a browser-backed WhatsApp session
 
+Status snapshot:
+
+- backend integration coverage now uses a Cloud API stub and passes
+- E2E coverage now asserts template-editor removal and provider-health WhatsApp UI
+- lint and typecheck also pass after the Phase 2-3 changes
+
 ### Phase 8: Deployment, Env, and Runtime Topology Change
 
 Goal:
@@ -695,6 +717,11 @@ Tasks:
 Acceptance gate:
 
 - staging and production deploy successfully without booting `whatsapp-gateway` by default
+
+Status snapshot:
+
+- compose files, env examples, and remote deploy script have been updated so active runtime topology no longer includes `whatsapp-gateway`
+- staging/production operational validation is still pending
 
 ### Phase 9: Data Backfill and Cutover
 
@@ -764,8 +791,7 @@ These are not part of the first migration pass:
 
 The next implementation session should start with:
 
-1. create ADR `0016` for Cloud target state and webjs deprecation policy
-2. create `docs/WhatsApp/docs/WhatsAppTemplateRegistry.md`
-3. submit the five templates from Section 6 in WhatsApp Manager
-4. add `WHATSAPP_PROVIDER` plus Cloud API env placeholders to `packages/api/src/env.ts` and runtime env examples
-5. begin Phase 2 schema expansion before touching the admin UI
+1. implement Phase 4 Meta webhook verification and ingestion
+2. implement Phase 5 admin inbox completion against webhook-driven state
+3. implement Phase 6 manual composer eligibility and send path using CSW rules
+4. validate the new Cloud runtime on staging and update stale deployment/runbook documentation

@@ -38,23 +38,41 @@ export const notificationRenderStatusSchema = z.enum([
   "ready",
   "failed",
 ])
+export const whatsappProviderSchema = z.enum(["disabled", "cloud_api"])
+export const whatsappProviderHealthStateSchema = z.enum([
+  "disabled",
+  "ready",
+  "misconfigured",
+  "degraded",
+])
+export const whatsappProviderKindSchema = z.enum([
+  "cloud_api",
+  "webjs_legacy",
+  "simulated",
+])
+export const whatsappProviderStatusSchema = z.enum([
+  "accepted",
+  "sent",
+  "delivered",
+  "read",
+  "failed",
+])
 export const pointLedgerToneSchema = z.enum([
   "earned",
   "redeemed",
   "adjustment",
   "reversal",
 ])
-export const whatsappConnectionStateSchema = z.enum([
-  "disabled",
-  "initializing",
-  "pairing",
-  "authenticated",
-  "connected",
-  "disconnected",
-  "auth_failure",
-])
+export const whatsappConnectionStateSchema = whatsappProviderHealthStateSchema
 export const whatsappPairingMethodSchema = z.enum(["qr", "code"])
 export const whatsappMessageDirectionSchema = z.enum(["inbound", "outbound"])
+export const whatsappComposerModeSchema = z.enum(["free_form", "template_only", "read_only"])
+export const whatsappMessageSourceSchema = z.enum([
+  "automated_notification",
+  "manual_operator",
+  "inbound_customer",
+  "legacy_mirror",
+])
 
 export const serviceSettingSchema = z.object({
   serviceCode: serviceCodeSchema,
@@ -81,19 +99,10 @@ export const businessProfileSchema = z.object({
   operatingHours: z.string(),
 })
 
-export const messageTemplateSchema = z.object({
-  welcome: z.string(),
-  orderConfirmed: z.string(),
-  orderDone: z.string(),
-  orderVoidNotice: z.string(),
-  accountInfo: z.string(),
-})
-
 export const settingsResponseSchema = z.object({
   business: businessProfileSchema,
   services: z.array(serviceSettingSchema),
-  messageTemplates: messageTemplateSchema,
-})
+}).strict()
 
 export const customerSearchResultSchema = z.object({
   customerId: z.string(),
@@ -240,7 +249,15 @@ export const notificationRecordSchema = z.object({
   ignoredAt: z.string().optional(),
   receiptAvailable: z.boolean(),
   manualWhatsappAvailable: z.boolean(),
+  providerKind: whatsappProviderKindSchema.optional(),
   providerMessageId: z.string().optional(),
+  providerStatus: whatsappProviderStatusSchema.optional(),
+  providerStatusAt: z.string().optional(),
+  waId: z.string().optional(),
+  pricingType: z.string().optional(),
+  pricingCategory: z.string().optional(),
+  latestErrorCode: z.string().optional(),
+  latestErrorMessage: z.string().optional(),
   providerChatId: z.string().optional(),
   providerAck: z.number().int().nonnegative().optional(),
   sentAt: z.string().optional(),
@@ -248,27 +265,24 @@ export const notificationRecordSchema = z.object({
 })
 
 export const whatsappConnectionStatusSchema = z.object({
+  provider: whatsappProviderSchema,
   state: whatsappConnectionStateSchema,
-  connected: z.boolean(),
-  gatewayReachable: z.boolean(),
+  configured: z.boolean(),
+  enabled: z.boolean(),
+  businessId: z.string().optional(),
+  wabaId: z.string().optional(),
+  phoneNumberId: z.string().optional(),
   currentPhone: z.string().optional(),
-  wid: z.string().optional(),
-  profileName: z.string().optional(),
-  lastReadyAt: z.string().optional(),
-  lastDisconnectAt: z.string().optional(),
-  lastDisconnectReason: z.string().optional(),
-  lastAuthFailureAt: z.string().optional(),
-  lastAuthFailureReason: z.string().optional(),
-  pairingMethod: whatsappPairingMethodSchema.optional(),
-  qrCodeValue: z.string().optional(),
-  qrCodeDataUrl: z.string().optional(),
-  pairingCode: z.string().optional(),
+  webhookPath: z.string().optional(),
+  summary: z.string(),
   observedAt: z.string().optional(),
 })
 
 export const whatsappChatSummarySchema = z.object({
   chatId: z.string(),
   title: z.string(),
+  waId: z.string().optional(),
+  displayName: z.string().optional(),
   phone: z.string().optional(),
   customerId: z.string().optional(),
   customerName: z.string().optional(),
@@ -277,12 +291,20 @@ export const whatsappChatSummarySchema = z.object({
   lastMessageDirection: whatsappMessageDirectionSchema.optional(),
   lastMessageAtIso: z.string().optional(),
   lastMessageAtLabel: z.string().optional(),
-  openWhatsappUrl: z.string().optional(),
+  isCswOpen: z.boolean(),
+  cswExpiresAtIso: z.string().optional(),
+  cswExpiresAtLabel: z.string().optional(),
+  isFepOpen: z.boolean(),
+  fepExpiresAtIso: z.string().optional(),
+  fepExpiresAtLabel: z.string().optional(),
+  composerMode: whatsappComposerModeSchema,
 })
 
 export const whatsappMessageItemSchema = z.object({
   providerMessageId: z.string(),
   chatId: z.string(),
+  providerKind: whatsappProviderKindSchema.optional(),
+  waId: z.string().optional(),
   direction: whatsappMessageDirectionSchema,
   messageType: z.string(),
   body: z.string().optional(),
@@ -290,6 +312,14 @@ export const whatsappMessageItemSchema = z.object({
   textPreview: z.string(),
   timestampIso: z.string(),
   timestampLabel: z.string(),
+  providerStatus: whatsappProviderStatusSchema.optional(),
+  providerStatusAtIso: z.string().optional(),
+  providerStatusAtLabel: z.string().optional(),
+  pricingType: z.string().optional(),
+  pricingCategory: z.string().optional(),
+  latestErrorCode: z.string().optional(),
+  latestErrorMessage: z.string().optional(),
+  source: whatsappMessageSourceSchema.optional(),
   providerAck: z.number().int().nonnegative().optional(),
   hasMedia: z.boolean(),
   mediaMimeType: z.string().optional(),
@@ -302,7 +332,15 @@ export const whatsappMessageItemSchema = z.object({
 
 export const whatsappInternalSessionStateChangedEventSchema = z.object({
   type: z.literal("session_state_changed"),
-  state: whatsappConnectionStateSchema,
+  state: z.enum([
+    "disabled",
+    "initializing",
+    "pairing",
+    "authenticated",
+    "connected",
+    "disconnected",
+    "auth_failure",
+  ]),
   connected: z.boolean(),
   wid: z.string().optional(),
   currentPhone: z.string().optional(),
@@ -317,6 +355,7 @@ export const whatsappInternalMessageUpsertedEventSchema = z.object({
   type: z.literal("message_upserted"),
   providerMessageId: z.string(),
   chatId: z.string(),
+  waId: z.string().optional(),
   direction: whatsappMessageDirectionSchema,
   messageType: z.string(),
   body: z.string().optional(),
@@ -324,6 +363,14 @@ export const whatsappInternalMessageUpsertedEventSchema = z.object({
   timestampIso: z.string(),
   phone: z.string().optional(),
   displayName: z.string().optional(),
+  providerKind: whatsappProviderKindSchema.optional(),
+  providerStatus: whatsappProviderStatusSchema.optional(),
+  providerStatusAt: z.string().optional(),
+  pricingType: z.string().optional(),
+  pricingCategory: z.string().optional(),
+  latestErrorCode: z.string().optional(),
+  latestErrorMessage: z.string().optional(),
+  source: whatsappMessageSourceSchema.optional(),
   providerAck: z.number().int().nonnegative().optional(),
   hasMedia: z.boolean().default(false),
   mediaMimeType: z.string().optional(),
@@ -582,6 +629,10 @@ export type AdminLaundryStatus = z.infer<typeof adminLaundryStatusSchema>
 export type AdminLaundryScope = z.infer<typeof adminLaundryScopeSchema>
 export type AdminLaundrySort = z.infer<typeof adminLaundrySortSchema>
 export type NotificationRenderStatus = z.infer<typeof notificationRenderStatusSchema>
+export type WhatsappProvider = z.infer<typeof whatsappProviderSchema>
+export type WhatsappProviderHealthState = z.infer<typeof whatsappProviderHealthStateSchema>
+export type WhatsappProviderKind = z.infer<typeof whatsappProviderKindSchema>
+export type WhatsappProviderStatus = z.infer<typeof whatsappProviderStatusSchema>
 export type ServiceSetting = z.infer<typeof serviceSettingSchema>
 export type AdminWhatsappContact = z.infer<typeof adminWhatsappContactSchema>
 export type SettingsResponse = z.infer<typeof settingsResponseSchema>
@@ -600,6 +651,8 @@ export type NotificationRecord = z.infer<typeof notificationRecordSchema>
 export type WhatsappConnectionState = z.infer<typeof whatsappConnectionStateSchema>
 export type WhatsappPairingMethod = z.infer<typeof whatsappPairingMethodSchema>
 export type WhatsappMessageDirection = z.infer<typeof whatsappMessageDirectionSchema>
+export type WhatsappComposerMode = z.infer<typeof whatsappComposerModeSchema>
+export type WhatsappMessageSource = z.infer<typeof whatsappMessageSourceSchema>
 export type WhatsappConnectionStatus = z.infer<typeof whatsappConnectionStatusSchema>
 export type WhatsappChatSummary = z.infer<typeof whatsappChatSummarySchema>
 export type WhatsappMessageItem = z.infer<typeof whatsappMessageItemSchema>

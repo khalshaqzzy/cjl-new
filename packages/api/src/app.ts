@@ -92,9 +92,6 @@ import {
   ingestWhatsappInternalEvent,
   listWhatsappChats,
   listWhatsappMessages,
-  reconnectWhatsapp,
-  resetWhatsappSession,
-  requestWhatsappPairingCode,
 } from "./services/whatsapp.js"
 import type { AdminDocument, SettingsDocument } from "./types.js"
 
@@ -415,14 +412,6 @@ export const createApp = () => {
     10,
     "Terlalu banyak percobaan redeem link login"
   )
-  const whatsappAdminLimiter = buildLimiter(
-    "admin-whatsapp",
-    20,
-    "Terlalu banyak percobaan pada kontrol WhatsApp admin",
-    (req) => String(req.session.adminUserId ?? req.ip),
-    true
-  )
-
   app.get("/health", (_req, res) => {
     res.json({ ok: true, releaseSha: env.RELEASE_SHA })
   })
@@ -719,33 +708,6 @@ export const createApp = () => {
 
   app.get("/v1/admin/whatsapp/status", requireAdmin, asyncRoute(async (_req, res) => {
     res.json(await getWhatsappStatus())
-  }))
-
-  app.post("/v1/admin/whatsapp/pairing-code", requireAdmin, requireTrustedOrigin("admin"), whatsappAdminLimiter, asyncRoute(async (_req, res) => {
-    const result = await requestWhatsappPairingCode()
-    logger.info({
-      event: "whatsapp.pairing_code.requested",
-      state: result.state,
-    })
-    res.json(result)
-  }))
-
-  app.post("/v1/admin/whatsapp/reconnect", requireAdmin, requireTrustedOrigin("admin"), whatsappAdminLimiter, asyncRoute(async (_req, res) => {
-    const result = await reconnectWhatsapp()
-    logger.info({
-      event: "whatsapp.reconnect.requested",
-      state: result.state,
-    })
-    res.json(result)
-  }))
-
-  app.post("/v1/admin/whatsapp/reset-session", requireAdmin, requireTrustedOrigin("admin"), whatsappAdminLimiter, asyncRoute(async (_req, res) => {
-    const result = await resetWhatsappSession()
-    logger.info({
-      event: "whatsapp.reset_session.requested",
-      state: result.state,
-    })
-    res.json(result)
   }))
 
   app.get("/v1/admin/whatsapp/chats", requireAdmin, asyncRoute(async (_req, res) => {

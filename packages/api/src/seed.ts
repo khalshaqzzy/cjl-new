@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs"
 import type { AdminDocument, SettingsDocument } from "./types.js"
 import { getDatabase } from "./db.js"
-import { defaultMessageTemplates, defaultSettings, legacyDefaultMessageTemplates } from "./defaults.js"
+import { defaultSettings } from "./defaults.js"
 import { env } from "./env.js"
 import { resolvePrimaryAdminWhatsappContact, sanitizeAdminWhatsappContacts } from "./lib/admin-whatsapp.js"
 import { formatCustomerName, normalizeName, normalizePhone, normalizePhoneLabel } from "./lib/normalization.js"
@@ -33,42 +33,11 @@ export const ensureSeedData = async () => {
   const db = getDatabase()
   const settingsCollection = db.collection<SettingsDocument>("settings")
   const adminCollection = db.collection<AdminDocument>("admins")
-  // Keep the previous `.site` template so existing seeded settings can be upgraded to the new `.com` default.
-  const previousSiteWelcomeTemplate = `Halo {{customerName}}!
-
-Selamat datang di CJ Laundry. Akun pelanggan Anda sudah berhasil terdaftar.
-
-Website CJ Laundry:
-https://cjlaundry.site
-
-Di website tersebut Anda bisa:
-- login ke customer portal
-- cek status laundry
-- lihat riwayat order
-- cek poin / stamp
-- lihat leaderboard pelanggan
-
-Gunakan data berikut untuk login:
-Nomor HP: {{customerPhone}}
-Nama: {{customerName}}
-
-Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.`
 
   const existingSettings = await settingsCollection.findOne({ _id: "app-settings" })
   if (!existingSettings) {
     await settingsCollection.insertOne(defaultSettings())
   } else {
-    const isLegacyMessageTemplate =
-      existingSettings.messageTemplates.welcome === legacyDefaultMessageTemplates.welcome &&
-      existingSettings.messageTemplates.orderConfirmed === legacyDefaultMessageTemplates.orderConfirmed &&
-      existingSettings.messageTemplates.orderDone === legacyDefaultMessageTemplates.orderDone &&
-      existingSettings.messageTemplates.orderVoidNotice === legacyDefaultMessageTemplates.orderVoidNotice &&
-      existingSettings.messageTemplates.accountInfo === legacyDefaultMessageTemplates.accountInfo
-
-    const shouldUpgradeWelcomeTemplate =
-      isLegacyMessageTemplate ||
-      existingSettings.messageTemplates.welcome === previousSiteWelcomeTemplate
-
     const normalizedPublicWhatsapp =
       normalizePhoneLabel(existingSettings.business.publicWhatsapp) || existingSettings.business.publicWhatsapp.trim()
     const nextAdminWhatsappContacts = sanitizeAdminWhatsappContacts(
@@ -96,39 +65,22 @@ Simpan pesan ini ya. Terima kasih sudah mempercayakan cucian Anda ke CJ Laundry.
     }
     const nextServices = mergeServiceCatalog(existingSettings.services)
 
-    if (isLegacyMessageTemplate) {
-      await settingsCollection.updateOne(
-        { _id: "app-settings" },
-        {
-          $set: {
-            messageTemplates: defaultMessageTemplates,
-            business: nextBusiness,
-            services: nextServices,
-            updatedAt: new Date().toISOString()
-          }
-        }
-      )
-    } else if (
-      shouldUpgradeWelcomeTemplate ||
+    const shouldUpdateSettings =
       JSON.stringify(nextBusiness) !== JSON.stringify(existingSettings.business) ||
       JSON.stringify(nextServices) !== JSON.stringify(existingSettings.services)
-    ) {
+
+    if (shouldUpdateSettings || "messageTemplates" in existingSettings) {
       await settingsCollection.updateOne(
         { _id: "app-settings" },
         {
           $set: {
-            ...(shouldUpgradeWelcomeTemplate
-              ? {
-                  messageTemplates: {
-                    ...existingSettings.messageTemplates,
-                    welcome: defaultMessageTemplates.welcome,
-                  },
-                }
-              : {}),
             business: nextBusiness,
             services: nextServices,
             updatedAt: new Date().toISOString(),
-          }
+          },
+          $unset: {
+            messageTemplates: "",
+          },
         }
       )
     }

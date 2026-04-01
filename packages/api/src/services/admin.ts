@@ -419,14 +419,12 @@ export const createCustomer = async (input: CreateCustomerInput): Promise<Create
     await db().collection<CustomerDocument>("customers").insertOne(customer, { session })
     await saveAuditLog("customer.created", "customer", customer._id, { phone: customer.phone }, session)
 
-    const settings = await getSettingsDocument(session)
     const oneTimeLogin = await createCustomerMagicLink(customer._id, "registration_welcome", session)
-    const preparedMessage = await buildPreparedMessage("welcome", {
-      customerName,
-      customerPhone: normalizePhoneLabel(customer.phone) || customer.phone,
-      laundryName: settings.business.laundryName,
-      autoLoginUrl: oneTimeLogin.url,
-    }, session)
+    const templateParams = {
+      customer_name: customerName,
+      registered_phone: normalizePhoneLabel(customer.phone) || customer.phone,
+    }
+    const preparedMessage = await buildPreparedMessage("welcome", templateParams)
 
     await queueNotification({
       _id: createId("notification"),
@@ -437,6 +435,7 @@ export const createCustomer = async (input: CreateCustomerInput): Promise<Create
       deliveryStatus: "queued",
       renderStatus: "not_required",
       attemptCount: 0,
+      templateParams,
       preparedMessage,
       businessKey: `welcome:${customer._id}`,
       createdAt: now,
@@ -530,12 +529,11 @@ export const updateCustomerIdentity = async (customerId: string, input: UpdateCu
 
     await saveAuditLog("customer.updated", "customer", customerId, { phone: normalizedPhone }, session)
 
-    const settings = await getSettingsDocument(session)
-    const preparedMessage = await buildPreparedMessage("account_info", {
-      customerName,
-      customerPhone: normalizePhoneLabel(normalizedPhone) || normalizedPhone,
-      laundryName: settings.business.laundryName
-    }, session)
+    const templateParams = {
+      customer_name: customerName,
+      customer_phone: normalizePhoneLabel(normalizedPhone) || normalizedPhone,
+    }
+    const preparedMessage = await buildPreparedMessage("account_info", templateParams)
 
     await queueNotification({
       _id: createId("notification"),
@@ -546,6 +544,7 @@ export const updateCustomerIdentity = async (customerId: string, input: UpdateCu
       renderStatus: "not_required",
       deliveryStatus: "queued",
       attemptCount: 0,
+      templateParams,
       preparedMessage,
       businessKey: `account-info:${customerId}:${updatedAt}`,
       createdAt: updatedAt,
@@ -742,18 +741,19 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
 
     await saveAuditLog("order.confirmed", "order", orderId, { orderCode }, session)
 
-    const preparedMessage = await buildPreparedMessage("order_confirmed", {
-      customerName: customer.name,
-      orderCode,
-      createdAt: formatDateTime(createdAt),
-      weightKgLabel: formatWeightLabel(input.weightKg),
-      serviceSummary,
-      totalLabel: formatCurrency(preview.total),
-      earnedStamps: preview.earnedStamps,
-      redeemedPoints: preview.redeemedPoints,
-      currentPoints: preview.resultingPointBalance,
-      statusUrl: `${env.PUBLIC_ORIGIN}/status/${directToken}`
-    }, session)
+    const templateParams = {
+      customer_name: customer.name,
+      order_code: orderCode,
+      created_at: formatDateTime(createdAt),
+      weight_kg_label: formatWeightLabel(input.weightKg),
+      service_summary: serviceSummary,
+      total_label: formatCurrency(preview.total),
+      earned_stamps: String(preview.earnedStamps),
+      redeemed_points: String(preview.redeemedPoints),
+      current_points: String(preview.resultingPointBalance),
+      status_url: `${env.PUBLIC_ORIGIN}/status/${directToken}`,
+    }
+    const preparedMessage = await buildPreparedMessage("order_confirmed", templateParams)
 
     await queueNotification({
       _id: createId("notification"),
@@ -766,6 +766,7 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
       renderStatus: "pending",
       deliveryStatus: "queued",
       attemptCount: 0,
+      templateParams,
       preparedMessage,
       businessKey: `order-confirmed:${orderId}`,
       createdAt,
@@ -907,12 +908,13 @@ export const markOrderDone = async (orderId: string) =>
     )
     await saveAuditLog("order.done", "order", orderId, { completedAt }, session)
 
-    const preparedMessage = await buildPreparedMessage("order_done", {
-      customerName: order.customerName,
-      orderCode: order.orderCode,
-      createdAt: formatDateTime(order.createdAt),
-      completedAt: formatDateTime(completedAt)
-    }, session)
+    const templateParams = {
+      customer_name: order.customerName,
+      order_code: order.orderCode,
+      created_at: formatDateTime(order.createdAt),
+      completed_at: formatDateTime(completedAt),
+    }
+    const preparedMessage = await buildPreparedMessage("order_done", templateParams)
 
     await queueNotification({
       _id: createId("notification"),
@@ -925,6 +927,7 @@ export const markOrderDone = async (orderId: string) =>
       renderStatus: "not_required",
       deliveryStatus: "queued",
       attemptCount: 0,
+      templateParams,
       preparedMessage,
       businessKey: `order-done:${order._id}`,
       createdAt: completedAt,
@@ -1001,11 +1004,12 @@ export const voidOrder = async (orderId: string, input: VoidOrderInput) => {
     await saveAuditLog("order.voided", "order", order._id, { reason: input.reason }, session)
 
     if (input.notifyCustomer) {
-      const preparedMessage = await buildPreparedMessage("order_void_notice", {
-        customerName: order.customerName,
-        orderCode: order.orderCode,
-        reason: input.reason
-      }, session)
+      const templateParams = {
+        customer_name: order.customerName,
+        order_code: order.orderCode,
+        reason: input.reason,
+      }
+      const preparedMessage = await buildPreparedMessage("order_void_notice", templateParams)
 
       await queueNotification({
         _id: createId("notification"),
@@ -1018,6 +1022,7 @@ export const voidOrder = async (orderId: string, input: VoidOrderInput) => {
         renderStatus: "not_required",
         deliveryStatus: "queued",
         attemptCount: 0,
+        templateParams,
         preparedMessage,
         businessKey: `order-void:${order._id}:${voidedAt}`,
         createdAt: voidedAt,
@@ -1148,7 +1153,6 @@ export const getSettings = async (): Promise<SettingsResponse> => {
   return {
     business: settings.business,
     services: settings.services,
-    messageTemplates: settings.messageTemplates
   }
 }
 
@@ -1182,8 +1186,10 @@ export const updateSettings = async (payload: SettingsResponse) => {
       $set: {
         business: nextBusiness,
         services: payload.services,
-        messageTemplates: payload.messageTemplates,
         updatedAt: new Date().toISOString()
+      },
+      $unset: {
+        messageTemplates: "",
       }
     }
   )

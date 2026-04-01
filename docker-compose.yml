@@ -50,40 +50,23 @@ services:
       ADMIN_ORIGIN: http://localhost:3001
       PUBLIC_ORIGIN: http://localhost:3000
       API_ORIGIN: http://localhost:4000
+      WHATSAPP_PROVIDER: cloud_api
+      WHATSAPP_GRAPH_API_VERSION: v25.0
+      WHATSAPP_GRAPH_API_BASE_URL: https://graph.facebook.com
+      WHATSAPP_BUSINESS_ID: local-business-id
+      WHATSAPP_WABA_ID: local-waba-id
+      WHATSAPP_PHONE_NUMBER_ID: local-phone-number-id
+      WHATSAPP_ACCESS_TOKEN: local-access-token
+      WHATSAPP_APP_SECRET: local-app-secret
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: local-webhook-verify-token
+      WHATSAPP_WEBHOOK_PATH: /v1/webhooks/meta/whatsapp
       WHATSAPP_ENABLED: "true"
-      WHATSAPP_GATEWAY_URL: http://whatsapp-gateway:4100
       WHATSAPP_GATEWAY_TOKEN: cjlaundry-whatsapp-internal-token
-      WHATSAPP_AUTH_DIR: /data/auth
       WA_FAIL_MODE: never
     ports:
       - "4000:4000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-
-  whatsapp-gateway:
-    build:
-      context: .
-      dockerfile: packages/whatsapp-gateway/Dockerfile
-    depends_on:
-      api:
-        condition: service_healthy
-    environment:
-      APP_ENV: local
-      RELEASE_SHA: local-dev
-      LOG_LEVEL: info
-      PORT: 4100
-      WHATSAPP_GATEWAY_TOKEN: cjlaundry-whatsapp-internal-token
-      WHATSAPP_AUTH_DIR: /data/auth
-      WHATSAPP_API_BASE_URL: http://api:4000
-      WHATSAPP_PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
-    volumes:
-      - whatsapp-auth:/data/auth
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/health').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -123,4 +106,3 @@ services:
 
 volumes:
   mongo-data:
-  whatsapp-auth:

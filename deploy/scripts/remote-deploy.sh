@@ -76,7 +76,6 @@ full_reset_stack() {
   docker_host_rm_rf "caddy-data"
   docker_host_rm_rf "caddy-config"
   docker_host_rm_rf "mongo-data"
-  docker_host_rm_rf "whatsapp-auth"
   rm -f "${RESET_FINGERPRINT_FILE}"
 }
 
@@ -109,8 +108,7 @@ mkdir -p \
   "${BASE_DIR}/shared" \
   "${BASE_DIR}/shared/caddy-data" \
   "${BASE_DIR}/shared/caddy-config" \
-  "${BASE_DIR}/shared/mongo-data" \
-  "${BASE_DIR}/shared/whatsapp-auth"
+  "${BASE_DIR}/shared/mongo-data"
 
 compose up -d --build --remove-orphans
 
@@ -118,7 +116,6 @@ printf '%s\n' "${DEPLOY_RESET_FINGERPRINT}" > "${RESET_FINGERPRINT_FILE}"
 
 wait_for_service mongo 120
 wait_for_service api 240
-wait_for_service whatsapp-gateway 240
 wait_for_service admin-web 240
 wait_for_service public-web 240
 wait_for_service caddy 120

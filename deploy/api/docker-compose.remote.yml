@@ -73,39 +73,21 @@ services:
       ADMIN_ORIGIN: https://${ADMIN_DOMAIN}
       PUBLIC_ORIGIN: https://${PUBLIC_DOMAIN}
       API_ORIGIN: https://${API_DOMAIN}
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER}
+      WHATSAPP_GRAPH_API_VERSION: ${WHATSAPP_GRAPH_API_VERSION}
+      WHATSAPP_GRAPH_API_BASE_URL: ${WHATSAPP_GRAPH_API_BASE_URL}
+      WHATSAPP_BUSINESS_ID: ${WHATSAPP_BUSINESS_ID}
+      WHATSAPP_WABA_ID: ${WHATSAPP_WABA_ID}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET}
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN}
+      WHATSAPP_WEBHOOK_PATH: ${WHATSAPP_WEBHOOK_PATH}
       WHATSAPP_ENABLED: ${WHATSAPP_ENABLED}
-      WHATSAPP_GATEWAY_URL: http://whatsapp-gateway:4100
       WHATSAPP_GATEWAY_TOKEN: ${WHATSAPP_GATEWAY_TOKEN}
-      WHATSAPP_AUTH_DIR: ${WHATSAPP_AUTH_DIR}
       WA_FAIL_MODE: ${WA_FAIL_MODE}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-
-  whatsapp-gateway:
-    build:
-      context: .
-      dockerfile: packages/whatsapp-gateway/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
-    environment:
-      APP_ENV: ${APP_ENV}
-      RELEASE_SHA: ${RELEASE_SHA}
-      LOG_LEVEL: ${LOG_LEVEL}
-      PORT: 4100
-      WHATSAPP_GATEWAY_TOKEN: ${WHATSAPP_GATEWAY_TOKEN}
-      WHATSAPP_AUTH_DIR: ${WHATSAPP_AUTH_DIR}
-      WHATSAPP_API_BASE_URL: http://api:4000
-      WHATSAPP_PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
-    volumes:
-      - ${SHARED_DIR}/whatsapp-auth:/data/auth
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/health').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 12

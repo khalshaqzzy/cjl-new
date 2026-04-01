@@ -51,22 +51,58 @@ const envSchema = z.object({
   API_ORIGIN: z.string().default("http://localhost:4000"),
   RELEASE_SHA: z.string().default("dev"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  WHATSAPP_PROVIDER: z.enum(["cloud_api", "disabled"]).optional(),
   WHATSAPP_ENABLED: booleanLikeSchema.default(false),
+  WHATSAPP_GRAPH_API_VERSION: z.string().default("v25.0"),
+  WHATSAPP_GRAPH_API_BASE_URL: z.string().default("https://graph.facebook.com"),
+  WHATSAPP_BUSINESS_ID: z.string().optional(),
+  WHATSAPP_WABA_ID: z.string().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+  WHATSAPP_APP_SECRET: z.string().optional(),
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_WEBHOOK_PATH: z.string().default("/v1/webhooks/meta/whatsapp"),
   WHATSAPP_GATEWAY_URL: z.string().default("http://127.0.0.1:4100"),
   WHATSAPP_GATEWAY_TOKEN: z.string().default("cjlaundry-whatsapp-internal-token"),
   WHATSAPP_AUTH_DIR: z.string().default("./.whatsapp-auth"),
   WHATSAPP_CHROMIUM_EXECUTABLE_PATH: z.string().optional(),
   WA_FAIL_MODE: z.enum(["never", "confirm-only", "all"]).default("never"),
   OUTBOX_POLL_MS: z.coerce.number().int().positive().default(250)
-}).superRefine((value, context) => {
+}).transform((value) => ({
+  ...value,
+  WHATSAPP_PROVIDER:
+    value.WHATSAPP_PROVIDER ?? (value.WHATSAPP_ENABLED ? "cloud_api" : "disabled"),
+})).superRefine((value, context) => {
   if (value.APP_ENV === "local" || value.APP_ENV === "test") {
+    if (value.WHATSAPP_PROVIDER === "cloud_api") {
+      for (const field of [
+        "WHATSAPP_BUSINESS_ID",
+        "WHATSAPP_WABA_ID",
+        "WHATSAPP_PHONE_NUMBER_ID",
+        "WHATSAPP_ACCESS_TOKEN",
+        "WHATSAPP_APP_SECRET",
+        "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+      ] as const) {
+        const currentValue = value[field]
+        if (!currentValue?.trim()) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} wajib diisi saat WHATSAPP_PROVIDER=cloud_api`,
+          })
+        }
+      }
+    }
+
     return
   }
 
   const placeholderSecrets = new Map<string, string | undefined>([
     ["SESSION_SECRET", value.SESSION_SECRET],
-    ["WHATSAPP_GATEWAY_TOKEN", value.WHATSAPP_GATEWAY_TOKEN],
     ["ADMIN_BOOTSTRAP_PASSWORD", value.ADMIN_BOOTSTRAP_PASSWORD],
+    ["WHATSAPP_ACCESS_TOKEN", value.WHATSAPP_ACCESS_TOKEN],
+    ["WHATSAPP_APP_SECRET", value.WHATSAPP_APP_SECRET],
+    ["WHATSAPP_WEBHOOK_VERIFY_TOKEN", value.WHATSAPP_WEBHOOK_VERIFY_TOKEN],
   ])
 
   for (const [field, currentValue] of placeholderSecrets.entries()) {
@@ -122,6 +158,26 @@ const envSchema = z.object({
       path: ["ADMIN_BOOTSTRAP_USERNAME"],
       message: "ADMIN_BOOTSTRAP_USERNAME wajib diisi pada staging/production",
     })
+  }
+
+  if (value.WHATSAPP_PROVIDER === "cloud_api") {
+    for (const field of [
+      "WHATSAPP_BUSINESS_ID",
+      "WHATSAPP_WABA_ID",
+      "WHATSAPP_PHONE_NUMBER_ID",
+      "WHATSAPP_ACCESS_TOKEN",
+      "WHATSAPP_APP_SECRET",
+      "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+    ] as const) {
+      const currentValue = value[field]
+      if (!currentValue?.trim()) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `${field} wajib diisi saat WHATSAPP_PROVIDER=cloud_api`,
+        })
+      }
+    }
   }
 })
 

@@ -5,8 +5,12 @@ import type {
   NotificationRenderStatus,
   ServiceCode,
   ServiceSetting,
+  WhatsappComposerMode,
   WhatsappConnectionState,
+  WhatsappMessageSource,
   WhatsappPairingMethod,
+  WhatsappProviderKind,
+  WhatsappProviderStatus,
   WhatsappMessageDirection
 } from "@cjl/contracts"
 
@@ -98,7 +102,16 @@ export type NotificationDocument = {
   ignoredNote?: string
   ignoredAt?: string
   renderedReceipt?: string
+  templateParams?: Record<string, string>
+  providerKind?: WhatsappProviderKind
   providerMessageId?: string
+  providerStatus?: WhatsappProviderStatus
+  providerStatusAt?: string
+  waId?: string
+  pricingType?: string
+  pricingCategory?: string
+  latestErrorCode?: string
+  latestErrorMessage?: string
   providerChatId?: string
   providerAck?: number
   sentAt?: string
@@ -111,15 +124,16 @@ export type NotificationDocument = {
 export type WhatsappSessionDocument = {
   _id: "primary"
   state: WhatsappConnectionState
-  connected: boolean
+  provider: "disabled" | "cloud_api"
+  configured: boolean
+  enabled: boolean
+  summary: string
+  businessId?: string
+  wabaId?: string
+  phoneNumberId?: string
   currentPhone?: string
   wid?: string
   profileName?: string
-  lastReadyAt?: string
-  lastDisconnectAt?: string
-  lastDisconnectReason?: string
-  lastAuthFailureAt?: string
-  lastAuthFailureReason?: string
   pairingMethod?: WhatsappPairingMethod
   updatedAt: string
 }
@@ -127,6 +141,8 @@ export type WhatsappSessionDocument = {
 export type WhatsappChatDocument = {
   _id: string
   title: string
+  waId?: string
+  displayName?: string
   phone?: string
   customerId?: string
   customerName?: string
@@ -134,12 +150,20 @@ export type WhatsappChatDocument = {
   lastMessagePreview: string
   lastMessageDirection?: WhatsappMessageDirection
   lastMessageAt?: string
+  lastInboundAt?: string
+  cswOpenedAt?: string
+  cswExpiresAt?: string
+  fepOpenedAt?: string
+  fepExpiresAt?: string
+  composerMode: WhatsappComposerMode
   updatedAt: string
 }
 
 export type WhatsappMessageDocument = {
   _id: string
   chatId: string
+  providerKind?: WhatsappProviderKind
+  waId?: string
   phone?: string
   customerId?: string
   customerName?: string
@@ -149,6 +173,13 @@ export type WhatsappMessageDocument = {
   caption?: string
   textPreview: string
   timestampIso: string
+  providerStatus?: WhatsappProviderStatus
+  providerStatusAt?: string
+  pricingType?: string
+  pricingCategory?: string
+  latestErrorCode?: string
+  latestErrorMessage?: string
+  source?: WhatsappMessageSource
   providerAck?: number
   hasMedia: boolean
   mediaMimeType?: string
@@ -171,13 +202,6 @@ export type SettingsDocument = {
     operatingHours: string
   }
   services: ServiceSetting[]
-  messageTemplates: {
-    welcome: string
-    orderConfirmed: string
-    orderDone: string
-    orderVoidNotice: string
-    accountInfo: string
-  }
   updatedAt: string
 }
 
