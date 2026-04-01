@@ -3,6 +3,7 @@ import type {
   WhatsappChatSummary,
   WhatsappConnectionStatus,
   WhatsappInternalEvent,
+  WhatsappMediaDownloadStatus,
   WhatsappMessageDirection,
   WhatsappMessageItem,
   WhatsappMessageSource,
@@ -40,6 +41,35 @@ const getMessagesCollection = () =>
 
 const getNotificationsCollection = () =>
   db().collection<NotificationDocument>("notifications")
+
+type CloudInboundMessageInput = {
+  providerMessageId: string
+  waId?: string
+  phone?: string
+  displayName?: string
+  messageType: string
+  body?: string
+  caption?: string
+  timestampIso: string
+  hasMedia: boolean
+  mediaMimeType?: string
+  mediaName?: string
+  providerMediaId?: string
+  mediaSha256?: string
+  mediaFileSizeBytes?: number
+}
+
+type CloudStatusUpdateInput = {
+  providerMessageId: string
+  recipientId?: string
+  status: WhatsappProviderStatus
+  statusAt: string
+  pricingType?: string
+  pricingCategory?: string
+  conversationExpirationAt?: string
+  latestErrorCode?: string
+  latestErrorMessage?: string
+}
 
 const buildProviderHealthState = (): WhatsappConnectionStatus["state"] => {
   if (env.WHATSAPP_PROVIDER === "disabled") {
@@ -91,7 +121,7 @@ const defaultSession = (): WhatsappSessionDocument => {
   }
 }
 
-const extractWaIdFromAny = (value?: string) => {
+export const extractWaIdFromAny = (value?: string) => {
   if (!value?.trim()) {
     return undefined
   }
@@ -107,7 +137,7 @@ const extractWaIdFromAny = (value?: string) => {
   return digits || undefined
 }
 
-const buildCanonicalChatId = (waId?: string, phone?: string, fallbackChatId?: string) => {
+export const buildCanonicalChatId = (waId?: string, phone?: string, fallbackChatId?: string) => {
   const canonicalWaId = extractWaIdFromAny(waId) ?? extractWaIdFromAny(phone)
   if (canonicalWaId) {
     return `wa:${canonicalWaId}`
@@ -121,7 +151,7 @@ const buildCanonicalChatId = (waId?: string, phone?: string, fallbackChatId?: st
   return `legacy:unknown`
 }
 
-const buildPhoneLabel = (phone?: string, waId?: string) => {
+export const buildPhoneLabel = (phone?: string, waId?: string) => {
   const normalized = phone?.trim() ? normalizePhone(phone) : undefined
   if (normalized) {
     return normalized
@@ -131,7 +161,7 @@ const buildPhoneLabel = (phone?: string, waId?: string) => {
   return fallbackWaId ? `+${fallbackWaId}` : undefined
 }
 
-const resolveCustomerByPhone = async (phone?: string, waId?: string) => {
+export const resolveCustomerByPhone = async (phone?: string, waId?: string) => {
   const normalizedPhone = buildPhoneLabel(phone, waId)
   if (!normalizedPhone) {
     return null
@@ -142,10 +172,10 @@ const resolveCustomerByPhone = async (phone?: string, waId?: string) => {
     .findOne({ normalizedPhone })
 }
 
-const isWindowOpen = (expiresAt?: string) =>
+export const isWindowOpen = (expiresAt?: string) =>
   Boolean(expiresAt && DateTime.fromISO(expiresAt).toMillis() > Date.now())
 
-const resolveComposerMode = (
+export const resolveComposerMode = (
   chat: Pick<WhatsappChatDocument, "cswExpiresAt">,
 ): WhatsappChatDocument["composerMode"] => (isWindowOpen(chat.cswExpiresAt) ? "free_form" : "template_only")
 
@@ -167,7 +197,7 @@ const mapAckToProviderStatus = (providerAck?: number): WhatsappProviderStatus | 
   return "accepted"
 }
 
-const buildMessagePreview = (
+export const buildMessagePreview = (
   direction: WhatsappMessageDirection,
   messageType: string,
   body?: string,
@@ -203,6 +233,10 @@ const buildChatTitle = (
 
   return chatId ?? "WhatsApp Chat"
 }
+
+const formatMediaDownloadStatus = (
+  mediaDownloadStatus?: WhatsappMessageDocument["mediaDownloadStatus"]
+): WhatsappMediaDownloadStatus | undefined => mediaDownloadStatus
 
 const upsertChatActivity = async ({
   chatId,
@@ -383,13 +417,252 @@ const mapMessage = (message: WhatsappMessageDocument): WhatsappMessageItem => ({
   source: message.source,
   providerAck: message.providerAck,
   hasMedia: message.hasMedia,
+  providerMediaId: message.providerMediaId,
   mediaMimeType: message.mediaMimeType,
   mediaName: message.mediaName,
+  mediaDownloadStatus: formatMediaDownloadStatus(message.mediaDownloadStatus),
+  mediaDownloadAvailable: Boolean(message.mediaStorageId),
   notificationId: message.notificationId,
   orderCode: message.orderCode,
   customerId: message.customerId,
   customerName: message.customerName,
 })
+
+const buildFailedReason = (
+  latestErrorMessage?: string,
+  latestErrorCode?: string
+) => latestErrorMessage?.trim() || latestErrorCode?.trim() || "Gagal mengirim WhatsApp"
+
+const updateNotificationDeliveryFromStatus = async (
+  providerMessageId: string,
+  update: {
+    providerStatus: WhatsappProviderStatus
+    providerStatusAt: string
+    waId?: string
+    pricingType?: string
+    pricingCategory?: string
+    latestErrorCode?: string
+    latestErrorMessage?: string
+  }
+) => {
+  const set: Record<string, unknown> = {
+    providerKind: "cloud_api",
+    providerMessageId,
+    providerStatus: update.providerStatus,
+    providerStatusAt: update.providerStatusAt,
+    updatedAt: update.providerStatusAt,
+  }
+
+  if (update.waId) {
+    set.waId = update.waId
+  }
+  if (update.pricingType) {
+    set.pricingType = update.pricingType
+  }
+  if (update.pricingCategory) {
+    set.pricingCategory = update.pricingCategory
+  }
+  if (update.latestErrorCode) {
+    set.latestErrorCode = update.latestErrorCode
+  }
+  if (update.latestErrorMessage) {
+    set.latestErrorMessage = update.latestErrorMessage
+  }
+
+  if (update.providerStatus === "failed") {
+    set.deliveryStatus = "failed"
+    set.latestFailureReason = buildFailedReason(update.latestErrorMessage, update.latestErrorCode)
+  } else {
+    set.deliveryStatus = "sent"
+  }
+
+  await getNotificationsCollection().updateOne(
+    { providerMessageId },
+    {
+      $set: set,
+      ...(update.providerStatus === "failed"
+        ? {}
+        : {
+            $unset: {
+              latestFailureReason: "",
+              gatewayErrorCode: "",
+            },
+          }),
+    }
+  )
+}
+
+export const ingestCloudInboundMessage = async (message: CloudInboundMessageInput) => {
+  const waId = extractWaIdFromAny(message.waId) ?? extractWaIdFromAny(message.phone)
+  const phone = buildPhoneLabel(message.phone, waId)
+  const chatId = buildCanonicalChatId(waId, phone)
+  const customer = await resolveCustomerByPhone(phone, waId)
+  const textPreview = buildMessagePreview(
+    "inbound",
+    message.messageType,
+    message.body,
+    message.caption,
+    message.mediaName
+  )
+  const nextUpdatedAt = new Date().toISOString()
+
+  logger.info({
+    event: "whatsapp.cloud.inbound_message_upserted",
+    providerMessageId: message.providerMessageId,
+    destinationPhone: maskPhone(phone),
+    messageType: message.messageType,
+  })
+
+  await getMessagesCollection().updateOne(
+    { _id: message.providerMessageId },
+    {
+      $set: {
+        chatId,
+        providerKind: "cloud_api",
+        waId,
+        phone,
+        customerId: customer?._id,
+        customerName: customer?.name,
+        direction: "inbound",
+        messageType: message.messageType,
+        body: message.body,
+        caption: message.caption,
+        textPreview,
+        timestampIso: message.timestampIso,
+        source: "inbound_customer" satisfies WhatsappMessageSource,
+        hasMedia: message.hasMedia,
+        providerMediaId: message.providerMediaId,
+        mediaMimeType: message.mediaMimeType,
+        mediaName: message.mediaName,
+        mediaSha256: message.mediaSha256,
+        mediaFileSizeBytes: message.mediaFileSizeBytes,
+        ...(message.providerMediaId ? { mediaDownloadStatus: "pending" satisfies WhatsappMediaDownloadStatus } : {}),
+        ...(message.providerMediaId
+          ? {
+              mediaStorageId: undefined,
+              mediaDownloadedAt: undefined,
+              mediaDownloadError: undefined,
+            }
+          : {}),
+        updatedAt: nextUpdatedAt,
+      },
+      $setOnInsert: {
+        createdAt: nextUpdatedAt,
+      },
+    },
+    { upsert: true }
+  )
+
+  await upsertChatActivity({
+    chatId,
+    waId,
+    phone,
+    customerId: customer?._id,
+    customerName: customer?.name,
+    displayName: message.displayName,
+    direction: "inbound",
+    textPreview,
+    timestampIso: message.timestampIso,
+  })
+}
+
+export const ingestCloudStatusUpdate = async (statusUpdate: CloudStatusUpdateInput) => {
+  const waId = extractWaIdFromAny(statusUpdate.recipientId)
+  const phone = buildPhoneLabel(statusUpdate.recipientId, waId)
+  const notification = await getNotificationsCollection().findOne({
+    providerMessageId: statusUpdate.providerMessageId,
+  })
+  const customer = notification?.customerId
+    ? await db().collection<CustomerDocument>("customers").findOne({ _id: notification.customerId })
+    : await resolveCustomerByPhone(phone, waId)
+  const existingMessage = await getMessagesCollection().findOne({
+    _id: statusUpdate.providerMessageId,
+  })
+  const chatId =
+    existingMessage?.chatId ??
+    buildCanonicalChatId(waId, phone, notification?.providerChatId)
+  const textPreview =
+    existingMessage?.textPreview ??
+    buildMessagePreview(
+      "outbound",
+      existingMessage?.messageType ?? "template",
+      notification?.preparedMessage
+    )
+
+  await getMessagesCollection().updateOne(
+    { _id: statusUpdate.providerMessageId },
+    {
+      $set: {
+        chatId,
+        providerKind: "cloud_api",
+        waId: waId ?? existingMessage?.waId ?? notification?.waId,
+        phone: phone ?? existingMessage?.phone ?? notification?.destinationPhone,
+        customerId: customer?._id ?? existingMessage?.customerId ?? notification?.customerId,
+        customerName: customer?.name ?? existingMessage?.customerName ?? notification?.customerName,
+        direction: existingMessage?.direction ?? "outbound",
+        messageType: existingMessage?.messageType ?? "template",
+        body: existingMessage?.body ?? notification?.preparedMessage,
+        textPreview,
+        timestampIso: existingMessage?.timestampIso ?? statusUpdate.statusAt,
+        providerStatus: statusUpdate.status,
+        providerStatusAt: statusUpdate.statusAt,
+        pricingType: statusUpdate.pricingType,
+        pricingCategory: statusUpdate.pricingCategory,
+        latestErrorCode: statusUpdate.latestErrorCode,
+        latestErrorMessage: statusUpdate.latestErrorMessage,
+        source: existingMessage?.source ?? ("automated_notification" satisfies WhatsappMessageSource),
+        updatedAt: statusUpdate.statusAt,
+      },
+      $setOnInsert: {
+        createdAt: statusUpdate.statusAt,
+        hasMedia: existingMessage?.hasMedia ?? false,
+      },
+    },
+    { upsert: true }
+  )
+
+  await updateNotificationDeliveryFromStatus(statusUpdate.providerMessageId, {
+    providerStatus: statusUpdate.status,
+    providerStatusAt: statusUpdate.statusAt,
+    waId: waId ?? notification?.waId,
+    pricingType: statusUpdate.pricingType,
+    pricingCategory: statusUpdate.pricingCategory,
+    latestErrorCode: statusUpdate.latestErrorCode,
+    latestErrorMessage: statusUpdate.latestErrorMessage,
+  })
+
+  if (chatId) {
+    const existingChat = await getChatsCollection().findOne({ _id: chatId })
+    if (existingChat) {
+      const chatUpdate: Partial<WhatsappChatDocument> = {
+        waId: waId ?? existingChat.waId,
+        phone: phone ?? existingChat.phone,
+        customerId: customer?._id ?? existingChat.customerId ?? notification?.customerId,
+        customerName: customer?.name ?? existingChat.customerName ?? notification?.customerName,
+        updatedAt: statusUpdate.statusAt,
+      }
+
+      if (
+        statusUpdate.pricingType === "free_entry_point" &&
+        statusUpdate.conversationExpirationAt
+      ) {
+        chatUpdate.fepOpenedAt = statusUpdate.statusAt
+        chatUpdate.fepExpiresAt = statusUpdate.conversationExpirationAt
+      }
+
+      chatUpdate.composerMode = resolveComposerMode({
+        cswExpiresAt: existingChat.cswExpiresAt,
+      })
+
+      await getChatsCollection().updateOne(
+        { _id: chatId },
+        {
+          $set: chatUpdate,
+        }
+      )
+    }
+  }
+}
 
 export const getWhatsappStatus = async (): Promise<WhatsappConnectionStatus> => {
   const persisted = (await getSessionCollection().findOne({ _id: "primary" })) ?? defaultSession()

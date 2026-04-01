@@ -1,3 +1,4 @@
+import crypto from "node:crypto"
 import { expect, test } from "@playwright/test"
 import { MongoClient } from "mongodb"
 
@@ -53,6 +54,16 @@ const waitForDirectStatusToken = async (orderId: string) => {
   }
 
   throw new Error(`Direct status token for order ${orderId} was not found`)
+}
+
+const signWhatsappWebhookPayload = (payload: unknown) => {
+  const rawBody = JSON.stringify(payload)
+  const signature = `sha256=${crypto
+    .createHmac("sha256", "cjlaundry-e2e-app-secret")
+    .update(rawBody)
+    .digest("hex")}`
+
+  return { rawBody, signature }
 }
 
 test.describe.configure({ mode: "serial" })
@@ -121,6 +132,52 @@ test("admin and public frontends stay fully integrated through the backend", asy
 
   expect(customer?._id).toBeTruthy()
 
+  const inboundWebhookPayload = {
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "waba_e2e",
+        changes: [
+          {
+            field: "messages",
+            value: {
+              metadata: {
+                phone_number_id: "e2e-phone-number",
+              },
+              contacts: [
+                {
+                  profile: { name: upperCustomerName },
+                  wa_id: `62${customerPhone.slice(1)}`,
+                },
+              ],
+              messages: [
+                {
+                  from: `62${customerPhone.slice(1)}`,
+                  id: `wamid.e2e.${uniqueSuffix}`,
+                  timestamp: String(Math.floor(Date.now() / 1000)),
+                  type: "text",
+                  text: {
+                    body: "Halo dari webhook E2E",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  }
+  const signedInboundWebhook = signWhatsappWebhookPayload(inboundWebhookPayload)
+  const webhookResponse = await fetch("http://127.0.0.1:4100/v1/webhooks/meta/whatsapp", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Hub-Signature-256": signedInboundWebhook.signature,
+    },
+    body: signedInboundWebhook.rawBody,
+  })
+  expect(webhookResponse.status).toBe(200)
+
   await page.goto("http://127.0.0.1:3101/admin/laundry-aktif")
   await expect(page.getByText(orderCode)).toBeVisible()
   await page.getByRole("tab", { name: "Hari Ini" }).click()
@@ -137,6 +194,10 @@ test("admin and public frontends stay fully integrated through the backend", asy
 
   await page.goto("http://127.0.0.1:3101/admin")
   await expect(page.getByText("Pelanggan Teratas")).toBeVisible()
+
+  await page.goto("http://127.0.0.1:3101/admin/whatsapp")
+  await expect(page.getByText("Halo dari webhook E2E")).toBeVisible()
+  await expect(page.getByText(`+62${customerPhone.slice(1)}`).first()).toBeVisible()
 
   const publicPage = await browser.newPage()
   await publicPage.goto(firstMagicLinkUrl)

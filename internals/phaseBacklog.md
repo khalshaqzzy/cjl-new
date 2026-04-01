@@ -5,12 +5,17 @@ Purpose: condensed next-work inventory after deployment workflow implementation
 
 ## Next Recommended Items
 
-0. WhatsApp Business Platform migration Phase 2 and Phase 3 are now implemented. Continue from Phase 4 in `internals/whatsappBusinessApiMigrationPhases.md`, not from the legacy gateway/pairing path.
+0. WhatsApp Business Platform migration Phase 4 is now implemented. Continue from Phase 5 and Phase 6 in `internals/whatsappBusinessApiMigrationPhases.md`, not from the legacy gateway/pairing path.
 1. Backfill the real Meta template IDs into `docs/WhatsApp/docs/WhatsAppTemplateRegistry.md` if the operator has not recorded them yet.
 
 2. Provision the real staging VM, DNS records, and GitHub staging secrets, then execute the first staging rollout.
 3. Validate hosted replica-set initialization, including correct `MONGO_REPLICA_KEY`, Cloud API env rendering, deploy reset token wiring, `/ready`, TLS issuance, and branch-based deploy behavior on staging before touching production.
-4. Implement and validate Meta webhook verification plus status/message ingestion on staging before treating Cloud WhatsApp as operationally complete.
+4. Validate the new Meta webhook path on staging end-to-end:
+   - GET challenge verification
+   - signed POST acceptance
+   - inbound text ingestion
+   - inbound media download to GridFS
+   - outbound status progression and pricing visibility
 5. Verify settings persistence on staging with `08...` input across laundry phone, public contact, public WhatsApp, admin contacts, and address, then confirm landing, portal, portal PDF receipt, and admin fallback PNG receipt all reflect the saved values correctly.
 6. Validate the customer magic-link flow on real devices: welcome WA delivery, one-time redeem behavior, QR scan usability, and the POS `Lanjutkan ke POS` transition after QR display.
 7. Validate failed-notification operator recovery on staging:
@@ -27,8 +32,13 @@ Purpose: condensed next-work inventory after deployment workflow implementation
    - admin Laundry tabs should behave correctly for `Aktif`, `Hari Ini`, `History`, and default-off cancelled visibility
 9. During staging deploy, observe first-start behavior for the new order `activityAt` backfill, settings cleanup, and index creation on realistic data volume before allowing the first production push.
 10. Execute the full `productionReadinessChecklist.md` on staging before allowing the first production push.
-11. Decide whether the v1 in-process outbox remains sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
-12. Decide whether admin notification polling should move to a delta/summary endpoint so `AdminShell` and dashboard stop re-reading the full notifications collection.
+11. Implement Phase 5-6 admin inbox completion:
+   - webhook-backed inbox/timeline polish
+   - manual free-form send endpoint
+   - CSW-only composer eligibility
+   - media retrieval affordance in admin UI when useful
+12. Decide whether the v1 in-process outbox and media worker remain sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
+13. Decide whether admin notification polling should move to a delta/summary endpoint so `AdminShell` and dashboard stop re-reading the full notifications collection.
 
 ## Lower Priority Follow-Ups
 

@@ -5,11 +5,16 @@ import { env } from "./env.js"
 import { logger } from "./logger.js"
 import { ensureSeedData } from "./seed.js"
 import { startOutboxWorker, stopOutboxWorker } from "./services/common.js"
+import {
+  startWhatsappMediaWorker,
+  stopWhatsappMediaWorker,
+} from "./services/whatsapp-webhooks.js"
 
 export const startServer = async () => {
   await connectDatabase()
   await ensureSeedData()
   startOutboxWorker()
+  startWhatsappMediaWorker()
   logger.info({
     event: "api.runtime.ready",
     releaseSha: env.RELEASE_SHA,
@@ -25,6 +30,7 @@ export const startServer = async () => {
     if (sessionStore?.close) {
       await sessionStore.close()
     }
+    await stopWhatsappMediaWorker()
     await stopOutboxWorker()
   }
 

@@ -10,6 +10,10 @@ const main = async () => {
   process.env.PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://127.0.0.1:3100"
   process.env.API_ORIGIN = process.env.API_ORIGIN ?? "http://127.0.0.1:4100"
   process.env.WA_FAIL_MODE = process.env.WA_FAIL_MODE ?? "never"
+  process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN =
+    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ?? "cjlaundry-e2e-webhook-token"
+  process.env.WHATSAPP_APP_SECRET =
+    process.env.WHATSAPP_APP_SECRET ?? "cjlaundry-e2e-app-secret"
 
   const { MongoMemoryReplSet } = await import("mongodb-memory-server")
   const mongo = await MongoMemoryReplSet.create({

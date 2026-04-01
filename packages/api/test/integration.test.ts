@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import crypto from "node:crypto"
 import test from "node:test"
 import { createServer, type Server } from "node:http"
 import bcrypt from "bcryptjs"
@@ -100,6 +101,23 @@ const startGatewayServer = async () => {
       return
     }
 
+    if (req.method === "GET" && req.url === "/v25.0/cloud-media-image") {
+      sendJson(200, {
+        url: `${graphApiBaseUrl}/media/cloud-media-image/download`,
+        mime_type: "image/jpeg",
+        sha256: "provider-media-sha",
+        file_size: 19,
+      })
+      return
+    }
+
+    if (req.method === "GET" && req.url === "/media/cloud-media-image/download") {
+      res.statusCode = 200
+      res.setHeader("Content-Type", "image/jpeg")
+      res.end(Buffer.from("integration-media-01"))
+      return
+    }
+
     sendJson(404, { message: "Not found" })
   })
 
@@ -145,6 +163,34 @@ const waitFor = async <T>(
   }
 
   throw new Error("Timed out waiting for condition")
+}
+
+const signWhatsappWebhookPayload = (payload: unknown) => {
+  const rawBody = JSON.stringify(payload)
+  const secret = process.env.WHATSAPP_APP_SECRET ?? "integration-test-app-secret"
+  const signature = `sha256=${crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex")}`
+
+  return { rawBody, signature }
+}
+
+const requestText = async (
+  path: string,
+  init?: RequestInit & { expectedStatus?: number }
+) => {
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(10_000),
+  })
+  const expectedStatus = init?.expectedStatus ?? 200
+  assert.equal(response.status, expectedStatus)
+
+  return {
+    response,
+    text: await response.text(),
+  }
 }
 
 const extractCookieExpiry = (cookieHeader: string) => {
@@ -712,6 +758,299 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   })
   assert.ok(result.payload.length >= 1)
 
+  const webhookChallenge = await requestText(
+    "/v1/webhooks/meta/whatsapp?hub.mode=subscribe&hub.verify_token=integration-test-webhook-token&hub.challenge=challenge-123"
+  )
+  assert.equal(webhookChallenge.text, "challenge-123")
+
+  await requestText(
+    "/v1/webhooks/meta/whatsapp?hub.mode=subscribe&hub.verify_token=wrong-token&hub.challenge=challenge-123",
+    { expectedStatus: 403 }
+  )
+
+  const inboundWebhookPayload = {
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "waba_123",
+        changes: [
+          {
+            field: "messages",
+            value: {
+              messaging_product: "whatsapp",
+              metadata: {
+                display_phone_number: "+62 877 8056 3875",
+                phone_number_id: "1234567890",
+              },
+              contacts: [
+                {
+                  profile: { name: upperCustomerName },
+                  wa_id: `62${customerPhone.slice(1)}`,
+                },
+              ],
+              messages: [
+                {
+                  from: `62${customerPhone.slice(1)}`,
+                  id: `wamid.inbound.text.${uniqueSuffix}`,
+                  timestamp: String(Math.floor(Date.now() / 1000)),
+                  type: "text",
+                  text: {
+                    body: "Halo dari webhook Meta",
+                  },
+                },
+                {
+                  from: `62${customerPhone.slice(1)}`,
+                  id: `wamid.inbound.image.${uniqueSuffix}`,
+                  timestamp: String(Math.floor(Date.now() / 1000) + 1),
+                  type: "image",
+                  image: {
+                    id: "cloud-media-image",
+                    mime_type: "image/jpeg",
+                    sha256: "provider-media-sha",
+                    caption: "Foto cucian terbaru",
+                    file_size: 19,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  }
+
+  const invalidWebhookSignature = signWhatsappWebhookPayload({
+    object: "whatsapp_business_account",
+  })
+  await requestJson("/v1/webhooks/meta/whatsapp", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Hub-Signature-256": `${invalidWebhookSignature.signature}tampered`,
+    },
+    body: invalidWebhookSignature.rawBody,
+    expectedStatus: 401,
+  })
+
+  const signedInboundWebhook = signWhatsappWebhookPayload(inboundWebhookPayload)
+  result = await requestJson("/v1/webhooks/meta/whatsapp", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Hub-Signature-256": signedInboundWebhook.signature,
+    },
+    body: signedInboundWebhook.rawBody,
+  })
+  assert.equal(result.payload.ok, true)
+
+  result = await requestJson("/v1/webhooks/meta/whatsapp", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Hub-Signature-256": signedInboundWebhook.signature,
+    },
+    body: signedInboundWebhook.rawBody,
+  })
+  assert.equal(result.payload.ok, true)
+
+  const inboundCloudTextMessage = await waitFor(
+    async () =>
+      getDatabase().collection("whatsapp_messages").findOne({
+        _id: `wamid.inbound.text.${uniqueSuffix}`,
+      }),
+    (message) => Boolean(message),
+  )
+  assert.equal(inboundCloudTextMessage?.source, "inbound_customer")
+
+  const inboundCloudImageMessage = await waitFor(
+    async () =>
+      getDatabase().collection("whatsapp_messages").findOne({
+        _id: `wamid.inbound.image.${uniqueSuffix}`,
+      }),
+    (message) => message?.mediaDownloadStatus === "downloaded",
+  )
+  assert.equal(inboundCloudImageMessage?.providerMediaId, "cloud-media-image")
+  assert.equal(inboundCloudImageMessage?.mediaStorageId?.length !== 0, true)
+
+  const inboundReceiptCount = await getDatabase()
+    .collection("whatsapp_webhook_receipts")
+    .countDocuments({
+      kind: "inbound_message",
+      providerMessageId: `wamid.inbound.text.${uniqueSuffix}`,
+    })
+  assert.equal(inboundReceiptCount, 1)
+
+  const inboundMediaResponse = await fetch(
+    `${baseUrl}/v1/admin/whatsapp/messages/${encodeURIComponent(`wamid.inbound.image.${uniqueSuffix}`)}/media`,
+    {
+      headers: { Cookie: adminCookie! },
+    }
+  )
+  assert.equal(inboundMediaResponse.status, 200)
+  assert.match(inboundMediaResponse.headers.get("content-type") ?? "", /image\/jpeg/)
+  const inboundMediaBuffer = Buffer.from(await inboundMediaResponse.arrayBuffer())
+  assert.equal(inboundMediaBuffer.toString("utf8"), "integration-media-01")
+
+  const templateLifecyclePayload = {
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "waba_123",
+        changes: [
+          {
+            field: "message_template_status_update",
+            value: {
+              message_template_id: "template-order-confirmed",
+              message_template_name: "cjl_order_confirmed_v1",
+              event: "APPROVED",
+            },
+          },
+        ],
+      },
+    ],
+  }
+  const signedTemplateLifecycle = signWhatsappWebhookPayload(templateLifecyclePayload)
+  await requestJson("/v1/webhooks/meta/whatsapp", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Hub-Signature-256": signedTemplateLifecycle.signature,
+    },
+    body: signedTemplateLifecycle.rawBody,
+  })
+  await requestJson("/v1/webhooks/meta/whatsapp", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Hub-Signature-256": signedTemplateLifecycle.signature,
+    },
+    body: signedTemplateLifecycle.rawBody,
+  })
+
+  const templateAuditCount = await getDatabase()
+    .collection("audit_logs")
+    .countDocuments({
+      action: "whatsapp.message_template_status_update",
+      entityType: "whatsapp_template",
+      entityId: "template-order-confirmed",
+    })
+  assert.equal(templateAuditCount, 1)
+
+  const webhookChatId = `wa:62${customerPhone.slice(1)}`
+  await getDatabase().collection("whatsapp_chats").updateOne(
+    { _id: webhookChatId },
+    {
+      $set: {
+        cswExpiresAt: DateTime.now().minus({ hours: 2 }).toISO(),
+        composerMode: "template_only",
+      },
+    }
+  )
+
+  const postStatusWebhook = async (
+    status: "sent" | "delivered" | "read" | "failed",
+    extra: Record<string, unknown> = {}
+  ) => {
+    const statusPayload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_123",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                statuses: [
+                  {
+                    id: confirmNotification.providerMessageId,
+                    recipient_id: `62${customerPhone.slice(1)}`,
+                    status,
+                    timestamp: String(Math.floor(Date.now() / 1000)),
+                    ...extra,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+    const signedPayload = signWhatsappWebhookPayload(statusPayload)
+    return requestJson("/v1/webhooks/meta/whatsapp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": signedPayload.signature,
+      },
+      body: signedPayload.rawBody,
+    })
+  }
+
+  await postStatusWebhook("sent")
+  let webhookNotificationRecord = await waitFor(
+    async () =>
+      getDatabase().collection("notifications").findOne({
+        _id: confirmNotification.notificationId,
+      }),
+    (notification) => notification?.providerStatus === "sent",
+  )
+  assert.equal(webhookNotificationRecord?.deliveryStatus, "sent")
+
+  await postStatusWebhook("delivered", {
+    pricing: {
+      type: "free_entry_point",
+      category: "utility",
+    },
+    conversation: {
+      expiration_timestamp: String(Math.floor(Date.now() / 1000) + 72 * 60 * 60),
+    },
+  })
+  webhookNotificationRecord = await waitFor(
+    async () =>
+      getDatabase().collection("notifications").findOne({
+        _id: confirmNotification.notificationId,
+      }),
+    (notification) => notification?.providerStatus === "delivered",
+  )
+  assert.equal(webhookNotificationRecord?.pricingType, "free_entry_point")
+  assert.equal(webhookNotificationRecord?.pricingCategory, "utility")
+
+  await postStatusWebhook("read")
+  webhookNotificationRecord = await waitFor(
+    async () =>
+      getDatabase().collection("notifications").findOne({
+        _id: confirmNotification.notificationId,
+      }),
+    (notification) => notification?.providerStatus === "read",
+  )
+  assert.equal(webhookNotificationRecord?.deliveryStatus, "sent")
+
+  await postStatusWebhook("failed", {
+    errors: [
+      {
+        code: 131051,
+        message: "Message failed at provider",
+      },
+    ],
+  })
+  webhookNotificationRecord = await waitFor(
+    async () =>
+      getDatabase().collection("notifications").findOne({
+        _id: confirmNotification.notificationId,
+      }),
+    (notification) => notification?.providerStatus === "failed",
+  )
+  assert.equal(webhookNotificationRecord?.deliveryStatus, "failed")
+  assert.equal(webhookNotificationRecord?.latestErrorCode, "131051")
+  assert.equal(webhookNotificationRecord?.latestFailureReason, "Message failed at provider")
+
+  const webhookChatAfterStatus = await getDatabase().collection("whatsapp_chats").findOne({
+    _id: webhookChatId,
+  })
+  assert.ok(webhookChatAfterStatus?.fepExpiresAt)
+  assert.equal(DateTime.fromISO(webhookChatAfterStatus?.cswExpiresAt ?? "").toMillis() < Date.now(), true)
+  assert.equal(webhookChatAfterStatus?.composerMode, "template_only")
+
   result = await requestJson("/v1/internal/whatsapp/events", {
     method: "POST",
     headers: {
@@ -786,16 +1125,30 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload[0].customerName, upperCustomerName)
   assert.equal(result.payload[0].waId, `62${customerPhone.slice(1)}`)
   assert.equal(result.payload[0].isCswOpen, true)
+  assert.equal(result.payload[0].isFepOpen, true)
   assert.equal(result.payload[0].composerMode, "free_form")
 
   result = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`wa:62${customerPhone.slice(1)}`)}/messages`, {
     headers: { Cookie: adminCookie! }
   })
-  assert.ok(result.payload.length >= 2)
+  assert.ok(result.payload.length >= 4)
   const inboundLegacyMessage = result.payload.find(
     (message) => message.direction === "inbound" && message.source === "legacy_mirror"
   )
   assert.ok(inboundLegacyMessage)
+  const inboundWebhookMessage = result.payload.find(
+    (message) =>
+      message.providerMessageId === `wamid.inbound.text.${uniqueSuffix}` &&
+      message.source === "inbound_customer"
+  )
+  assert.ok(inboundWebhookMessage)
+  const inboundWebhookImage = result.payload.find(
+    (message) =>
+      message.providerMessageId === `wamid.inbound.image.${uniqueSuffix}` &&
+      message.mediaDownloadAvailable === true &&
+      message.mediaDownloadStatus === "downloaded"
+  )
+  assert.ok(inboundWebhookImage)
   const confirmedMirrorMessage = result.payload.find(
     (message) =>
       message.notificationId === confirmNotification.notificationId &&

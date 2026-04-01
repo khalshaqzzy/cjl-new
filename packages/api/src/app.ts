@@ -93,6 +93,12 @@ import {
   listWhatsappChats,
   listWhatsappMessages,
 } from "./services/whatsapp.js"
+import {
+  ingestMetaWhatsappWebhook,
+  openStoredWhatsappMedia,
+  resolveMetaWhatsappWebhookChallenge,
+  verifyMetaWhatsappWebhookSignature,
+} from "./services/whatsapp-webhooks.js"
 import type { AdminDocument, SettingsDocument } from "./types.js"
 
 const processStartedAt = new Date().toISOString()
@@ -328,6 +334,46 @@ export const createApp = () => {
 
     withRequestContext(context, next)
   })
+  app.get(env.WHATSAPP_WEBHOOK_PATH, asyncRoute(async (req, res) => {
+    const challenge = resolveMetaWhatsappWebhookChallenge(req.query as Record<string, unknown>)
+    if (!challenge) {
+      res.status(403).type("text/plain").send("Forbidden")
+      return
+    }
+
+    res.type("text/plain").send(challenge)
+  }))
+  app.post(
+    env.WHATSAPP_WEBHOOK_PATH,
+    express.raw({ type: "application/json", limit: "5mb" }),
+    asyncRoute(async (req, res) => {
+      const rawBody =
+        Buffer.isBuffer(req.body)
+          ? req.body
+          : Buffer.from(typeof req.body === "string" ? req.body : "")
+
+      if (
+        !verifyMetaWhatsappWebhookSignature(
+          rawBody,
+          req.header("X-Hub-Signature-256") ?? undefined
+        )
+      ) {
+        sendErrorResponse(res, 401, "Unauthorized", "invalid_webhook_signature")
+        return
+      }
+
+      let payload: unknown
+      try {
+        payload = JSON.parse(rawBody.toString("utf8"))
+      } catch {
+        sendErrorResponse(res, 400, "Payload webhook tidak valid", "invalid_webhook_payload")
+        return
+      }
+
+      await ingestMetaWhatsappWebhook(payload as Record<string, unknown>)
+      res.json({ ok: true })
+    })
+  )
   app.use(express.json({ limit: "1mb" }))
   app.use(helmet({
     contentSecurityPolicy: false,
@@ -716,6 +762,22 @@ export const createApp = () => {
 
   app.get("/v1/admin/whatsapp/chats/:chatId/messages", requireAdmin, asyncRoute(async (req, res) => {
     res.json(await listWhatsappMessages(getParam(req.params.chatId)))
+  }))
+
+  app.get("/v1/admin/whatsapp/messages/:providerMessageId/media", requireAdmin, asyncRoute(async (req, res) => {
+    const media = await openStoredWhatsappMedia(getParam(req.params.providerMessageId))
+    res.setHeader("Content-Type", media.contentType)
+    res.setHeader("Content-Disposition", `inline; filename="${media.filename.replace(/"/g, "")}"`)
+    if (typeof media.length === "number") {
+      res.setHeader("Content-Length", String(media.length))
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      media.stream.once("error", reject)
+      res.once("close", resolve)
+      res.once("finish", resolve)
+      media.stream.pipe(res)
+    })
   }))
 
   app.post("/v1/internal/whatsapp/events", requireInternal, asyncRoute(async (req, res) => {

@@ -73,6 +73,11 @@ export const whatsappMessageSourceSchema = z.enum([
   "inbound_customer",
   "legacy_mirror",
 ])
+export const whatsappMediaDownloadStatusSchema = z.enum([
+  "pending",
+  "downloaded",
+  "failed",
+])
 
 export const serviceSettingSchema = z.object({
   serviceCode: serviceCodeSchema,
@@ -322,8 +327,11 @@ export const whatsappMessageItemSchema = z.object({
   source: whatsappMessageSourceSchema.optional(),
   providerAck: z.number().int().nonnegative().optional(),
   hasMedia: z.boolean(),
+  providerMediaId: z.string().optional(),
   mediaMimeType: z.string().optional(),
   mediaName: z.string().optional(),
+  mediaDownloadStatus: whatsappMediaDownloadStatusSchema.optional(),
+  mediaDownloadAvailable: z.boolean().optional(),
   notificationId: z.string().optional(),
   orderCode: z.string().optional(),
   customerId: z.string().optional(),
@@ -653,6 +661,7 @@ export type WhatsappPairingMethod = z.infer<typeof whatsappPairingMethodSchema>
 export type WhatsappMessageDirection = z.infer<typeof whatsappMessageDirectionSchema>
 export type WhatsappComposerMode = z.infer<typeof whatsappComposerModeSchema>
 export type WhatsappMessageSource = z.infer<typeof whatsappMessageSourceSchema>
+export type WhatsappMediaDownloadStatus = z.infer<typeof whatsappMediaDownloadStatusSchema>
 export type WhatsappConnectionStatus = z.infer<typeof whatsappConnectionStatusSchema>
 export type WhatsappChatSummary = z.infer<typeof whatsappChatSummarySchema>
 export type WhatsappMessageItem = z.infer<typeof whatsappMessageItemSchema>

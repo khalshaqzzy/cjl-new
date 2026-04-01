@@ -16,6 +16,9 @@ The repo now has:
 - in-process outbox worker with separate receipt render vs delivery state for confirmation notifications
 - Cloud API-ready WhatsApp delivery with provider-dispatch runtime and approved-template registry as the source of runtime send metadata
 - admin WhatsApp page now shows provider health plus hybrid thread/message visibility backed by API-owned chat/message records
+- Meta WhatsApp webhook verification and signed ingestion now exist on the active API runtime
+- outbound delivery truth, pricing visibility, CSW refresh, and template lifecycle audit can now be driven from Meta webhooks
+- inbound WhatsApp media is now persisted to Mongo GridFS with admin-only retrieval by provider message id
 - uppercase customer-name normalization plus repo-safe startup backfill for legacy customer/order/notification name snapshots
 - PDF receipt downloads for authenticated portal order detail and PNG receipt fallback downloads for failed admin order-confirmed notifications
 - manual WhatsApp fallback for failed notification sends with admin outbox action support
@@ -46,6 +49,7 @@ The repo now has:
 - active local and hosted compose/runtime topology no longer require `whatsapp-gateway`
 - WhatsApp Business Platform migration Phase 1 is now completed in repo memory with a canonical template registry, a synthetic document-header sample receipt asset, and an approved-template snapshot that records `cjl_welcome_v1` as active under `MARKETING`
 - WhatsApp Business Platform migration Phase 2 and Phase 3 are now implemented for provider abstraction, Cloud-era data modeling, admin template-editor removal, and Cloud API outbound delivery
+- WhatsApp Business Platform migration Phase 4 is now implemented for webhook verification, inbound/status ingestion, template lifecycle audit, and GridFS-backed inbound media storage
 
 ## Phase Snapshot
 
@@ -150,7 +154,7 @@ Focus:
 
 - run the first real staging rollout on GCP and validate the runbook against reality
 - verify Caddy TLS issuance, DNS, and VM sizing under real deployment conditions
-- validate Cloud API env rendering, webhook routability, and hybrid inbox data on staging
+- validate Cloud API env rendering, webhook routability, inbound media download, and admin inbox data on staging
 - decide whether the in-process outbox should remain monolith-local or evolve into a separate queue when hosted scale/operability requires it
 
 ## Important Notes
@@ -159,6 +163,7 @@ Focus:
 - automated testing is now in scope for local repo verification and is implemented
 - multiple lockfiles still exist in the monorepo, but explicit Turbopack root removed the earlier workspace-root warning blocker
 - hosted rollout is now blocked more by real-device validation than by missing WhatsApp implementation code
+- the next WhatsApp product milestone is Phase 5-6 admin inbox completion and manual free-form send on top of the new webhook-backed truth
 - the repo now also has a dedicated migration plan for moving from the current `whatsapp-web.js` sidecar to the official WhatsApp Business Platform in `internals/whatsappBusinessApiMigrationPhases.md`
 - template-authoring Phase 1 for the official WhatsApp migration is now complete in repo memory; the next migration start is Phase 2 provider abstraction and data-model expansion
 - if the official migration is prioritized before the first production rollout, treat the current gateway/pairing runtime as deprecated code to retain in-repo, not as a runtime path to preserve

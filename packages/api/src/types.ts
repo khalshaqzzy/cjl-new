@@ -7,6 +7,7 @@ import type {
   ServiceSetting,
   WhatsappComposerMode,
   WhatsappConnectionState,
+  WhatsappMediaDownloadStatus,
   WhatsappMessageSource,
   WhatsappPairingMethod,
   WhatsappProviderKind,
@@ -182,12 +183,28 @@ export type WhatsappMessageDocument = {
   source?: WhatsappMessageSource
   providerAck?: number
   hasMedia: boolean
+  providerMediaId?: string
   mediaMimeType?: string
   mediaName?: string
+  mediaStorageId?: string
+  mediaSha256?: string
+  mediaFileSizeBytes?: number
+  mediaDownloadedAt?: string
+  mediaDownloadStatus?: WhatsappMediaDownloadStatus
+  mediaDownloadError?: string
   notificationId?: string
   orderCode?: string
   createdAt: string
   updatedAt: string
+}
+
+export type WhatsappWebhookReceiptDocument = {
+  _id: string
+  kind: "inbound_message" | "status" | "template_lifecycle"
+  providerMessageId?: string
+  fingerprint: string
+  payloadSummary?: Record<string, unknown>
+  createdAt: string
 }
 
 export type SettingsDocument = {
