@@ -558,6 +558,7 @@ export function ThreadComposer({
   composerError: string | null
   className?: string
 }) {
+  const isMobile = useIsMobile()
   const canSend = Boolean(
     status &&
       status.state === "ready" &&
@@ -568,35 +569,41 @@ export function ThreadComposer({
   return (
     <div
       className={cn(
-        "border-t border-line-base bg-bg-surface/95 px-4 pt-4 backdrop-blur-sm",
-        "pb-[calc(env(safe-area-inset-bottom)+1rem)]",
+        "border-t border-line-base bg-bg-surface/95 backdrop-blur-sm",
+        isMobile ? "px-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom)+0.625rem)]" : "px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]",
         className
       )}
     >
-      <div className="mb-3 rounded-2xl bg-bg-subtle px-3 py-2 text-xs text-text-muted">
+      <div className={cn("rounded-2xl bg-bg-subtle text-text-muted", isMobile ? "mb-2 px-3 py-1.5 text-[11px] leading-5" : "mb-3 px-3 py-2 text-xs")}>
         {getThreadDisabledReason(status, selectedChat)}
       </div>
       {composerError && (
-        <div className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <div className={cn("rounded-2xl border border-rose-200 bg-rose-50 text-rose-700", isMobile ? "mb-2 px-3 py-1.5 text-xs" : "mb-3 px-3 py-2 text-sm")}>
           {composerError}
         </div>
       )}
-      <div className="flex flex-col gap-3">
+      <div className={cn("flex flex-col", isMobile ? "gap-2" : "gap-3")}>
         <Textarea
           value={composerValue}
           onChange={(event) => onComposerChange(event.target.value)}
           placeholder="Tulis balasan singkat untuk pelanggan..."
-          className="min-h-24 rounded-2xl border-line-base bg-bg-surface"
+          className={cn(
+            "rounded-2xl border-line-base bg-bg-surface",
+            isMobile ? "min-h-16 px-3 py-2" : "min-h-24"
+          )}
           disabled={status?.state !== "ready" || selectedChat?.composerMode !== "free_form" || isSending}
           data-testid="whatsapp-composer-input"
         />
-        <div className="flex items-end justify-between gap-3">
-          <p className="text-xs text-text-muted">
+        <div className={cn("flex justify-between gap-3", isMobile ? "items-center" : "items-end")}>
+          <p className={cn("text-text-muted", isMobile ? "text-[11px] leading-4" : "text-xs")}>
             Hanya balasan teks non-template yang didukung pada fase ini.
           </p>
           <Button
             type="button"
-            className="shrink-0 rounded-2xl bg-rose-600 hover:bg-rose-500"
+            className={cn(
+              "shrink-0 rounded-2xl bg-rose-600 hover:bg-rose-500",
+              isMobile ? "h-10 px-4 text-sm" : ""
+            )}
             onClick={onSend}
             disabled={!canSend || isSending}
             data-testid="whatsapp-send-button"
@@ -636,21 +643,28 @@ export function ThreadHeader({
   showBackButton?: boolean
   onBack?: () => void
 }) {
+  const isMobile = useIsMobile()
+
   if (!selectedChat) {
     return null
   }
 
   return (
-    <div className="sticky top-0 z-30 border-b border-line-base bg-bg-surface/95 px-4 py-4 backdrop-blur-sm sm:px-5">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div
+      className={cn(
+        "sticky top-0 z-30 border-b border-line-base bg-bg-surface/95 backdrop-blur-sm sm:px-5",
+        isMobile ? "px-3 pt-1.5 pb-2" : "px-4 py-4"
+      )}
+    >
+      <div className={cn("flex flex-col", isMobile ? "gap-2.5" : "gap-4")}>
+        <div className={cn("flex", isMobile ? "flex-col gap-2.5" : "flex-col gap-4 sm:flex-row sm:items-start sm:justify-between")}>
           <div className="min-w-0 flex-1">
             {showBackButton && onBack && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="mb-2 h-8 rounded-xl px-2 text-text-muted"
+                className={cn("rounded-xl px-2 text-text-muted", isMobile ? "mb-0.5 h-7 justify-start text-xs" : "mb-2 h-8")}
                 onClick={onBack}
                 data-testid="whatsapp-thread-back"
               >
@@ -658,26 +672,36 @@ export function ThreadHeader({
                 Kembali
               </Button>
             )}
-            <h2 className="text-base font-semibold text-text-strong">{selectedChat.title}</h2>
-            <p className="mt-1 break-words text-sm text-text-muted">
+            <h2 className={cn("font-semibold text-text-strong", isMobile ? "text-[15px] leading-tight" : "text-base")}>{selectedChat.title}</h2>
+            <p className={cn("break-words text-text-muted", isMobile ? "mt-px text-xs leading-tight" : "mt-1 text-sm")}>
               {selectedChat.phone ?? selectedChat.waId ?? selectedChat.chatId}
             </p>
           </div>
-          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:min-w-fit sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <div
+            className={cn(
+              "flex shrink-0 gap-2",
+              isMobile
+                ? "w-full flex-nowrap items-center gap-1.5"
+                : "w-full flex-col sm:w-auto sm:min-w-fit sm:flex-row sm:flex-wrap sm:items-center sm:justify-end"
+            )}
+          >
             {onRefresh && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="w-full rounded-xl sm:w-auto"
+                className={cn(
+                  "rounded-xl",
+                  isMobile ? "h-7 min-w-0 flex-1 px-2.5 text-[11px]" : "w-full sm:w-auto"
+                )}
                 onClick={onRefresh}
                 disabled={isRefreshing}
                 data-testid="whatsapp-thread-refresh"
               >
                 {isRefreshing ? (
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  <Loader2 className={cn("animate-spin", isMobile ? "mr-1 h-3.5 w-3.5" : "mr-1 h-4 w-4")} />
                 ) : (
-                  <RefreshCw className="mr-1 h-4 w-4" />
+                  <RefreshCw className={cn(isMobile ? "mr-1 h-3.5 w-3.5" : "mr-1 h-4 w-4")} />
                 )}
                 Refresh
               </Button>
@@ -687,23 +711,34 @@ export function ThreadHeader({
                 asChild
                 variant="outline"
                 size="sm"
-                className="w-full rounded-xl sm:w-auto"
+                className={cn(
+                  "rounded-xl",
+                  isMobile ? "h-7 min-w-0 flex-1 px-2.5 text-[11px]" : "w-full sm:w-auto"
+                )}
                 data-testid="whatsapp-linked-customer-link"
               >
                 <Link href={`/admin/pelanggan/${selectedChat.customerId}`}>
-                  <UserRound className="mr-1 h-4 w-4" />
-                  Buka Customer
+                  <UserRound className={cn(isMobile ? "mr-1 h-3.5 w-3.5" : "mr-1 h-4 w-4")} />
+                  {isMobile ? "Customer" : "Buka Customer"}
                 </Link>
               </Button>
             )}
             {!showBackButton && detailHref && (
-              <Button asChild variant="ghost" size="sm" className="w-full rounded-xl lg:hidden sm:w-auto">
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "rounded-xl lg:hidden",
+                  isMobile ? "h-7 min-w-0 flex-1 px-2.5 text-[11px]" : "w-full sm:w-auto"
+                )}
+              >
                 <Link href={detailHref}>Buka Penuh</Link>
               </Button>
             )}
           </div>
         </div>
-        <div className="flex min-w-0 flex-wrap gap-2 overflow-x-hidden">
+        <div className={cn("flex min-w-0 flex-wrap overflow-x-hidden", isMobile ? "gap-1.5" : "gap-2")}>
           <Badge className={cn("rounded-full", composerTone[selectedChat.composerMode])}>
             {composerLabel[selectedChat.composerMode]}
           </Badge>

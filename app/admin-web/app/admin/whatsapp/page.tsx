@@ -205,7 +205,7 @@ export default function WhatsappAdminPage() {
 
   return (
     <AdminShell title="WhatsApp" subtitle="Inbox internal berbasis Cloud API, webhook status, dan balasan operator">
-      <div className="flex h-full min-h-0 max-w-full flex-col space-y-5 overflow-x-hidden px-4 py-5 lg:gap-5 lg:space-y-0 lg:overflow-hidden lg:px-6">
+      <div className="flex h-full min-h-0 max-w-full flex-col space-y-4 overflow-x-hidden px-3 py-3 lg:gap-5 lg:space-y-0 lg:overflow-hidden lg:px-6 lg:py-5">
         {isLoading ? (
           <div className="rounded-2xl border border-line-base bg-bg-surface px-4 py-10 text-center text-sm text-text-muted">
             Memuat panel WhatsApp...
@@ -226,7 +226,7 @@ export default function WhatsappAdminPage() {
 
             <div className="grid max-w-full gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[360px_minmax(0,1fr)] lg:overflow-hidden">
               <Card className="max-w-full overflow-hidden rounded-3xl border-line-base lg:flex lg:min-h-0 lg:flex-col">
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-3 max-lg:px-4 max-lg:pt-4">
                   <CardTitle className="text-base font-semibold text-text-strong">Thread List</CardTitle>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
@@ -248,7 +248,7 @@ export default function WhatsappAdminPage() {
                     )}
                   </div>
                 </CardHeader>
-                <CardContent className="min-w-0 px-3 pb-3 lg:min-h-0 lg:flex-1">
+                <CardContent className="min-w-0 px-2.5 pb-2.5 max-lg:pt-0 lg:min-h-0 lg:flex-1">
                   <ScrollArea className="max-w-full pr-2 lg:h-full">
                     {filteredChats.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-line-base px-4 py-10 text-center text-sm text-text-muted">

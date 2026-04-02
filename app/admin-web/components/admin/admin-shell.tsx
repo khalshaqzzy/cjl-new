@@ -25,6 +25,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { useIsMobile } from "@/components/ui/use-mobile"
 import { Toaster } from "@/components/ui/sonner"
 import { adminApi } from "@/lib/api"
 import { toast } from "sonner"
@@ -120,10 +121,12 @@ export function AdminShell({
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  const isMobile = useIsMobile()
   const [moreOpen, setMoreOpen] = useState(false)
   const [isSessionChecked, setIsSessionChecked] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const failedNotificationsPrimedRef = useRef(false)
+  const compactMobileChrome = hideMobileNav && isMobile
 
   useEffect(() => {
     adminApi
@@ -270,15 +273,27 @@ export function AdminShell({
       {/* Main content */}
       <div className="flex-1 lg:pl-60 flex flex-col min-h-screen">
         {/* Top Bar */}
-        <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-4 border-b border-line-base bg-bg-surface/95 backdrop-blur-sm px-4 lg:px-6">
+        <header
+          className={cn(
+            "sticky top-0 z-40 flex items-center justify-between gap-4 border-b border-line-base bg-bg-surface/95 backdrop-blur-sm lg:px-6",
+            compactMobileChrome ? "h-12 px-3" : "h-14 px-4"
+          )}
+        >
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile logo */}
-            <div className="lg:hidden flex h-7 w-7 items-center justify-center rounded-md bg-rose-600 flex-shrink-0">
+            <div
+              className={cn(
+                "lg:hidden flex items-center justify-center rounded-md bg-rose-600 flex-shrink-0",
+                compactMobileChrome ? "h-6 w-6" : "h-7 w-7"
+              )}
+            >
               <Shirt className="h-4 w-4 text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="font-semibold text-sm text-text-strong truncate">{title}</h1>
-              {subtitle && (
+              <h1 className={cn("font-semibold text-text-strong truncate", compactMobileChrome ? "text-[13px]" : "text-sm")}>
+                {title}
+              </h1>
+              {subtitle && !compactMobileChrome && (
                 <p className="text-[11px] text-text-muted truncate">{subtitle}</p>
               )}
             </div>
@@ -289,7 +304,7 @@ export function AdminShell({
             {/* Mobile more menu */}
             <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
               <SheetTrigger asChild className="lg:hidden">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button variant="ghost" size="icon" className={cn(compactMobileChrome ? "h-7 w-7" : "h-8 w-8")}>
                   <Menu className="h-4 w-4" />
                 </Button>
               </SheetTrigger>
