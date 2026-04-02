@@ -175,14 +175,14 @@ export default function WhatsappThreadDetailPage() {
       subtitle="Tampilan penuh untuk percakapan pelanggan"
       hideMobileNav
     >
-      <div className="px-4 py-4 lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden lg:px-6">
+      <div className="flex h-full min-h-0 max-w-full flex-col overflow-hidden px-4 py-4 lg:px-6">
         {isLoading ? (
           <div className="rounded-2xl border border-line-base bg-bg-surface px-4 py-10 text-center text-sm text-text-muted">
             Memuat thread WhatsApp...
           </div>
         ) : (
-          <Card className="overflow-hidden rounded-3xl border-line-base lg:min-h-0">
-            <div className="flex min-h-[calc(100dvh-7.5rem)] flex-col lg:min-h-0 lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)]">
+          <Card className="max-w-full overflow-hidden rounded-3xl border-line-base lg:min-h-0">
+            <div className="flex h-[calc(100dvh-7.5rem)] min-h-0 max-w-full flex-col lg:min-h-0 lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)]">
               <ThreadHeader
                 status={status}
                 selectedChat={selectedChat}

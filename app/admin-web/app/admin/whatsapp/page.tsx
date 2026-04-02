@@ -205,7 +205,7 @@ export default function WhatsappAdminPage() {
 
   return (
     <AdminShell title="WhatsApp" subtitle="Inbox internal berbasis Cloud API, webhook status, dan balasan operator">
-      <div className="space-y-5 px-4 py-5 lg:flex lg:min-h-0 lg:flex-col lg:gap-5 lg:space-y-0 lg:overflow-hidden lg:px-6">
+      <div className="flex h-full min-h-0 max-w-full flex-col space-y-5 overflow-x-hidden px-4 py-5 lg:gap-5 lg:space-y-0 lg:overflow-hidden lg:px-6">
         {isLoading ? (
           <div className="rounded-2xl border border-line-base bg-bg-surface px-4 py-10 text-center text-sm text-text-muted">
             Memuat panel WhatsApp...
@@ -224,8 +224,8 @@ export default function WhatsappAdminPage() {
               isRefreshing={isRefreshing}
             />
 
-            <div className="grid gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[360px_minmax(0,1fr)] lg:overflow-hidden">
-              <Card className="rounded-3xl border-line-base lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
+            <div className="grid max-w-full gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[360px_minmax(0,1fr)] lg:overflow-hidden">
+              <Card className="max-w-full overflow-hidden rounded-3xl border-line-base lg:flex lg:min-h-0 lg:flex-col">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-semibold text-text-strong">Thread List</CardTitle>
                   <div className="relative">
@@ -248,8 +248,8 @@ export default function WhatsappAdminPage() {
                     )}
                   </div>
                 </CardHeader>
-                <CardContent className="px-3 pb-3 lg:min-h-0 lg:flex-1">
-                  <ScrollArea className="pr-2 lg:h-full">
+                <CardContent className="min-w-0 px-3 pb-3 lg:min-h-0 lg:flex-1">
+                  <ScrollArea className="max-w-full pr-2 lg:h-full">
                     {filteredChats.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-line-base px-4 py-10 text-center text-sm text-text-muted">
                         Belum ada thread yang cocok dengan filter saat ini.

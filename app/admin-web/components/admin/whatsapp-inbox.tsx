@@ -188,7 +188,7 @@ export function ProviderHealthCard({
   return (
     <Collapsible
       defaultOpen={false}
-      className="rounded-3xl border border-line-base bg-bg-surface shadow-card"
+      className="max-w-full overflow-hidden rounded-3xl border border-line-base bg-bg-surface shadow-card"
     >
       <div className={cn("flex items-start gap-3", isMobile ? "px-4 py-3" : "px-5 py-4")}>
         <div className="flex-1 min-w-0">
@@ -204,7 +204,10 @@ export function ProviderHealthCard({
             >
               {status ? providerLabel[status.state] : "Tidak diketahui"}
             </Badge>
-            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">
+            <Badge
+              variant="outline"
+              className={cn("rounded-full px-3 py-1 text-xs", isMobile && "hidden")}
+            >
               {status?.provider === "cloud_api" ? "Cloud API" : "Disabled"}
             </Badge>
           </div>
@@ -212,7 +215,7 @@ export function ProviderHealthCard({
             {status?.summary ?? "Status provider WhatsApp belum tersedia."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {onRefresh && (
             <Button
               type="button"
@@ -221,6 +224,7 @@ export function ProviderHealthCard({
               className="rounded-xl"
               onClick={onRefresh}
               disabled={isRefreshing}
+              aria-label="Refresh status WhatsApp"
             >
               {isRefreshing ? (
                 <Loader2 className={cn("h-4 w-4 animate-spin", !isMobile && "mr-1")} />
@@ -237,6 +241,7 @@ export function ProviderHealthCard({
               size="sm"
               className="rounded-xl"
               data-testid="whatsapp-provider-toggle"
+              aria-label="Tampilkan detail status WhatsApp"
             >
               <span className={cn(isMobile && "sr-only")}>Detail</span>
               <ChevronDown className={cn("h-4 w-4", !isMobile && "ml-1")} />
@@ -459,6 +464,7 @@ export function ThreadTimeline({
   className?: string
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const bottomAnchorRef = useRef<HTMLDivElement | null>(null)
   const stickToBottomRef = useRef(true)
   const lastMessageIdRef = useRef<string | null>(null)
 
@@ -501,6 +507,7 @@ export function ThreadTimeline({
         return
       }
 
+      bottomAnchorRef.current?.scrollIntoView({ block: "end" })
       nextViewport.scrollTop = nextViewport.scrollHeight
       stickToBottomRef.current = true
     })
@@ -525,6 +532,7 @@ export function ThreadTimeline({
               onOpenMedia={onOpenMedia}
             />
           ))}
+          <div ref={bottomAnchorRef} aria-hidden="true" className="h-px w-full" />
         </div>
       )}
     </ScrollArea>
@@ -633,10 +641,10 @@ export function ThreadHeader({
   }
 
   return (
-    <div className="sticky top-0 z-20 border-b border-line-base bg-bg-surface/95 px-4 py-4 backdrop-blur-sm sm:px-5">
+    <div className="sticky top-0 z-30 border-b border-line-base bg-bg-surface/95 px-4 py-4 backdrop-blur-sm sm:px-5">
       <div className="flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
             {showBackButton && onBack && (
               <Button
                 type="button"
@@ -655,13 +663,13 @@ export function ThreadHeader({
               {selectedChat.phone ?? selectedChat.waId ?? selectedChat.chatId}
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:min-w-fit sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
             {onRefresh && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="rounded-xl"
+                className="w-full rounded-xl sm:w-auto"
                 onClick={onRefresh}
                 disabled={isRefreshing}
                 data-testid="whatsapp-thread-refresh"
@@ -679,7 +687,7 @@ export function ThreadHeader({
                 asChild
                 variant="outline"
                 size="sm"
-                className="rounded-xl"
+                className="w-full rounded-xl sm:w-auto"
                 data-testid="whatsapp-linked-customer-link"
               >
                 <Link href={`/admin/pelanggan/${selectedChat.customerId}`}>
@@ -689,13 +697,13 @@ export function ThreadHeader({
               </Button>
             )}
             {!showBackButton && detailHref && (
-              <Button asChild variant="ghost" size="sm" className="rounded-xl lg:hidden">
+              <Button asChild variant="ghost" size="sm" className="w-full rounded-xl lg:hidden sm:w-auto">
                 <Link href={detailHref}>Buka Penuh</Link>
               </Button>
             )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex min-w-0 flex-wrap gap-2 overflow-x-hidden">
           <Badge className={cn("rounded-full", composerTone[selectedChat.composerMode])}>
             {composerLabel[selectedChat.composerMode]}
           </Badge>
@@ -764,7 +772,7 @@ export function ThreadPanel({
 
   return (
     <Card className="overflow-hidden rounded-3xl border-line-base lg:min-h-0">
-      <div className="flex min-h-[32rem] flex-col lg:min-h-0 lg:max-h-[calc(100dvh-11rem)] lg:h-[calc(100dvh-11rem)]">
+      <div className="flex min-h-[32rem] max-w-full flex-col lg:min-h-0 lg:max-h-[calc(100dvh-11rem)] lg:h-[calc(100dvh-11rem)]">
         <ThreadHeader
           status={status}
           selectedChat={selectedChat}
