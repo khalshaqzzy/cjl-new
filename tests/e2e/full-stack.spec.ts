@@ -390,6 +390,34 @@ test("admin and public frontends stay fully integrated through the backend", asy
   try {
     const database = client.db()
     await database.collection("notifications").insertOne({
+      _id: `notification_receipt_failed_${uniqueSuffix}`,
+      customerName: upperCustomerName,
+      destinationPhone: customer.phone,
+      orderId: order._id,
+      orderCode,
+      eventType: "order_confirmed",
+      renderStatus: "ready",
+      deliveryStatus: "failed",
+      latestFailureReason: "Simulasi receipt gagal terkirim",
+      attemptCount: 1,
+      preparedMessage: `Halo ${upperCustomerName}, receipt order ${orderCode}.`,
+      templateParams: {
+        customer_name: upperCustomerName,
+        order_code: orderCode,
+        created_at: "2 Apr 2026, 10:35",
+        weight_kg_label: "3.0 kg",
+        service_summary: "1x Washer, 1x Dryer, 2.0 kg Setrika Saja, 2x Plastik Laundry",
+        total_label: "Rp 29.000",
+        earned_stamps: "1",
+        redeemed_points: "0",
+        current_points: "1",
+        status_url: `http://127.0.0.1:3100/status/${directStatusToken}`,
+      },
+      businessKey: `e2e-receipt-failed:${uniqueSuffix}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    await database.collection("notifications").insertOne({
       _id: `notification_manual_done_${uniqueSuffix}`,
       customerName: upperCustomerName,
       destinationPhone: customer.phone,
@@ -405,16 +433,72 @@ test("admin and public frontends stay fully integrated through the backend", asy
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     })
+    await database.collection("notifications").insertMany([
+      {
+        _id: `notification_manual_complete_${uniqueSuffix}`,
+        customerName: upperCustomerName,
+        destinationPhone: customer.phone,
+        orderId: order._id,
+        orderCode,
+        eventType: "welcome",
+        renderStatus: "not_required",
+        deliveryStatus: "failed",
+        latestFailureReason: "Simulasi mark as done",
+        attemptCount: 1,
+        preparedMessage: `Halo ${upperCustomerName}, notifikasi manual complete.`,
+        businessKey: `e2e-manual-complete:${uniqueSuffix}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        _id: `notification_manual_ignore_${uniqueSuffix}`,
+        customerName: upperCustomerName,
+        destinationPhone: customer.phone,
+        orderId: order._id,
+        orderCode,
+        eventType: "account_info",
+        renderStatus: "not_required",
+        deliveryStatus: "failed",
+        latestFailureReason: "Simulasi ignore",
+        attemptCount: 1,
+        preparedMessage: `Halo ${upperCustomerName}, notifikasi ignore.`,
+        businessKey: `e2e-manual-ignore:${uniqueSuffix}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ])
   } finally {
     await client.close()
   }
 
   await page.goto("http://127.0.0.1:3101/admin/notifikasi")
-  const failedNotificationCard = page.locator('[class*="rounded-xl"]').filter({ hasText: "Simulasi gagal kirim bot" }).first()
+  const failedReceiptCard = page.getByTestId(`notification-card-notification_receipt_failed_${uniqueSuffix}`)
+  await expect(failedReceiptCard).toBeVisible()
+  const fallbackReceiptDownload = page.waitForEvent("download")
+  await page.getByTestId(`notification-download-notification_receipt_failed_${uniqueSuffix}`).click()
+  const fallbackReceiptFile = await fallbackReceiptDownload
+  expect(fallbackReceiptFile.suggestedFilename()).toContain(".png")
+  await page.getByTestId(`notification-resend-notification_receipt_failed_${uniqueSuffix}`).click()
+  await expect(failedReceiptCard).toContainText("Terkirim")
+
+  const failedNotificationCard = page.getByTestId(`notification-card-notification_manual_done_${uniqueSuffix}`)
   await expect(failedNotificationCard).toBeVisible()
-  await failedNotificationCard.getByRole("button", { name: "Kirim Ulang" }).click()
-  await expect(page.getByRole("tab", { name: "Gagal (0)" })).toBeVisible()
-  await expect(page.getByText("Simulasi gagal kirim bot")).toHaveCount(0)
+  await page.getByTestId(`notification-resend-notification_manual_done_${uniqueSuffix}`).click()
+  await expect(failedNotificationCard).toContainText("Terkirim")
+
+  const manualCompleteCard = page.getByTestId(`notification-card-notification_manual_complete_${uniqueSuffix}`)
+  await expect(manualCompleteCard).toBeVisible()
+  await page.getByTestId(`notification-complete-notification_manual_complete_${uniqueSuffix}`).click()
+  await page.getByRole("tab", { name: /Manual/ }).click()
+  await expect(page.getByText("Simulasi mark as done")).toBeVisible()
+
+  await page.getByRole("tab", { name: /Gagal/ }).click()
+  const manualIgnoreCard = page.getByTestId(`notification-card-notification_manual_ignore_${uniqueSuffix}`)
+  await expect(manualIgnoreCard).toBeVisible()
+  await page.getByTestId(`notification-ignore-notification_manual_ignore_${uniqueSuffix}`).click()
+  await page.getByRole("tab", { name: /Ignored/ }).click()
+  await expect(page.getByText("Simulasi ignore")).toBeVisible()
+  await page.getByRole("tab", { name: /Semua/ }).click()
 
   await page.goto(`http://127.0.0.1:3101/admin/pelanggan/${customer?._id}`)
   await page.getByRole("button", { name: "QR Login" }).click()

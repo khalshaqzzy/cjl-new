@@ -49,7 +49,6 @@ jobs:
       - name: Resolve deployment fingerprints
         shell: bash
         env:
-          WHATSAPP_GATEWAY_TOKEN_SECRET: ${{ secrets.PRODUCTION_WHATSAPP_GATEWAY_TOKEN }}
           DEPLOY_RESET_TOKEN_SECRET: ${{ secrets.PRODUCTION_DEPLOY_RESET_TOKEN }}
         run: |
           if [[ -z "$DEPLOY_RESET_TOKEN_SECRET" ]]; then
@@ -57,13 +56,32 @@ jobs:
             exit 1
           fi
 
-          WHATSAPP_GATEWAY_TOKEN_FINGERPRINT="$(printf '%s' "$WHATSAPP_GATEWAY_TOKEN_SECRET" | sha256sum | awk '{print substr($1, 1, 12)}')"
           DEPLOY_RESET_FINGERPRINT="$(printf '%s' "$DEPLOY_RESET_TOKEN_SECRET" | sha256sum | awk '{print $1}')"
-
-          echo "WHATSAPP_GATEWAY_TOKEN fingerprint (api): ${WHATSAPP_GATEWAY_TOKEN_FINGERPRINT}"
-          echo "WHATSAPP_GATEWAY_TOKEN fingerprint (whatsapp-gateway): ${WHATSAPP_GATEWAY_TOKEN_FINGERPRINT}"
-          echo "WHATSAPP_GATEWAY_TOKEN_MATCH=true"
           echo "DEPLOY_RESET_FINGERPRINT=${DEPLOY_RESET_FINGERPRINT}" >> "$GITHUB_ENV"
+
+      - name: Validate Cloud WhatsApp secrets
+        shell: bash
+        env:
+          WHATSAPP_BUSINESS_ID: ${{ secrets.PRODUCTION_WHATSAPP_BUSINESS_ID }}
+          WHATSAPP_WABA_ID: ${{ secrets.PRODUCTION_WHATSAPP_WABA_ID }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.PRODUCTION_WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.PRODUCTION_WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_APP_SECRET: ${{ secrets.PRODUCTION_WHATSAPP_APP_SECRET }}
+          WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ secrets.PRODUCTION_WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
+        run: |
+          for name in \
+            WHATSAPP_BUSINESS_ID \
+            WHATSAPP_WABA_ID \
+            WHATSAPP_PHONE_NUMBER_ID \
+            WHATSAPP_ACCESS_TOKEN \
+            WHATSAPP_APP_SECRET \
+            WHATSAPP_WEBHOOK_VERIFY_TOKEN; do
+            value="${!name}"
+            if [[ -z "${value// }" ]]; then
+              echo "Missing required secret: PRODUCTION_${name}" >&2
+              exit 1
+            fi
+          done
 
       - name: Start SSH agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -112,9 +130,16 @@ jobs:
           SESSION_SECRET=${{ secrets.PRODUCTION_SESSION_SECRET }}
           ADMIN_BOOTSTRAP_USERNAME=${{ secrets.PRODUCTION_ADMIN_BOOTSTRAP_USERNAME }}
           ADMIN_BOOTSTRAP_PASSWORD=${{ secrets.PRODUCTION_ADMIN_BOOTSTRAP_PASSWORD }}
-          WHATSAPP_ENABLED=true
-          WHATSAPP_GATEWAY_TOKEN=${{ secrets.PRODUCTION_WHATSAPP_GATEWAY_TOKEN }}
-          WHATSAPP_AUTH_DIR=/data/auth
+          WHATSAPP_PROVIDER=cloud_api
+          WHATSAPP_GRAPH_API_VERSION=v25.0
+          WHATSAPP_GRAPH_API_BASE_URL=https://graph.facebook.com
+          WHATSAPP_BUSINESS_ID=${{ secrets.PRODUCTION_WHATSAPP_BUSINESS_ID }}
+          WHATSAPP_WABA_ID=${{ secrets.PRODUCTION_WHATSAPP_WABA_ID }}
+          WHATSAPP_PHONE_NUMBER_ID=${{ secrets.PRODUCTION_WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_ACCESS_TOKEN=${{ secrets.PRODUCTION_WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_APP_SECRET=${{ secrets.PRODUCTION_WHATSAPP_APP_SECRET }}
+          WHATSAPP_WEBHOOK_VERIFY_TOKEN=${{ secrets.PRODUCTION_WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
+          WHATSAPP_WEBHOOK_PATH=/v1/webhooks/meta/whatsapp
           WA_FAIL_MODE=never
           EOF
 
@@ -136,6 +161,10 @@ jobs:
             "https://$API_DOMAIN/ready" \
             "https://$ADMIN_DOMAIN" \
             "https://$PUBLIC_DOMAIN"
+
+      - name: Validate Cloud readiness payload
+        run: |
+          bash deploy/scripts/assert-ready-cloud.sh "https://$API_DOMAIN/ready" "cloud_api"
 
       - name: Rollback production on failed smoke-check
         if: failure() && env.PREVIOUS_RELEASE != ''

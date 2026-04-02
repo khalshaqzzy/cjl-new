@@ -37,6 +37,9 @@ jobs:
       - name: Run typecheck
         run: npm run typecheck
 
+      - name: Validate Cloud runtime parity
+        run: npm run validate:cloud-runtime
+
       - name: Run production dependency audit
         run: npm run audit:prod
 

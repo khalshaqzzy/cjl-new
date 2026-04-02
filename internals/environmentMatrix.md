@@ -1,8 +1,8 @@
 # Environment Matrix
 
 Document status: Active  
-Created: 2026-03-21  
-Purpose: runtime and verification topology snapshot for local, staging, and production
+Last updated: 2026-04-02  
+Purpose: runtime and validation topology snapshot after WhatsApp Cloud-only cutover prep
 
 | Environment | Public web | Admin web | API | Runtime target | Build location | Data store |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -16,7 +16,7 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
 - API dev runtime: `npm run dev:api`
 - admin dev runtime: `npm run dev --workspace @cjl/admin-web`
 - public dev runtime: `npm run dev --workspace @cjl/public-web`
-- shared contracts must be buildable from `packages/contracts`
+- deprecated gateway package remains in repo as code only and is not part of the active local runtime
 
 ## Local Container Runtime
 
@@ -24,25 +24,27 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
 - services:
   - `mongo`
   - `api`
-  - `whatsapp-gateway`
   - `admin-web`
   - `public-web`
 - intended use:
   - local full-stack boot
   - container build sanity
+  - Cloud-era config smoke only; not real Meta delivery
 
 ## Automated Verification Runtime
 
 - backend integration tests:
   - command: `npm run test:backend`
   - database: `mongodb-memory-server` replica set
-  - API exercised over real HTTP on test port
-  - WhatsApp transport exercised through a mocked gateway over real HTTP
+  - API exercised over real HTTP
+  - outbound Cloud API exercised through a local Graph stub
+  - webhook verification, status ingestion, unread clearing, manual send, resend, and startup backfill are covered here
 - frontend e2e tests:
   - command: `npm run test:e2e`
   - admin/public frontends started from local workspace scripts
   - API test server started from `scripts/testing/start-api.ts`
   - database: `mongodb-memory-server` replica set
+  - WhatsApp inbox/media/recovery behavior exercised through the same Cloud-era stubbed API path
 
 ## Hosted Runtime
 
@@ -51,26 +53,39 @@ Purpose: runtime and verification topology snapshot for local, staging, and prod
   - Docker Engine + Compose plugin
   - Caddy reverse proxy with host-based routing
   - MongoDB container on the internal Docker network in single-node replica-set mode
-  - MongoDB internal replica-set keyfile rendered from `MONGO_REPLICA_KEY`
-  - API, WhatsApp gateway, admin, and public services built locally on the VM
-  - persistent WhatsApp auth bind-mount at `${SHARED_DIR}/whatsapp-auth`
+  - API, admin, and public services built locally on the VM
+- active WhatsApp runtime path:
+  - Cloud API outbound from the API service
+  - signed Meta webhook into the API service
+  - GridFS-backed inbound media storage in MongoDB
+- deprecated gateway package is retained in repo only and is not started on local, staging, or production runtime paths
 
 ## Hosted Hardening Baseline
 
-- API and WhatsApp gateway emit structured JSON logs to stdout
+- API emits structured JSON logs to stdout
 - every API response includes `X-Request-Id`
 - API error envelopes include `message`, `error.code`, and `error.requestId`
 - staging and production enforce hosted env validation for secrets, trusted origins, secure cookies, and proxy settings
 - session-authenticated write endpoints enforce trusted `Origin` or `Referer`
-- login and token-redeem abuse controls use Mongo-backed rate limiting instead of in-memory state
-- customer magic-link and direct status tokens are stored as hashes, not plaintext
+- login and token-redeem abuse controls use Mongo-backed rate limiting
+- customer magic-link and direct status tokens are stored as hashes
 - API, admin, and public containers run as non-root
-- WhatsApp gateway remains a temporary root-runtime exception until Chromium and auth-volume permissions are validated on staging
+- `/ready` must report:
+  - Mongo connectivity
+  - seeded settings/admin readiness
+  - Cloud provider config presence
+  - configured webhook path
 
 ## Deployment Orchestration
 
 - CI runs on GitHub Actions
 - deploy workflows run on GitHub Actions
-- GitHub does not build deploy images for hosted environments
 - GitHub streams a release archive over SSH to the target VM
 - the target VM runs `docker compose up -d --build`
+- hosted runtime env is rendered by the workflow and must include Cloud API secrets:
+  - `*_WHATSAPP_BUSINESS_ID`
+  - `*_WHATSAPP_WABA_ID`
+  - `*_WHATSAPP_PHONE_NUMBER_ID`
+  - `*_WHATSAPP_ACCESS_TOKEN`
+  - `*_WHATSAPP_APP_SECRET`
+  - `*_WHATSAPP_WEBHOOK_VERIFY_TOKEN`

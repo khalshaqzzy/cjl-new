@@ -145,6 +145,9 @@ export type WhatsappChatDocument = {
   waId?: string
   displayName?: string
   phone?: string
+  legacySourceChatId?: string
+  isLegacyShadow?: boolean
+  shadowedByChatId?: string
   customerId?: string
   customerName?: string
   unreadCount: number

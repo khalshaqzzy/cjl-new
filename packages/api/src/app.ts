@@ -22,7 +22,6 @@ import {
   updateCustomerInputSchema,
   voidOrderInputSchema,
   whatsappManualMessageInputSchema,
-  whatsappInternalEventSchema,
 } from "@cjl/contracts"
 import {
   AppError,
@@ -90,7 +89,6 @@ import {
 } from "./services/public.js"
 import {
   getWhatsappStatus,
-  ingestWhatsappInternalEvent,
   listWhatsappChats,
   listWhatsappMessages,
   markWhatsappChatRead,
@@ -210,21 +208,6 @@ const requireCustomer = (req: express.Request, res: express.Response, next: expr
     actorType: "customer",
     actorId: req.session.customerUserId,
     actorSource: "session",
-  })
-  next()
-}
-
-const requireInternal = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const authorization = req.header("Authorization")
-  if (authorization !== `Bearer ${env.WHATSAPP_GATEWAY_TOKEN}`) {
-    sendErrorResponse(res, 401, "Unauthorized", "authentication_required")
-    return
-  }
-
-  updateRequestContext({
-    actorType: "system",
-    actorId: "whatsapp-gateway",
-    actorSource: "system",
   })
   next()
 }
@@ -499,7 +482,22 @@ export const createApp = () => {
         checks: {
           mongo: true,
           settingsSeeded: true,
-          adminSeeded: true
+          adminSeeded: true,
+          whatsappProviderConfigured:
+            env.WHATSAPP_PROVIDER === "disabled" ||
+            Boolean(
+              env.WHATSAPP_BUSINESS_ID?.trim() &&
+              env.WHATSAPP_WABA_ID?.trim() &&
+              env.WHATSAPP_PHONE_NUMBER_ID?.trim() &&
+              env.WHATSAPP_ACCESS_TOKEN?.trim() &&
+              env.WHATSAPP_APP_SECRET?.trim() &&
+              env.WHATSAPP_WEBHOOK_VERIFY_TOKEN?.trim()
+            ),
+          whatsappWebhookConfigured: Boolean(env.WHATSAPP_WEBHOOK_PATH?.trim()),
+        },
+        whatsapp: {
+          provider: env.WHATSAPP_PROVIDER,
+          webhookPath: env.WHATSAPP_WEBHOOK_PATH,
         }
       })
     } catch (_error) {
@@ -513,7 +511,13 @@ export const createApp = () => {
         checks: {
           mongo: false,
           settingsSeeded: false,
-          adminSeeded: false
+          adminSeeded: false,
+          whatsappProviderConfigured: false,
+          whatsappWebhookConfigured: Boolean(env.WHATSAPP_WEBHOOK_PATH?.trim()),
+        },
+        whatsapp: {
+          provider: env.WHATSAPP_PROVIDER,
+          webhookPath: env.WHATSAPP_WEBHOOK_PATH,
         }
       })
     }
@@ -806,11 +810,14 @@ export const createApp = () => {
     })
   }))
 
-  app.post("/v1/internal/whatsapp/events", requireInternal, asyncRoute(async (req, res) => {
-    const body = whatsappInternalEventSchema.parse(req.body)
-    await ingestWhatsappInternalEvent(body)
-    res.json({ ok: true })
-  }))
+  app.post("/v1/internal/whatsapp/events", (_req, res) => {
+    sendErrorResponse(
+      res,
+      410,
+      "Legacy WhatsApp bridge sudah dipensiunkan",
+      "legacy_whatsapp_bridge_retired"
+    )
+  })
 
   app.get("/v1/public/landing", asyncRoute(async (_req, res) => {
     res.json(await getLandingData())

@@ -60,8 +60,6 @@ services:
       WHATSAPP_APP_SECRET: local-app-secret
       WHATSAPP_WEBHOOK_VERIFY_TOKEN: local-webhook-verify-token
       WHATSAPP_WEBHOOK_PATH: /v1/webhooks/meta/whatsapp
-      WHATSAPP_ENABLED: "true"
-      WHATSAPP_GATEWAY_TOKEN: cjlaundry-whatsapp-internal-token
       WA_FAIL_MODE: never
     ports:
       - "4000:4000"

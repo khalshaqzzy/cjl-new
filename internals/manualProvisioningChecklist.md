@@ -1,18 +1,18 @@
 # Manual Provisioning Checklist
 
 Document status: Active  
-Created: 2026-03-21  
-Purpose: short external checklist for provisioning staging and production before the first deploy
+Last updated: 2026-04-02  
+Purpose: short external checklist for provisioning staging and production before the first Cloud-era deploy
 
 ## Local Preparation
 
-- local `npm run lint` passes
-- local `npm run typecheck` passes
-- local `npm test` passes
-- local `npm run build` passes
-- local `npm run audit:prod` passes
-- local `npm run security:scan` passes
-- local `docker compose config` passes
+- `npm run lint` passes
+- `npm run typecheck` passes
+- `npm run test:backend` passes
+- `npm run test:e2e` passes
+- `npm run build` passes
+- `npm run validate:cloud-runtime` passes
+- `docker compose config` passes
 - staging SSH key pair exists on the operator machine
 - production SSH key pair exists on the operator machine
 
@@ -28,7 +28,6 @@ Purpose: short external checklist for provisioning staging and production before
 - confirm SSH login works for `cjl-staging-deploy`
 - confirm SSH login works for `cjl-production-deploy`
 - confirm `docker version` works when logged in as each deploy user
-- if Windows `ssh-keyscan` fails with unsupported KEX, capture the host key via a normal `ssh` connection and copy the matching line from `$HOME\\.ssh\\known_hosts`
 
 ## DNS
 
@@ -48,21 +47,32 @@ Purpose: short external checklist for provisioning staging and production before
 - add staging `known_hosts`
 - add production `known_hosts`
 - add all staging Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
-- add all staging WhatsApp secrets including `WHATSAPP_GATEWAY_TOKEN` and `STAGING_DEPLOY_RESET_TOKEN`
+- add staging Cloud WhatsApp secrets:
+  - `STAGING_WHATSAPP_BUSINESS_ID`
+  - `STAGING_WHATSAPP_WABA_ID`
+  - `STAGING_WHATSAPP_PHONE_NUMBER_ID`
+  - `STAGING_WHATSAPP_ACCESS_TOKEN`
+  - `STAGING_WHATSAPP_APP_SECRET`
+  - `STAGING_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
 - add all production Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
-- add all production WhatsApp secrets including `WHATSAPP_GATEWAY_TOKEN` and `PRODUCTION_DEPLOY_RESET_TOKEN`
+- add production Cloud WhatsApp secrets:
+  - `PRODUCTION_WHATSAPP_BUSINESS_ID`
+  - `PRODUCTION_WHATSAPP_WABA_ID`
+  - `PRODUCTION_WHATSAPP_PHONE_NUMBER_ID`
+  - `PRODUCTION_WHATSAPP_ACCESS_TOKEN`
+  - `PRODUCTION_WHATSAPP_APP_SECRET`
+  - `PRODUCTION_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
 
 ## Validation
 
 - SSH from your machine to each VM works before relying on GitHub Actions
 - `CI` succeeds on branch `staging`
 - `Deploy Staging` reaches green
-- staging smoke URLs respond
-- staging `/ready` shows release metadata and dependency state
+- staging `/health` and `/ready` respond
+- staging `/ready` reports the expected release SHA and Cloud provider readiness
 - staging API responses expose `X-Request-Id`
-- staging API and WhatsApp gateway logs are structured JSON
-- staging GitHub Actions log shows identical `WHATSAPP_GATEWAY_TOKEN` fingerprints for `api` and `whatsapp-gateway`
-- staging rollback is tested against a known-bad release
-- staging WhatsApp status page can generate pairing material
-- staging WhatsApp reconnect still works after restart
-- staging business flow is validated manually before touching `main`
+- staging API logs are structured JSON
+- staging manual operator reply works when CSW is open
+- staging template-only composer state appears when CSW is closed
+- staging inbound media retrieval works from the admin inbox
+- staging webhook challenge verification and signed POST ingestion are validated before touching `main`

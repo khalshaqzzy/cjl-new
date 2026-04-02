@@ -60,6 +60,14 @@ const statusConfig = {
   },
 }
 
+const providerStatusLabels: Record<string, string> = {
+  accepted: "Accepted by Meta",
+  sent: "Sent",
+  delivered: "Delivered",
+  read: "Read",
+  failed: "Failed",
+}
+
 const renderStatusConfig = {
   not_required: { label: "Tidak perlu", className: "text-text-muted" },
   pending: { label: "Menunggu", className: "text-info" },
@@ -95,6 +103,7 @@ function NotificationCard({
         "rounded-xl border shadow-card transition-all",
         isFailed ? "border-danger/30 bg-danger-bg" : "border-line-base bg-bg-surface"
       )}
+      data-testid={`notification-card-${notification.notificationId}`}
     >
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3 gap-2">
@@ -165,14 +174,23 @@ function NotificationCard({
           {notification.lastAttemptAt && <div>Terakhir dicoba: {notification.lastAttemptAt}</div>}
           {notification.manualResolvedAt && <div>Manual: {notification.manualResolvedAt}</div>}
           {notification.ignoredAt && <div>Ignored: {notification.ignoredAt}</div>}
-          {notification.providerAck !== undefined && <div>Ack Provider: {notification.providerAck}</div>}
+          {notification.providerStatus && (
+            <div>Provider Status: {providerStatusLabels[notification.providerStatus] ?? notification.providerStatus}</div>
+          )}
           {notification.providerMessageId && <div className="truncate">Provider Msg: {notification.providerMessageId}</div>}
-          {notification.gatewayErrorCode && <div>Kode Gateway: {notification.gatewayErrorCode}</div>}
+          {notification.latestErrorCode && <div>Error Code: {notification.latestErrorCode}</div>}
         </div>
 
         {canDownloadReceipt && !isFailed && (
           <div className="mb-3">
-            <Button variant="outline" size="sm" className="rounded-xl w-full" onClick={onDownload} disabled={busyAction !== null}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl w-full"
+              onClick={onDownload}
+              disabled={busyAction !== null}
+              data-testid={`notification-download-${notification.notificationId}`}
+            >
               {busyAction === "download" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
               {busyAction === "download" ? "Menyiapkan..." : "Download Receipt"}
             </Button>
@@ -181,7 +199,14 @@ function NotificationCard({
 
         {notification.deliveryStatus === "queued" && (
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="rounded-xl flex-1" onClick={onResend} disabled={busyAction !== null}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl flex-1"
+              onClick={onResend}
+              disabled={busyAction !== null}
+              data-testid={`notification-resend-${notification.notificationId}`}
+            >
               {busyAction === "resend" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
               {busyAction === "resend" ? "Memproses..." : "Kirim Sekarang"}
             </Button>
@@ -191,20 +216,47 @@ function NotificationCard({
         {isFailed && (
           <div className="flex flex-wrap gap-2">
             {canDownloadReceipt && (
-              <Button variant="outline" size="sm" className="rounded-xl" onClick={onDownload} disabled={busyAction !== null}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                onClick={onDownload}
+                disabled={busyAction !== null}
+                data-testid={`notification-download-${notification.notificationId}`}
+              >
                 {busyAction === "download" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
                 {busyAction === "download" ? "Menyiapkan..." : "Download Receipt"}
               </Button>
             )}
-            <Button size="sm" className="rounded-xl bg-rose-600 hover:bg-rose-500 text-white" onClick={onResend} disabled={busyAction !== null}>
+            <Button
+              size="sm"
+              className="rounded-xl bg-rose-600 hover:bg-rose-500 text-white"
+              onClick={onResend}
+              disabled={busyAction !== null}
+              data-testid={`notification-resend-${notification.notificationId}`}
+            >
               {busyAction === "resend" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
               {busyAction === "resend" ? "Memproses..." : notification.eventType === "order_confirmed" ? "Resend Message" : "Kirim Ulang"}
             </Button>
-            <Button variant="outline" size="sm" className="rounded-xl" onClick={onManualComplete} disabled={busyAction !== null}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={onManualComplete}
+              disabled={busyAction !== null}
+              data-testid={`notification-complete-${notification.notificationId}`}
+            >
               {busyAction === "complete" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
               {busyAction === "complete" ? "Memproses..." : "Mark as Done"}
             </Button>
-            <Button variant="outline" size="sm" className="rounded-xl" onClick={onIgnore} disabled={busyAction !== null}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={onIgnore}
+              disabled={busyAction !== null}
+              data-testid={`notification-ignore-${notification.notificationId}`}
+            >
               {busyAction === "ignore" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <XCircle className="h-4 w-4 mr-1" />}
               {busyAction === "ignore" ? "Memproses..." : "Ignore"}
             </Button>

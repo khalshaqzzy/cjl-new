@@ -747,7 +747,7 @@ export const sendNotificationFallbackToWhatsapp = async (
 
 export const listWhatsappChats = async () => {
   const chats = await getChatsCollection()
-    .find({})
+    .find({ isLegacyShadow: { $ne: true } })
     .sort({ lastMessageAt: -1, updatedAt: -1 })
     .toArray()
 

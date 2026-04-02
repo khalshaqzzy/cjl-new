@@ -1,15 +1,17 @@
 # Production Readiness Checklist
 
 Document status: Active  
-Created: 2026-03-25  
-Purpose: final gate checklist before the first production push after observability, error handling, and security hardening
+Last updated: 2026-04-02  
+Purpose: final gate checklist before the first production push after Cloud-only WhatsApp cutover prep
 
 ## Build And Verification
 
 - `npm run lint` passes
 - `npm run typecheck` passes
-- `npm run test` passes
+- `npm run test:backend` passes
+- `npm run test:e2e` passes
 - `npm run build` passes
+- `npm run validate:cloud-runtime` passes
 - `npm run audit:prod` passes
 - CI security job passes:
   - Gitleaks
@@ -21,44 +23,58 @@ Purpose: final gate checklist before the first production push after observabili
 ## Runtime And Secrets
 
 - no placeholder secrets remain in staging or production runtime envs
+- staging and production deploy workflows fail before release upload if any required Cloud WhatsApp secret is blank
 - `SESSION_SECRET` is unique per environment
-- `WHATSAPP_GATEWAY_TOKEN` is unique per environment
-- GitHub Actions deploy logs show matching `WHATSAPP_GATEWAY_TOKEN` fingerprints for `api` and `whatsapp-gateway`
-- `DEPLOY_RESET_TOKEN` exists per hosted environment and is treated as a destructive rotation secret
 - `ADMIN_BOOTSTRAP_PASSWORD` is present, non-placeholder, and stored only in runtime secrets
 - `SESSION_COOKIE_SECURE=true` in hosted env
 - `TRUST_PROXY=1` or `true` in hosted env
 - `RELEASE_SHA` is rendered into hosted runtime env on deploy
 - `LOG_LEVEL` is explicitly set in hosted runtime env
+- staging and production both include:
+  - `WHATSAPP_PROVIDER=cloud_api`
+  - `WHATSAPP_GRAPH_API_VERSION`
+  - `WHATSAPP_GRAPH_API_BASE_URL`
+  - `WHATSAPP_BUSINESS_ID`
+  - `WHATSAPP_WABA_ID`
+  - `WHATSAPP_PHONE_NUMBER_ID`
+  - `WHATSAPP_ACCESS_TOKEN`
+  - `WHATSAPP_APP_SECRET`
+  - `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+  - `WHATSAPP_WEBHOOK_PATH`
 
 ## API And Observability
 
 - every API response includes `X-Request-Id`
 - API error responses include `error.code` and `error.requestId`
-- structured JSON logs are visible for API and WhatsApp gateway
-- access logs include request id, status, latency, actor type, and release sha
+- structured JSON logs are visible for the API
+- access logs include request id, status, latency, actor type, and release SHA
 - background worker failures produce error logs and do not disappear silently
-- `/ready` returns release metadata and dependency checks
+- `/ready` returns:
+  - release metadata
+  - Mongo check
+  - settings/admin seed checks
+  - Cloud provider configuration checks
+  - configured webhook path
+- hosted deploy validates `/ready` semantically, not just by HTTP `200`
 
 ## Security And Data Protection
 
 - admin/public/API domains return security headers
 - staging runs CSP in report-only mode
 - session-authenticated write routes enforce trusted origin checks
-- Mongo-backed rate limiting works for admin login, customer login, magic-link redeem, and admin WhatsApp controls
+- Mongo-backed rate limiting works for admin login, customer login, magic-link redeem, and admin WhatsApp send/read actions
 - `customer_magic_links` store token hashes only
 - `direct_order_tokens` store token hashes only
 - order documents no longer persist plaintext direct status tokens
 - audit logs capture request correlation and masked network metadata
 - API, admin, and public containers run as non-root
-- WhatsApp gateway root runtime is treated as a temporary exception until Chromium and auth-volume permissions are validated on staging
 
 ## Staging Acceptance
 
 - staging deploy finishes green
-- staging smoke check passes for admin, public, and API
-- first-start staging logs for the target release are reviewed for order `activityAt` backfill and index creation timing if legacy order data exists
-- forced bad release path proves automatic rollback works
+- staging smoke checks pass for admin, public, and API
+- first-start staging logs for the target release are reviewed for startup backfill duration and index creation timing
+- first-start staging logs confirm whether WhatsApp compatibility backfill ran in `baseline` or `incremental` mode
 - request ID can be traced from browser/network response to container log line
 - expected error codes are validated on staging:
   - `401`
@@ -69,21 +85,27 @@ Purpose: final gate checklist before the first production push after observabili
   - `429`
   - `500`
   - `503`
-- real-device WhatsApp pairing, reconnect, and outbound delivery flow are validated
-- deploy operators understand that rotating `*_DEPLOY_RESET_TOKEN` wipes persistent hosted data before rebuild
-- magic-link redeem still works without extra customer friction
-- customer portal session still renews on sliding 30-day behavior
+- real staging validation proves:
+  - webhook challenge verification works
+  - signed webhook POST is accepted
+  - outbound status progression appears in admin
+  - inbound media lands in GridFS and can be opened from admin
+  - CSW-open manual reply succeeds
+  - CSW-closed thread stays template-only
+  - failed-notification resend, `Mark as Done`, and `Ignore` behave as expected
+- customer portal and direct-status flows remain intact
 
 ## Production Go/No-Go
 
 - production release candidate commit already passed staging validation
-- staging proved the order `activityAt` backfill and new indexes do not cause unacceptable startup degradation on realistic data volume
+- staging proved the baseline startup backfill does not cause unacceptable startup degradation on realistic data volume
+- staging proved subsequent restarts run the incremental path rather than rescanning full WhatsApp history
 - previous healthy release SHA is known before deploy
 - first-hour production log review owner is assigned
 - first-hour review explicitly checks:
   - `401` spikes
   - `429` spikes
   - `5xx` spikes
-  - notification delivery failures
-  - gateway disconnect/auth failures
-- production push remains blocked until every item above is complete
+  - webhook signature failures
+  - Cloud delivery failures
+  - admin inbox/manual-send regressions

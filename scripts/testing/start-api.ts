@@ -91,7 +91,6 @@ const main = async () => {
   process.env.WHATSAPP_APP_SECRET =
     process.env.WHATSAPP_APP_SECRET ?? "cjlaundry-e2e-app-secret"
   process.env.WHATSAPP_PROVIDER = process.env.WHATSAPP_PROVIDER ?? "cloud_api"
-  process.env.WHATSAPP_ENABLED = process.env.WHATSAPP_ENABLED ?? "true"
   process.env.WHATSAPP_GRAPH_API_VERSION =
     process.env.WHATSAPP_GRAPH_API_VERSION ?? "v25.0"
   process.env.WHATSAPP_GRAPH_API_BASE_URL =

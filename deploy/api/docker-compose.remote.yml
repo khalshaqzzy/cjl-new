@@ -83,8 +83,6 @@ services:
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET}
       WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN}
       WHATSAPP_WEBHOOK_PATH: ${WHATSAPP_WEBHOOK_PATH}
-      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED}
-      WHATSAPP_GATEWAY_TOKEN: ${WHATSAPP_GATEWAY_TOKEN}
       WA_FAIL_MODE: ${WA_FAIL_MODE}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/ready').then((r)=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]

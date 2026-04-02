@@ -16,6 +16,7 @@ let getDatabase: (typeof import("../src/db.ts"))["getDatabase"]
 let disconnectDatabase: (typeof import("../src/db.ts"))["disconnectDatabase"]
 let stopBackgroundWork: (() => Promise<void>) | undefined
 let ensureSeedData: (typeof import("../src/seed.ts"))["ensureSeedData"]
+let whatsappCutoverBackfillMigrationId: (typeof import("../src/seed.ts"))["WHATSAPP_CUTOVER_BACKFILL_MIGRATION_ID"]
 let parseEnv: (typeof import("../src/env.ts"))["parseEnv"]
 
 const cloudApiControls = {
@@ -242,7 +243,6 @@ test.before(async () => {
   process.env.PUBLIC_ORIGIN = "http://127.0.0.1:3100"
   process.env.API_ORIGIN = "http://127.0.0.1:4100"
   process.env.WHATSAPP_PROVIDER = "cloud_api"
-  process.env.WHATSAPP_ENABLED = "true"
   process.env.WHATSAPP_GRAPH_API_VERSION = "v25.0"
   process.env.WHATSAPP_GRAPH_API_BASE_URL = graphApiBaseUrl
   process.env.WHATSAPP_BUSINESS_ID = "biz_123"
@@ -252,7 +252,6 @@ test.before(async () => {
   process.env.WHATSAPP_APP_SECRET = "integration-test-app-secret"
   process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = "integration-test-webhook-token"
   process.env.WHATSAPP_WEBHOOK_PATH = "/v1/webhooks/meta/whatsapp"
-  process.env.WHATSAPP_GATEWAY_TOKEN = "integration-test-whatsapp-token"
   process.env.WA_FAIL_MODE = "never"
 
   const envModule = await import("../src/env.ts")
@@ -264,6 +263,7 @@ test.before(async () => {
   getDatabase = dbModule.getDatabase
   disconnectDatabase = dbModule.disconnectDatabase
   ensureSeedData = seedModule.ensureSeedData
+  whatsappCutoverBackfillMigrationId = seedModule.WHATSAPP_CUTOVER_BACKFILL_MIGRATION_ID
 
   const started = await serverModule.startServer()
   server = started.server
@@ -761,6 +761,12 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.phoneNumberId, "1234567890")
   assert.equal(result.payload.webhookPath, "/v1/webhooks/meta/whatsapp")
 
+  result = await requestJson("/ready")
+  assert.equal(result.payload.checks.whatsappProviderConfigured, true)
+  assert.equal(result.payload.checks.whatsappWebhookConfigured, true)
+  assert.equal(result.payload.whatsapp.provider, "cloud_api")
+  assert.equal(result.payload.whatsapp.webhookPath, "/v1/webhooks/meta/whatsapp")
+
   result = await requestJson("/v1/admin/whatsapp/chats", {
     headers: { Cookie: adminCookie! }
   })
@@ -1096,72 +1102,66 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   })
   assert.match(missingRecipientSend.payload.message, /identitas penerima/i)
 
-  result = await requestJson("/v1/internal/whatsapp/events", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer integration-test-whatsapp-token",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      type: "message_upserted",
-      providerMessageId: `whatsapp_in_${uniqueSuffix}`,
-      chatId: `${customerPhone.replace(/^0/, "62")}@c.us`,
-      waId: `62${customerPhone.slice(1)}`,
+  const legacyChatId = `${customerPhone.replace(/^0/, "62")}@c.us`
+  const legacyMessageTimestamp = new Date().toISOString()
+  await getDatabase().collection("whatsapp_chats").insertOne({
+    _id: legacyChatId,
+    title: upperCustomerName,
+    displayName: upperCustomerName,
+    phone: `+62${customerPhone.slice(1)}`,
+    customerId,
+    customerName: upperCustomerName,
+    unreadCount: 1,
+    lastMessagePreview: "Halo, saya cek status cucian",
+    lastMessageDirection: "inbound",
+    lastMessageAt: legacyMessageTimestamp,
+    lastInboundAt: legacyMessageTimestamp,
+    cswOpenedAt: legacyMessageTimestamp,
+    cswExpiresAt: DateTime.now().plus({ hours: 1 }).toISO() ?? legacyMessageTimestamp,
+    updatedAt: legacyMessageTimestamp,
+    composerMode: "free_form",
+  })
+  await getDatabase().collection("whatsapp_messages").insertMany([
+    {
+      _id: `whatsapp_in_${uniqueSuffix}`,
+      chatId: legacyChatId,
       direction: "inbound",
       messageType: "chat",
       body: "Halo, saya cek status cucian",
-      timestampIso: new Date().toISOString(),
+      textPreview: "Halo, saya cek status cucian",
+      timestampIso: legacyMessageTimestamp,
       phone: `+62${customerPhone.slice(1)}`,
-      displayName: upperCustomerName,
-      hasMedia: false
-    })
-  })
-  assert.equal(result.payload.ok, true)
-
-  result = await requestJson("/v1/internal/whatsapp/events", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer integration-test-whatsapp-token",
-      "Content-Type": "application/json"
+      customerId,
+      customerName: upperCustomerName,
+      source: "legacy_mirror",
+      hasMedia: false,
+      createdAt: legacyMessageTimestamp,
+      updatedAt: legacyMessageTimestamp,
     },
-    body: JSON.stringify({
-      type: "message_upserted",
-      providerMessageId: `whatsapp_out_${uniqueSuffix}`,
-      chatId: `${customerPhone.replace(/^0/, "62")}@c.us`,
-      waId: `62${customerPhone.slice(1)}`,
+    {
+      _id: `whatsapp_out_${uniqueSuffix}`,
+      chatId: legacyChatId,
       direction: "outbound",
       messageType: "image",
       caption: "Order confirmed mirror",
-      timestampIso: new Date().toISOString(),
+      textPreview: "Order confirmed mirror",
+      timestampIso: legacyMessageTimestamp,
       phone: `+62${customerPhone.slice(1)}`,
-      displayName: upperCustomerName,
-      providerKind: "webjs_legacy",
-      providerStatus: "sent",
-      providerStatusAt: new Date().toISOString(),
-      providerAck: 1,
+      customerId,
+      customerName: upperCustomerName,
+      source: "legacy_mirror",
+      providerAck: 2,
       hasMedia: true,
       mediaMimeType: "application/pdf",
       mediaName: "receipt.pdf",
       notificationId: confirmNotification.notificationId,
-      orderCode: confirmFirst.payload.order.orderCode
-    })
-  })
-  assert.equal(result.payload.ok, true)
-
-  result = await requestJson("/v1/internal/whatsapp/events", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer integration-test-whatsapp-token",
-      "Content-Type": "application/json"
+      orderCode: confirmFirst.payload.order.orderCode,
+      createdAt: legacyMessageTimestamp,
+      updatedAt: legacyMessageTimestamp,
     },
-    body: JSON.stringify({
-      type: "message_ack_changed",
-      providerMessageId: `whatsapp_out_${uniqueSuffix}`,
-      providerAck: 2,
-      observedAt: new Date().toISOString()
-    })
-  })
-  assert.equal(result.payload.ok, true)
+  ])
+
+  await ensureSeedData()
 
   result = await requestJson("/v1/admin/whatsapp/chats", {
     headers: { Cookie: adminCookie! }
@@ -1176,6 +1176,16 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(primaryChat.isFepOpen, true)
   assert.equal(primaryChat.composerMode, "free_form")
   assert.ok(primaryChat.unreadCount >= 1)
+  assert.equal(
+    result.payload.some((chat: { chatId: string }) => chat.chatId === legacyChatId),
+    false
+  )
+
+  const shadowedLegacyChat = await getDatabase().collection("whatsapp_chats").findOne({
+    _id: legacyChatId,
+  })
+  assert.equal(shadowedLegacyChat?.isLegacyShadow, true)
+  assert.equal(shadowedLegacyChat?.shadowedByChatId, `wa:62${customerPhone.slice(1)}`)
 
   result = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`wa:62${customerPhone.slice(1)}`)}/messages`, {
     headers: { Cookie: adminCookie! }
@@ -1661,6 +1671,44 @@ test("hosted env contract requires plaintext bootstrap password and accepts vali
   )
 })
 
+test("runtime env rejects deprecated gateway-era whatsapp variables", async () => {
+  assert.throws(
+    () =>
+      parseEnv({
+        APP_ENV: "test",
+        PORT: "4105",
+        MONGODB_URI: "mongodb://127.0.0.1:27017/cjlaundry",
+        SESSION_SECRET: "test-session-secret",
+        SESSION_COOKIE_SECURE: "false",
+        TRUST_PROXY: "false",
+        ADMIN_ORIGIN: "http://127.0.0.1:3101",
+        PUBLIC_ORIGIN: "http://127.0.0.1:3100",
+        API_ORIGIN: "http://127.0.0.1:4100",
+        WHATSAPP_PROVIDER: "disabled",
+        WHATSAPP_ENABLED: "true",
+      }),
+    /WHATSAPP_ENABLED/
+  )
+
+  assert.throws(
+    () =>
+      parseEnv({
+        APP_ENV: "test",
+        PORT: "4105",
+        MONGODB_URI: "mongodb://127.0.0.1:27017/cjlaundry",
+        SESSION_SECRET: "test-session-secret",
+        SESSION_COOKIE_SECURE: "false",
+        TRUST_PROXY: "false",
+        ADMIN_ORIGIN: "http://127.0.0.1:3101",
+        PUBLIC_ORIGIN: "http://127.0.0.1:3100",
+        API_ORIGIN: "http://127.0.0.1:4100",
+        WHATSAPP_PROVIDER: "disabled",
+        WHATSAPP_GATEWAY_TOKEN: "legacy-token",
+      }),
+    /WHATSAPP_GATEWAY_TOKEN/
+  )
+})
+
 test("seed adds missing service catalog entries without overwriting existing settings services", async () => {
   const settingsCollection = getDatabase().collection("settings")
   const originalSettings = await settingsCollection.findOne({ _id: "app-settings" })
@@ -1809,6 +1857,182 @@ test("seed backfills order activityAt from lifecycle timestamps", async () => {
     assert.equal(seededVoided?.activityAt, voidedAt)
   } finally {
     await ordersCollection.deleteMany({ _id: { $in: insertedOrderIds } })
+  }
+})
+
+test("startup backfill canonicalizes legacy whatsapp data and retires the legacy bridge endpoint", async () => {
+  const chatsCollection = getDatabase().collection("whatsapp_chats")
+  const messagesCollection = getDatabase().collection("whatsapp_messages")
+  const notificationsCollection = getDatabase().collection("notifications")
+  const runtimeMigrationsCollection = getDatabase().collection("runtime_migrations")
+  const uniqueSuffix = `wa-legacy-${Date.now().toString().slice(-6)}`
+  const legacyDigits = `62811${Date.now().toString().slice(-6)}`
+  const legacyChatId = `${legacyDigits}@c.us`
+  const canonicalChatId = `wa:${legacyDigits}`
+  const timestampIso = new Date().toISOString()
+  const incrementalDigits = `62822${Date.now().toString().slice(-6)}`
+  const incrementalLegacyChatId = `${incrementalDigits}@c.us`
+  const incrementalCanonicalChatId = `wa:${incrementalDigits}`
+  const incrementalTimestampIso = new Date(Date.now() + 1000).toISOString()
+
+  try {
+    await runtimeMigrationsCollection.deleteOne({ _id: whatsappCutoverBackfillMigrationId })
+
+    await chatsCollection.insertOne({
+      _id: legacyChatId,
+      title: "LEGACY CHAT",
+      unreadCount: 3,
+      lastMessagePreview: "Legacy inbound message",
+      lastMessageDirection: "inbound",
+      lastMessageAt: timestampIso,
+      lastInboundAt: timestampIso,
+      updatedAt: timestampIso,
+      composerMode: "free_form",
+    })
+
+    await messagesCollection.insertOne({
+      _id: `legacy_message_${uniqueSuffix}`,
+      chatId: legacyChatId,
+      direction: "outbound",
+      messageType: "text",
+      body: "Legacy outbound text",
+      textPreview: "Legacy outbound text",
+      timestampIso,
+      providerAck: 1,
+      hasMedia: false,
+      createdAt: timestampIso,
+      updatedAt: timestampIso,
+    })
+
+    await notificationsCollection.insertOne({
+      _id: `legacy_notification_${uniqueSuffix}`,
+      customerName: "LEGACY CUSTOMER",
+      destinationPhone: `0811${uniqueSuffix}`,
+      eventType: "order_done",
+      renderStatus: "not_required",
+      deliveryStatus: "sent",
+      attemptCount: 1,
+      preparedMessage: "Legacy done message",
+      providerChatId: legacyChatId,
+      providerAck: 2,
+      gatewayErrorCode: "legacy_gateway_error",
+      businessKey: `legacy-notification:${uniqueSuffix}`,
+      createdAt: timestampIso,
+      updatedAt: timestampIso,
+    })
+
+    await ensureSeedData()
+
+    const baselineMigration = await runtimeMigrationsCollection.findOne({
+      _id: whatsappCutoverBackfillMigrationId,
+    })
+    const legacyShadowChat = await chatsCollection.findOne({ _id: legacyChatId })
+    const canonicalChat = await chatsCollection.findOne({ _id: canonicalChatId })
+    const canonicalMessage = await messagesCollection.findOne({ _id: `legacy_message_${uniqueSuffix}` })
+    const backfilledNotification = await notificationsCollection.findOne({
+      _id: `legacy_notification_${uniqueSuffix}`,
+    })
+
+    assert.equal(legacyShadowChat?.isLegacyShadow, true)
+    assert.equal(legacyShadowChat?.shadowedByChatId, canonicalChatId)
+    assert.equal(canonicalChat?.isLegacyShadow, false)
+    assert.equal(canonicalChat?.title, "LEGACY CHAT")
+    assert.equal(canonicalChat?.waId, legacyDigits)
+    assert.equal(canonicalMessage?.chatId, canonicalChatId)
+    assert.equal(canonicalMessage?.providerKind, "webjs_legacy")
+    assert.equal(canonicalMessage?.providerStatus, "sent")
+    assert.equal(canonicalMessage?.phone, `+${legacyDigits}`)
+    assert.equal(backfilledNotification?.providerKind, "webjs_legacy")
+    assert.equal(backfilledNotification?.providerStatus, "delivered")
+    assert.equal(backfilledNotification?.waId, legacyDigits)
+    assert.equal(backfilledNotification?.latestErrorCode, "legacy_gateway_error")
+    assert.equal(baselineMigration?.lastMode, "baseline")
+
+    await chatsCollection.insertOne({
+      _id: incrementalLegacyChatId,
+      title: "LEGACY CHAT INCREMENTAL",
+      unreadCount: 1,
+      lastMessagePreview: "Legacy incremental message",
+      lastMessageDirection: "inbound",
+      lastMessageAt: incrementalTimestampIso,
+      lastInboundAt: incrementalTimestampIso,
+      updatedAt: incrementalTimestampIso,
+      composerMode: "free_form",
+    })
+
+    await messagesCollection.insertOne({
+      _id: `legacy_message_incremental_${uniqueSuffix}`,
+      chatId: incrementalLegacyChatId,
+      direction: "outbound",
+      messageType: "text",
+      body: "Legacy incremental outbound text",
+      textPreview: "Legacy incremental outbound text",
+      timestampIso: incrementalTimestampIso,
+      providerAck: 1,
+      hasMedia: false,
+      createdAt: incrementalTimestampIso,
+      updatedAt: incrementalTimestampIso,
+    })
+
+    await notificationsCollection.insertOne({
+      _id: `legacy_notification_incremental_${uniqueSuffix}`,
+      customerName: "LEGACY CUSTOMER INCREMENTAL",
+      destinationPhone: `0822${uniqueSuffix}`,
+      eventType: "welcome",
+      renderStatus: "not_required",
+      deliveryStatus: "sent",
+      attemptCount: 1,
+      preparedMessage: "Legacy incremental message",
+      providerChatId: incrementalLegacyChatId,
+      providerAck: 1,
+      businessKey: `legacy-notification-incremental:${uniqueSuffix}`,
+      createdAt: incrementalTimestampIso,
+      updatedAt: incrementalTimestampIso,
+    })
+
+    await ensureSeedData()
+
+    const incrementalMigration = await runtimeMigrationsCollection.findOne({
+      _id: whatsappCutoverBackfillMigrationId,
+    })
+    const incrementalCanonicalChat = await chatsCollection.findOne({ _id: incrementalCanonicalChatId })
+    const incrementalCanonicalMessage = await messagesCollection.findOne({
+      _id: `legacy_message_incremental_${uniqueSuffix}`,
+    })
+    const incrementalNotification = await notificationsCollection.findOne({
+      _id: `legacy_notification_incremental_${uniqueSuffix}`,
+    })
+
+    assert.equal(incrementalMigration?.lastMode, "incremental")
+    assert.equal(incrementalCanonicalChat?.title, "LEGACY CHAT INCREMENTAL")
+    assert.equal(incrementalCanonicalMessage?.chatId, incrementalCanonicalChatId)
+    assert.equal(incrementalNotification?.waId, incrementalDigits)
+
+    const retiredBridgeResponse = await requestJson("/v1/internal/whatsapp/events", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "message_upserted",
+        providerMessageId: `bridge_${uniqueSuffix}`,
+        chatId: legacyChatId,
+        direction: "inbound",
+        messageType: "chat",
+        timestampIso,
+        hasMedia: false,
+      }),
+      expectedStatus: 410,
+    })
+    assert.equal(retiredBridgeResponse.payload.error.code, "legacy_whatsapp_bridge_retired")
+  } finally {
+    await notificationsCollection.deleteOne({ _id: `legacy_notification_${uniqueSuffix}` })
+    await notificationsCollection.deleteOne({ _id: `legacy_notification_incremental_${uniqueSuffix}` })
+    await messagesCollection.deleteOne({ _id: `legacy_message_${uniqueSuffix}` })
+    await messagesCollection.deleteOne({ _id: `legacy_message_incremental_${uniqueSuffix}` })
+    await chatsCollection.deleteMany({
+      _id: { $in: [legacyChatId, canonicalChatId, incrementalLegacyChatId, incrementalCanonicalChatId] },
+    })
   }
 })
 

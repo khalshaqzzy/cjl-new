@@ -1,16 +1,10 @@
 # Release Execution Checklist
 
 Document status: Active  
-Created: 2026-03-25  
-Purpose: operator-facing execution checklist for staging rollout, production rollout, rollback decision points, and first-hour monitoring
-
-Use this file during an actual rollout window.  
-Use `internals/productionReadinessChecklist.md` before this file.  
-Use `internals/deploymentGuide.md` if you need setup detail or troubleshooting depth.
+Last updated: 2026-04-02  
+Purpose: operator-facing execution checklist for staging rollout, production rollout, rollback decision points, and first-hour monitoring after the Cloud-only WhatsApp cutover prep
 
 ## 1. Rollout Metadata
-
-Fill this before starting:
 
 - target environment:
 - target commit SHA:
@@ -22,13 +16,13 @@ Fill this before starting:
 
 ## 2. Local Pre-Flight
 
-Confirm all are true on the selected release commit:
-
 - `git status --short` is clean
 - `npm run lint` passed
 - `npm run typecheck` passed
-- `npm test` passed
+- `npm run test:backend` passed
+- `npm run test:e2e` passed
 - `npm run build` passed
+- `npm run validate:cloud-runtime` passed
 - `npm run audit:prod` passed
 - `npm run security:scan` passed
 - `docker compose config` passed
@@ -41,9 +35,9 @@ Confirm all are true on the selected release commit:
 - staging DNS resolves correctly
 - GitHub `staging` environment secrets are populated and current
 - staging runtime secrets do not contain placeholder values
+- staging Cloud WhatsApp secrets are present and current
+- staging workflow should fail before deploy if any Cloud WhatsApp secret is blank
 - staging `STAGING_DEPLOY_RESET_TOKEN` is unchanged unless the rollout explicitly intends to wipe persistent data
-- `internals/productionReadinessChecklist.md` items needed for staging are ready to execute
-- WhatsApp operator/device is available for pairing and message validation if needed
 
 ## 4. Execute Staging Deploy
 
@@ -54,7 +48,6 @@ Confirm all are true on the selected release commit:
 5. monitor these stages in the workflow:
    - release archive upload
    - runtime env render and upload
-   - `WHATSAPP_GATEWAY_TOKEN` fingerprint parity log
    - remote deploy script
    - internal container readiness wait
    - smoke checks
@@ -69,26 +62,26 @@ Confirm all are true on the selected release commit:
 - `https://api-staging.cjlaundry.com/health` returns success
 - `https://api-staging.cjlaundry.com/ready` returns success
 - `/ready` shows the expected `release.sha`
+- `/ready.checks.whatsappProviderConfigured === true`
+- `/ready.checks.whatsappWebhookConfigured === true`
+- `/ready.whatsapp.provider === "cloud_api"`
+- `/ready.whatsapp.webhookPath === "/v1/webhooks/meta/whatsapp"`
 - admin site loads
 - public site loads
-- if the rollout is the first hosted deploy for that environment, allow for initial Caddy ACME warm-up instead of treating the first transient TLS error as immediate app failure
 
 ### 5.2 Observability
 
 - API response includes `X-Request-Id`
 - the same `X-Request-Id` can be found in API container logs
 - API logs are structured JSON
-- WhatsApp gateway logs are structured JSON
-- error responses include `message`, `error.code`, and `error.requestId`
-- deploy log shows the same `WHATSAPP_GATEWAY_TOKEN` fingerprint for `api` and `whatsapp-gateway`
-- first-start deploy logs are reviewed for order `activityAt` backfill and index creation timing if the environment contains legacy order data
+- startup logs show seed/backfill summary and duration
+- startup logs show whether WhatsApp backfill ran in `baseline` or `incremental` mode
 
 ### 5.3 Security and hardening
 
 - admin/public/API domains return expected security headers
 - trusted-origin enforcement blocks invalid state-changing requests
 - rate limiting behaves correctly for login and token-redeem paths
-- customer magic-link and direct-status flow still work without extra friction
 - staging runtime did not boot with placeholder or unsafe hosted env values
 
 ### 5.4 Core product flow
@@ -104,20 +97,23 @@ Confirm all are true on the selected release commit:
 - public customer login works
 - direct order status link works
 
-### 5.5 WhatsApp runtime
+### 5.5 WhatsApp Cloud flow
 
-- status page loads
-- pairing material can be generated if not already paired
-- gateway reports connected state
-- welcome or transactional send succeeds
-- mirrored inbound or outbound activity appears in admin
-- gateway still reconnects after restart
-- persisted auth survives container restart
+- webhook challenge verification works
+- signed webhook POST is accepted
+- welcome or transactional send succeeds through Cloud API
+- outbound status progression appears in admin
+- admin inbox is reachable from primary nav and mobile bottom nav
+- CSW-open manual free-form send succeeds
+- CSW-closed thread stays template-only
+- inbound media retrieval works from the admin inbox
+- failed-notification recovery works:
+  - failed `order_confirmed` offers receipt download, resend, `Mark as Done`, and `Ignore`
+  - failed non-receipt notifications offer resend, `Mark as Done`, and `Ignore`
 
 ### 5.6 Rollback proof
 
-- intentionally bad release path or equivalent rollback test was executed
-- rollback restored the last healthy SHA
+- rollback was exercised against a known-good SHA or a known-bad deploy path
 - post-rollback smoke checks passed
 
 ## 6. Staging Go/No-Go
@@ -127,14 +123,8 @@ Production is blocked unless all are true:
 - staging deploy passed
 - staging validation passed
 - rollback proof passed
-- WhatsApp real-device validation passed
+- Cloud WhatsApp validation passed
 - no unresolved `5xx` spike or auth/session regression remains
-
-Decision:
-
-- staging signoff:
-- approved by:
-- time:
 
 ## 7. Production Pre-Deploy
 
@@ -143,6 +133,8 @@ Decision:
 - production VM is reachable over SSH
 - production DNS resolves correctly
 - GitHub `production` environment secrets are current
+- production Cloud WhatsApp secrets are present and current
+- production workflow should fail before deploy if any Cloud WhatsApp secret is blank
 - production `PRODUCTION_DEPLOY_RESET_TOKEN` is unchanged unless the rollout explicitly intends to wipe persistent data
 - first-hour monitoring owner is assigned
 - backup rollback operator is assigned
@@ -156,56 +148,42 @@ Decision:
    - previous release capture
    - release archive upload
    - runtime env render and upload
-   - `WHATSAPP_GATEWAY_TOKEN` fingerprint parity log
    - remote deploy script
    - internal container readiness wait
    - smoke checks
-5. record result:
-   - production deploy status:
-   - production workflow URL:
 
 ## 9. Production Validation
 
 - `https://api.cjlaundry.com/health` returns success
 - `https://api.cjlaundry.com/ready` returns success
 - `/ready` shows the expected `release.sha`
+- `/ready.checks.whatsappProviderConfigured === true`
+- `/ready.checks.whatsappWebhookConfigured === true`
+- `/ready.whatsapp.provider === "cloud_api"`
+- `/ready.whatsapp.webhookPath === "/v1/webhooks/meta/whatsapp"`
 - admin site loads
 - public site loads
 - admin login works
 - one customer-safe business flow works end to end
-- API logs and request IDs are visible
-- if this is the first rollout containing order `activityAt`, startup backfill/index creation completes without prolonged degradation
 
 ## 10. First-Hour Monitoring
-
-Monitor for at least 60 minutes after production goes live.
 
 - check `401` spike
 - check `429` spike
 - check `5xx` spike
-- check notification delivery failures
-- check gateway disconnect or auth failures
+- check webhook signature failures
+- check Cloud delivery failures
+- check admin inbox/manual-send regressions
 - check customer login or magic-link complaints
-- confirm no rollback trigger condition is reached
-
-Record:
-
-- first-hour reviewer:
-- start time:
-- end time:
-- summary:
 
 ## 11. Rollback Trigger Conditions
-
-Rollback immediately if any of the following is true:
 
 - production smoke checks fail
 - `/ready` fails after deploy
 - admin login is broken
 - customer login or direct-status flow is broken broadly
-- WhatsApp gateway breaks required production operations
+- Cloud delivery or webhook processing breaks required production operations
 - sustained `5xx` errors appear without a fast fix
-- request correlation or logs are insufficient to triage safely during the incident window
 
 ## 12. Rollback Execution
 
@@ -214,7 +192,6 @@ Rollback immediately if any of the following is true:
 - execute workflow rollback or re-deploy the last healthy SHA
 - if GitHub is unavailable, use `deploy/scripts/remote-rollback.sh` on the VM
 - re-run health, readiness, admin, public, and one core business smoke check
-- document rollback result and incident summary
 
 ## 13. Closeout
 

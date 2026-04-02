@@ -6,14 +6,15 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @cjl/contracts && npm run build --workspace @cjl/api && npm run build --workspace @cjl/whatsapp-gateway && npm run build --workspace @cjl/admin-web && npm run build --workspace @cjl/public-web",
+    "build": "npm run build --workspace @cjl/contracts && npm run build --workspace @cjl/api && npm run build --workspace @cjl/admin-web && npm run build --workspace @cjl/public-web",
     "build:contracts": "npm run build --workspace @cjl/contracts",
     "build:api": "npm run build --workspace @cjl/api",
     "build:whatsapp": "npm run build --workspace @cjl/whatsapp-gateway",
     "build:admin": "npm run build --workspace @cjl/admin-web",
     "build:public": "npm run build --workspace @cjl/public-web",
     "lint": "eslint app packages scripts tests --no-warn-ignored",
-    "typecheck": "npm run build:contracts && npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run build:contracts && npm run typecheck --workspace @cjl/api --workspace @cjl/admin-web --workspace @cjl/public-web",
+    "validate:cloud-runtime": "tsx scripts/validate-cloud-runtime.ts",
     "audit:prod": "npm audit --omit=dev --audit-level=moderate",
     "security:scan": "npm run lint && npm run typecheck && npm run audit:prod",
     "dev:api": "npm run dev --workspace @cjl/api",
