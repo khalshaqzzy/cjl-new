@@ -5,6 +5,9 @@
     "app/*",
     "packages/*"
   ],
+  "overrides": {
+    "lodash": "4.18.0"
+  },
   "scripts": {
     "build": "npm run build --workspace @cjl/contracts && npm run build --workspace @cjl/api && npm run build --workspace @cjl/admin-web && npm run build --workspace @cjl/public-web",
     "build:contracts": "npm run build --workspace @cjl/contracts",
@@ -39,6 +42,7 @@
     "eslint": "^9.39.4",
     "globals": "^17.4.0",
     "mongodb-memory-server": "^10.4.3",
+    "path-to-regexp": "^0.1.13",
     "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "typescript-eslint": "^8.57.2",
