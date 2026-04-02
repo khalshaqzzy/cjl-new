@@ -18,7 +18,7 @@ These are durable UI architecture choices because they affect:
 - route structure inside the admin app
 - how mobile and desktop inbox navigation intentionally differ
 - how shell chrome interacts with focused thread work
-- how overflow boundaries are enforced in the shared admin UI layer
+- how overflow boundaries are enforced in the shared admin UI layer 
 
 ## Decision
 
