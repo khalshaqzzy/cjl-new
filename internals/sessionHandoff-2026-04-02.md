@@ -58,6 +58,7 @@ All succeeded at session end.
 - manual operator send is implemented only for text-only same-thread replies when `composerMode === "free_form"` / CSW is open
 - template sending from the inbox is still out of scope; template-only is an informational disabled state only
 - ADR `0020-whatsapp-first-party-inbox-and-csw-only-manual-operator-send.md` freezes the nav, unread-clear, media-open, and manual-send scope decisions from this session
+- failed notification recovery now prefers immediate backend-owned WhatsApp API resend instead of opening a `wa.me` deep link from admin UI
 - inbound media binaries are now stored in Mongo GridFS and referenced from `whatsapp_messages`, not from VM-local filesystem paths
 - template lifecycle webhook events are backend-audited only in this phase; no admin UI has been added for them yet
 - deploy runbooks and environment docs still contain some stale gateway-era wording and now need a cleanup pass against the current Cloud-only runtime

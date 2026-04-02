@@ -26,9 +26,10 @@ import { calculateOrderPreview } from "../lib/calculator.js"
 import { formatCurrency } from "../lib/formatters.js"
 import { createId, createOpaqueToken, createOrderCode } from "../lib/ids.js"
 import { buildMaskedAlias, rebuildArchivedLeaderboard } from "../lib/leaderboard.js"
-import { normalizeName, normalizePhone, normalizePhoneLabel, normalizeWhatsappPhone } from "../lib/normalization.js"
+import { normalizeName, normalizePhone, normalizePhoneLabel } from "../lib/normalization.js"
 import { hashOpaqueToken, tokenLast4 } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel, monthKeyFromIso, nowJakarta, toIso } from "../lib/time.js"
+import { serializeError } from "../logger.js"
 import type {
   AdminDocument,
   CustomerDocument,
@@ -57,9 +58,11 @@ import {
   markNotificationIgnored as markNotificationIgnoredRecord,
   markNotificationForRetry,
   markNotificationManualResolved as markNotificationManualResolvedRecord,
+  processNotification,
   queueNotification,
   saveAuditLog
 } from "./common.js"
+import { sendNotificationFallbackToWhatsapp } from "./whatsapp.js"
 
 const db = () => getDatabase()
 
@@ -1053,9 +1056,91 @@ export const listNotifications = async (): Promise<NotificationRecord[]> => {
 
 export const resendNotification = async (notificationId: string) => {
   await markNotificationForRetry(notificationId)
-  const notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
+  let standardRetryError: unknown = null
+
+  try {
+    await processNotification(notificationId)
+  } catch (error) {
+    standardRetryError = error
+  }
+
+  let notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
   if (!notification) {
     throw new NotFoundError("Notifikasi tidak ditemukan")
+  }
+
+  if ((standardRetryError || notification.deliveryStatus === "failed") && notification.preparedMessage.trim()) {
+    const attemptedAt = new Date().toISOString()
+
+    try {
+      const delivery = await sendNotificationFallbackToWhatsapp(notification)
+      await db().collection<NotificationDocument>("notifications").updateOne(
+        { _id: notificationId },
+        {
+          $set: {
+            deliveryStatus: "sent",
+            lastAttemptAt: attemptedAt,
+            updatedAt: attemptedAt,
+            providerKind: delivery.providerKind,
+            providerMessageId: delivery.providerMessageId,
+            providerStatus: delivery.providerStatus,
+            providerStatusAt: delivery.providerStatusAt,
+            waId: delivery.waId,
+            sentAt: delivery.sentAt,
+          },
+          $unset: {
+            latestFailureReason: "",
+            gatewayErrorCode: "",
+            latestErrorCode: "",
+            latestErrorMessage: "",
+          },
+          $inc: { attemptCount: 1 },
+        }
+      )
+      await saveAuditLog("notification.api_fallback_sent", "notification", notificationId, {
+        eventType: notification.eventType,
+        orderCode: notification.orderCode,
+      })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Gagal mengirim fallback WhatsApp"
+      const gatewayErrorCode =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof (error as { code?: unknown }).code === "string"
+          ? (error as { code: string }).code
+          : undefined
+
+      await db().collection<NotificationDocument>("notifications").updateOne(
+        { _id: notificationId },
+        {
+          $set: {
+            deliveryStatus: "failed",
+            latestFailureReason: reason,
+            latestErrorMessage: reason,
+            lastAttemptAt: attemptedAt,
+            updatedAt: attemptedAt,
+            ...(gatewayErrorCode ? { gatewayErrorCode } : {}),
+            ...(gatewayErrorCode ? { latestErrorCode: gatewayErrorCode } : {}),
+          },
+          $inc: { attemptCount: 1 },
+        }
+      )
+      await saveAuditLog("notification.api_fallback_failed", "notification", notificationId, {
+        eventType: notification.eventType,
+        orderCode: notification.orderCode,
+        error: serializeError(error),
+      })
+    }
+
+    notification = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
+    if (!notification) {
+      throw new NotFoundError("Notifikasi tidak ditemukan")
+    }
+  }
+
+  if (standardRetryError && notification.deliveryStatus !== "sent" && !notification.preparedMessage.trim()) {
+    throw standardRetryError
   }
 
   return mapNotification(notification)
@@ -1122,21 +1207,13 @@ export const openManualWhatsappFallback = async (notificationId: string) => {
     throw new ValidationError("Pesan fallback tidak tersedia untuk notifikasi ini")
   }
 
-  const note = "Fallback WhatsApp manual dibuka oleh admin."
-  await markNotificationManualResolvedRecord(notificationId, note)
-  await saveAuditLog("notification.manual_whatsapp_opened", "notification", notificationId, {
+  await saveAuditLog("notification.manual_whatsapp_redirected_to_api_resend", "notification", notificationId, {
     eventType: notification.eventType,
     orderCode: notification.orderCode
   })
 
-  const updated = await db().collection<NotificationDocument>("notifications").findOne({ _id: notificationId })
-  if (!updated) {
-    throw new NotFoundError("Notifikasi tidak ditemukan")
-  }
-
   return {
-    notification: mapNotification(updated),
-    whatsappUrl: `https://wa.me/${normalizeWhatsappPhone(updated.destinationPhone)}?text=${encodeURIComponent(updated.preparedMessage)}`
+    notification: await resendNotification(notificationId),
   }
 }
 

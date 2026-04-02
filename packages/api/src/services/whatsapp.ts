@@ -27,6 +27,7 @@ import {
   type CloudMediaAttachment,
   type CloudSendResult,
   sendCloudNotification,
+  sendCloudTextMessage,
 } from "./whatsapp-cloud.js"
 
 const db = () => getDatabase()
@@ -312,8 +313,15 @@ const upsertChatActivity = async ({
 const recordOutboundAcceptance = async (
   notification: NotificationDocument,
   result: CloudSendResult,
-  media?: CloudMediaAttachment
+  options?: {
+    media?: CloudMediaAttachment
+    messageType?: string
+    body?: string
+  }
 ) => {
+  const media = options?.media
+  const messageType = options?.messageType ?? (media ? "document" : "template")
+  const messageBody = options?.body ?? notification.preparedMessage
   const chatId = buildCanonicalChatId(result.waId, notification.destinationPhone)
   const phone = buildPhoneLabel(notification.destinationPhone, result.waId)
   const customer = notification.customerId
@@ -321,8 +329,8 @@ const recordOutboundAcceptance = async (
     : await resolveCustomerByPhone(phone, result.waId)
   const textPreview = buildMessagePreview(
     "outbound",
-    media ? "document" : "template",
-    notification.preparedMessage,
+    messageType,
+    messageBody,
     undefined,
     media?.filename
   )
@@ -338,8 +346,8 @@ const recordOutboundAcceptance = async (
         customerId: customer?._id ?? notification.customerId,
         customerName: customer?.name ?? notification.customerName,
         direction: "outbound",
-        messageType: media ? "document" : "template",
-        body: notification.preparedMessage,
+        messageType,
+        body: messageBody,
         textPreview,
         timestampIso: result.providerStatusAt,
         providerStatus: result.providerStatus,
@@ -697,12 +705,43 @@ export const sendNotificationToWhatsapp = async (
       sentAt: new Date().toISOString(),
       waId: normalizeWhatsappPhone(notification.destinationPhone),
     }
-    await recordOutboundAcceptance(notification, simulatedResult, media)
+    await recordOutboundAcceptance(notification, simulatedResult, { media })
     return simulatedResult
   }
 
   const result = await sendCloudNotification(notification, media)
-  await recordOutboundAcceptance(notification, result, media)
+  await recordOutboundAcceptance(notification, result, { media })
+  return result
+}
+
+export const sendNotificationFallbackToWhatsapp = async (
+  notification: NotificationDocument
+) => {
+  if (env.WHATSAPP_PROVIDER === "disabled") {
+    const simulatedResult: CloudSendResult = {
+      providerKind: "simulated",
+      providerMessageId: `simulated:fallback:${notification._id}`,
+      providerStatus: "accepted",
+      providerStatusAt: new Date().toISOString(),
+      sentAt: new Date().toISOString(),
+      waId: normalizeWhatsappPhone(notification.waId ?? notification.destinationPhone),
+    }
+    await recordOutboundAcceptance(notification, simulatedResult, {
+      messageType: "text",
+      body: notification.preparedMessage,
+    })
+    return simulatedResult
+  }
+
+  const recipient = normalizeWhatsappPhone(notification.waId ?? notification.destinationPhone)
+  const result = await sendCloudTextMessage({
+    to: recipient,
+    body: notification.preparedMessage,
+  })
+  await recordOutboundAcceptance(notification, result, {
+    messageType: "text",
+    body: notification.preparedMessage,
+  })
   return result
 }
 

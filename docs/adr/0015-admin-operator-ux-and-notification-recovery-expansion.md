@@ -4,6 +4,8 @@ Status: Accepted
 Date: 2026-03-28  
 Owners: Codex implementation session  
 
+Note: the `Send Message` / manual deep-link recovery part of this ADR is superseded by ADR 0021. The rest of the operator UX decisions remain accepted.
+
 ## Context
 
 Several operator-facing requirements were approved together for the admin surface:

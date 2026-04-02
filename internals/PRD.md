@@ -521,7 +521,7 @@ Content goals:
   - `Ignore`,
   - latest failure reason,
   - timestamps of attempts.
-- `Send Message` must open a backend-generated `wa.me` deep link with the prepared template already populated and classify the notification as manual handling.
+- `Resend Message` / `Kirim Ulang` must trigger a backend-owned WhatsApp API resend immediately from the admin outbox instead of opening a manual deep link.
 - `Mark as Done` must classify the notification as manual handling without retrying bot delivery.
 - `Ignore` must classify the notification as ignored without keeping it in the failed operational state.
 - Failed WhatsApp delivery must raise a short popup/toast notification during an active admin session.
@@ -903,8 +903,8 @@ Failure handling:
 
 - If receipt rendering or media delivery fails after order confirmation, the order remains valid and stays `Active`.
 - The related notification must enter a visible pending/failed outbox state for operator follow-up.
-- Admin must be able to download the fallback receipt image on demand and open a manual WhatsApp fallback when delivery has failed.
-- Failed notifications without receipt should still support retry plus manual WhatsApp fallback.
+- Admin must be able to download the fallback receipt image on demand and trigger a backend-owned WhatsApp API resend when delivery has failed.
+- Failed notifications without receipt should still support direct retry from the admin outbox.
 
 ### 15.3 Order done WA
 
@@ -1211,7 +1211,7 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - Confirmed order becomes `Active`.
 - Receipt snapshot is generated and linked to the order.
 - Confirmation WA event is recorded once.
-- If receipt rendering or WhatsApp delivery fails, the order remains `Active` and the failed notification appears in admin outbox for resend or manual fallback.
+- If receipt rendering or WhatsApp delivery fails, the order remains `Active` and the failed notification appears in admin outbox for direct WhatsApp API resend or operator classification (`Mark as Done` / `Ignore`).
 - Admin fallback receipt download for failed `order_confirmed` is an image; authenticated customer receipt download remains PDF.
 
 ### 22.3 Point logic

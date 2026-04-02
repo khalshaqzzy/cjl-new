@@ -685,7 +685,7 @@ export const createApp = () => {
     const notificationId = getParam(req.params.id)
     const result = await resendNotification(notificationId)
     logger.info({
-      event: "notification.retry.queued",
+      event: "notification.retry.requested",
       notificationId,
     })
     res.json(result)
@@ -726,7 +726,7 @@ export const createApp = () => {
     const notificationId = getParam(req.params.id)
     const result = await openManualWhatsappFallback(notificationId)
     logger.info({
-      event: "notification.manual_whatsapp_opened",
+      event: "notification.manual_whatsapp_redirected_to_api_resend",
       notificationId,
     })
     res.json(result)

@@ -220,7 +220,7 @@ export const adminApi = {
       body: JSON.stringify({})
     }),
   openManualWhatsappFallback: (notificationId: string) =>
-    apiFetch<{ notification: NotificationRecord; whatsappUrl: string }>(
+    apiFetch<{ notification: NotificationRecord }>(
       `/v1/admin/notifications/${notificationId}/manual-whatsapp`,
       { method: "POST" }
     ),

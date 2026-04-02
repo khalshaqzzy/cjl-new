@@ -9,7 +9,7 @@ Purpose: canonical registry for CJ Laundry WhatsApp Business Platform template a
 This registry is the canonical output of Phase 1.
 
 - It records the approved-template inventory required before Cloud API transport work.
-- It does not replace the current runtime `settings.messageTemplates` source used for `preparedMessage`, outbox retry, failed-notification handling, or `wa.me` manual fallback.
+- It does not replace the current runtime source used for `preparedMessage`, outbox retry, or failed-notification handling, which now prefer backend-owned resend behavior over `wa.me` fallback.
 - It does not change the active `whatsapp-web.js` gateway runtime, deploy topology, contracts, or admin WhatsApp UI behavior.
 
 ## 2. Submission Defaults

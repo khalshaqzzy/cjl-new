@@ -75,7 +75,7 @@ These decisions are now fixed for the migration plan unless a later session expl
 5. Automated notifications remain template-first.
 6. Manual operator sends inside the admin WhatsApp interface support non-template messages only when the customer service window is open.
 7. The admin WhatsApp interface becomes a first-party product surface, not an “open real WhatsApp app” dependency.
-8. Manual `wa.me` fallback for failed notifications remains available even after Cloud API cutover.
+8. Failed-notification operator recovery should prefer backend-owned WhatsApp API resend over `wa.me` deep links once Cloud-era runtime behavior is available.
 9. Current domain event names remain unchanged in the first migration.
 10. Delivery truth moves from numeric provider ack semantics to Cloud API webhook status strings.
 
@@ -686,7 +686,7 @@ E2E changes:
 - replace admin WhatsApp pairing expectations with inbox/status expectations
 - add thread list + timeline expectations
 - add manual send expectation when CSW is open
-- keep manual `wa.me` fallback verification in notification recovery
+- verify failed-notification recovery through backend-owned WhatsApp API resend rather than deep-link fallback
 
 Build/test script changes:
 
@@ -792,7 +792,7 @@ The migration is only complete when these repo outputs exist:
 - customer creation still enqueues `welcome`
 - order confirm still creates the order atomically before notification delivery
 - order done and void semantics do not change
-- failed notification recovery still offers manual fallback
+- failed notification recovery still offers operator recovery, but resend should stay backend/API-owned rather than deep-link/manual-browser-owned
 - PDF receipt rendering remains backend-owned
 - public portal and admin customer flows remain unaffected except where WhatsApp delivery/provider fields are displayed
 
@@ -806,7 +806,7 @@ These are not part of the first migration pass:
 - marketing automation
 - AI/chatbot behavior
 - operator assignment or multi-agent inbox routing
-- replacing manual `wa.me` fallback
+- adding template send, media send, or richer recovery semantics beyond direct API resend
 
 ## 11. Recommended Next Start
 

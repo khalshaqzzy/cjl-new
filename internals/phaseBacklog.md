@@ -19,9 +19,9 @@ Purpose: condensed next-work inventory after WhatsApp Phase 5-6 admin inbox comp
 5. Verify settings persistence on staging with `08...` input across laundry phone, public contact, public WhatsApp, admin contacts, and address, then confirm landing, portal, portal PDF receipt, and admin fallback PNG receipt all reflect the saved values correctly.
 6. Validate the customer magic-link flow on real devices: welcome WA delivery, one-time redeem behavior, QR scan usability, and the POS `Lanjutkan ke POS` transition after QR display.
 7. Validate failed-notification operator recovery on staging:
-   - failed `order_confirmed` shows `Send Message`, `Download Receipt`, `Resend Message`, `Mark as Done`, and `Ignore`
-   - failed non-receipt notifications show `Send Message`, `Kirim Ulang`, `Mark as Done`, and `Ignore`
-   - `Send Message` opens a valid prefilled `wa.me` link
+   - failed `order_confirmed` shows `Download Receipt`, `Resend Message`, `Mark as Done`, and `Ignore`
+   - failed non-receipt notifications show `Kirim Ulang`, `Mark as Done`, and `Ignore`
+   - `Resend Message` / `Kirim Ulang` calls WhatsApp API directly and returns the updated notification state
    - `Mark as Done` lands in the `Manual` tab and `Ignore` lands in the `Ignored` tab
 8. Exercise the latest mobile/front-desk UX polish on real devices during staging:
    - login submit should not leave the portal slightly zoomed in

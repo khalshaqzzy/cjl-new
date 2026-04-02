@@ -16,7 +16,6 @@ import {
   Download,
   FileImage,
   Loader2,
-  MessageCircle,
   MessageSquare,
   Phone,
   RefreshCw,
@@ -68,14 +67,13 @@ const renderStatusConfig = {
   failed: { label: "Gagal", className: "text-danger" },
 }
 
-type BusyAction = "resend" | "download" | "whatsapp" | "complete" | "ignore" | null
+type BusyAction = "resend" | "download" | "complete" | "ignore" | null
 
 function NotificationCard({
   notification,
   busyAction,
   onResend,
   onDownload,
-  onManualWhatsapp,
   onManualComplete,
   onIgnore,
 }: {
@@ -83,7 +81,6 @@ function NotificationCard({
   busyAction: BusyAction
   onResend: () => void
   onDownload: () => void
-  onManualWhatsapp: () => void
   onManualComplete: () => void
   onIgnore: () => void
 }) {
@@ -193,19 +190,13 @@ function NotificationCard({
 
         {isFailed && (
           <div className="flex flex-wrap gap-2">
-            {notification.manualWhatsappAvailable && (
-              <Button size="sm" className="rounded-xl bg-rose-600 hover:bg-rose-500 text-white" onClick={onManualWhatsapp} disabled={busyAction !== null}>
-                {busyAction === "whatsapp" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <MessageCircle className="h-4 w-4 mr-1" />}
-                {busyAction === "whatsapp" ? "Membuka..." : "Send Message"}
-              </Button>
-            )}
             {canDownloadReceipt && (
               <Button variant="outline" size="sm" className="rounded-xl" onClick={onDownload} disabled={busyAction !== null}>
                 {busyAction === "download" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
                 {busyAction === "download" ? "Menyiapkan..." : "Download Receipt"}
               </Button>
             )}
-            <Button variant="outline" size="sm" className="rounded-xl" onClick={onResend} disabled={busyAction !== null}>
+            <Button size="sm" className="rounded-xl bg-rose-600 hover:bg-rose-500 text-white" onClick={onResend} disabled={busyAction !== null}>
               {busyAction === "resend" ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
               {busyAction === "resend" ? "Memproses..." : notification.eventType === "order_confirmed" ? "Resend Message" : "Kirim Ulang"}
             </Button>
@@ -382,13 +373,6 @@ export default function NotifikasiPage() {
                         anchor.download = filename
                         anchor.click()
                         URL.revokeObjectURL(url)
-                      })
-                    }
-                    onManualWhatsapp={() =>
-                      runAction(notification.notificationId, "whatsapp", async () => {
-                        const payload = await adminApi.openManualWhatsappFallback(notification.notificationId)
-                        updateNotification(payload.notification)
-                        window.open(payload.whatsappUrl, "_blank", "noopener,noreferrer")
                       })
                     }
                     onManualComplete={() =>

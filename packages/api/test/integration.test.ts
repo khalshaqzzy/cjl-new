@@ -1497,8 +1497,9 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       Cookie: adminCookie!
     }
   })
-  assert.equal(renderFailureManualWhatsapp.payload.notification.deliveryStatus, "manual_resolved")
-  assert.match(renderFailureManualWhatsapp.payload.whatsappUrl, /wa\.me/)
+  assert.equal(renderFailureManualWhatsapp.payload.notification.deliveryStatus, "sent")
+  assert.equal(cloudApiControls.lastMessagePayload?.type, "text")
+  assert.equal(cloudApiControls.lastMessagePayload?.text?.body, "render me")
 
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_done_failed_${uniqueSuffix}`,
@@ -1524,9 +1525,9 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       Cookie: adminCookie!
     }
   })
-  assert.equal(result.payload.notification.deliveryStatus, "manual_resolved")
+  assert.equal(result.payload.notification.deliveryStatus, "sent")
   assert.equal(result.payload.notification.manualWhatsappAvailable, false)
-  assert.match(result.payload.whatsappUrl, /wa\.me/)
+  assert.equal(cloudApiControls.lastMessagePayload?.template?.name, "cjl_order_done_v1")
 
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_manual_${uniqueSuffix}`,
@@ -1561,12 +1562,8 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       Cookie: adminCookie!
     }
   })
-  assert.ok(["queued", "sent"].includes(result.payload.deliveryStatus))
-
-  const resentNotification = await waitFor(
-    () => getDatabase().collection("notifications").findOne({ _id: `notification_manual_${uniqueSuffix}` }),
-    (value) => value?.deliveryStatus === "sent"
-  )
+  assert.equal(result.payload.deliveryStatus, "sent")
+  const resentNotification = await getDatabase().collection("notifications").findOne({ _id: `notification_manual_${uniqueSuffix}` })
   assert.equal(resentNotification?.deliveryStatus, "sent")
 
   let throttledLogin = null as Awaited<ReturnType<typeof requestJson>> | null

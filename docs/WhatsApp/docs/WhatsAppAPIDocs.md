@@ -35,7 +35,7 @@ Repo saat ini masih memakai transport runtime berbasis gateway sidecar `whatsapp
 - business event notifikasi sudah dipusatkan di backend notification record
 - message composition sudah dimiliki backend melalui `buildPreparedMessage(...)`
 - delivery sudah didelegasikan ke adapter transport, bukan ditulis inline di seluruh flow bisnis
-- retry, failed outbox, manual fallback, dan receipt rendering sudah dipisahkan dari business transaction inti
+- retry, failed outbox, operator recovery, dan receipt rendering sudah dipisahkan dari business transaction inti
 
 Artinya, migrasi utama nanti bukan mengubah flow bisnis order/customer, tetapi mengganti lapisan provider WhatsApp dan event ingestion-nya.
 
@@ -105,7 +105,7 @@ Untuk kebutuhan CJ Laundry, yang relevan adalah:
   - receipt rendering
   - message delivery
 - `order_confirmed` saat ini mengirim attachment PDF via transport adapter
-- admin manual fallback tetap merupakan flow terpisah dari automatic delivery dan harus dipertahankan sebagai konsep operasional
+- operator recovery untuk failed notification tetap merupakan flow terpisah dari automatic delivery, tetapi resend utamanya kini sebaiknya backend-owned lewat WhatsApp API, bukan `wa.me` deep link
 - record notifikasi saat ini menyimpan field provider-spesifik seperti:
   - `providerMessageId`
   - `providerChatId`
@@ -842,7 +842,7 @@ Action yang belum wajib di baseline pertama:
 - notification outbox concept
 - receipt renderer backend
 - prepared message / parameter assembly di backend
-- manual fallback sebagai operational path
+- operator recovery sebagai operational path, dengan direct API resend sebagai default
 - idempotent business transaction boundaries
 
 ### 15.2 Yang harus berubah

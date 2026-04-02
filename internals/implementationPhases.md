@@ -23,7 +23,7 @@ The repo now has:
 - admin WhatsApp now supports searchable inbox threads, linked-customer shortcuts, media-open affordances, explicit unread clearing, and CSW-gated manual operator replies
 - uppercase customer-name normalization plus repo-safe startup backfill for legacy customer/order/notification name snapshots
 - PDF receipt downloads for authenticated portal order detail and PNG receipt fallback downloads for failed admin order-confirmed notifications
-- manual WhatsApp fallback for failed notification sends with admin outbox action support
+- direct WhatsApp API resend for failed notification sends with admin outbox action support
 - admin notification recovery now distinguishes `manual_resolved` vs `ignored`, with explicit `Mark as Done` and `Ignore` actions
 - admin shell now raises short failed-WA toast notifications via lightweight polling during active sessions
 - customer-controlled public leaderboard name visibility with masked-by-default display
@@ -82,7 +82,7 @@ Status: complete for current scope
 - settings now also manage ordered admin WhatsApp contacts with exactly one primary customer-facing number
 - admin logout now invalidates backend session instead of only navigating client-side
 - notification outbox UI now follows canonical backend fields and receipt download flow
-- notification outbox now follows a focused fallback UX: failed order-confirmed cards prioritize `Download Receipt` plus `Send Message`, while failed non-receipt cards prioritize `Send Message` plus `Kirim Ulang`
+- notification outbox now follows a focused fallback UX: failed order-confirmed cards prioritize `Download Receipt` plus direct API resend, while failed non-receipt cards prioritize direct API resend plus operator classification
 - notification outbox now also supports explicit `Mark as Done` and `Ignore` actions with separate `Manual` vs `Ignored` tabs
 - admin dashboard now exposes the full PRD metric set plus top-customer visibility
 - admin dashboard now moves `Perlu Perhatian` above KPI cards and counts failed notifications from the full unresolved outbox set

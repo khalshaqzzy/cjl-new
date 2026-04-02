@@ -410,12 +410,11 @@ test("admin and public frontends stay fully integrated through the backend", asy
   }
 
   await page.goto("http://127.0.0.1:3101/admin/notifikasi")
-  await expect(page.getByText("Simulasi gagal kirim bot")).toBeVisible()
-  const whatsappPopup = page.waitForEvent("popup")
-  await page.getByRole("button", { name: "Send Message" }).first().click()
-  const popup = await whatsappPopup
-  await expect(popup).toHaveURL(/wa\.me|api\.whatsapp\.com/)
-  await expect(page.getByText("Fallback WhatsApp manual dibuka oleh admin.")).toBeVisible()
+  const failedNotificationCard = page.locator('[class*="rounded-xl"]').filter({ hasText: "Simulasi gagal kirim bot" }).first()
+  await expect(failedNotificationCard).toBeVisible()
+  await failedNotificationCard.getByRole("button", { name: "Kirim Ulang" }).click()
+  await expect(page.getByRole("tab", { name: "Gagal (0)" })).toBeVisible()
+  await expect(page.getByText("Simulasi gagal kirim bot")).toHaveCount(0)
 
   await page.goto(`http://127.0.0.1:3101/admin/pelanggan/${customer?._id}`)
   await page.getByRole("button", { name: "QR Login" }).click()
