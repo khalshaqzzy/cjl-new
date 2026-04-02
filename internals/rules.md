@@ -27,12 +27,17 @@ Read these first when behavior or scope is unclear:
   - product contract
   - business rules
   - expected user behavior
-- `adminFrontendDesign.md`
-  - admin UX/layout behavior contract
-- `publicFrontendDesign.md`
-  - public UX/layout behavior contract
 
-These should only change when product/design intent changes, not just because implementation details changed.
+There are currently no dedicated `adminFrontendDesign.md` or `publicFrontendDesign.md` files in `internals/`.
+
+Until those exist, treat:
+
+- `PRD.md`
+- the latest relevant handoff file
+- existing admin/public implementation in the repo
+- relevant ADRs under `docs/adr/`
+
+as the practical design-intent source of truth.
 
 ## 2.2 Execution and planning source of truth
 
@@ -66,26 +71,21 @@ Use these to resume work efficiently:
   - high-signal snapshot of what the last major session completed
   - verification run
   - repo facts and next recommended start
-- `phase4Kickoff.md`
-  - completed reference for phase 4
-- `phase6Kickoff.md`
-  - completed reference for phase 6
-- `phase7Kickoff.md`
-  - historical reference for phase 7
-- `phase8Kickoff.md`
-  - active next-session kickoff for hosted rollout validation
+- `whatsappBusinessApiMigrationPhases.md`
+  - migration-specific execution plan for Cloud API / webhook / inbox work
+  - the canonical phase-by-phase sequence for WhatsApp platform migration
 
-Kickoff files are phase-specific session starters. Handoff files are broad session summaries.
+If a future session creates a dedicated `phase{N}Kickoff.md`, treat it as a phase-specific starter. Until then, use the newest handoff plus the relevant roadmap doc instead of assuming a kickoff file already exists.
 
 ## 2.4 Traceability and support docs
 
-- `requirementTraceabilityMatrix.md`
-  - maps PRD requirements to implementation areas
 - `phaseBacklog.md`
   - short execution inventory
 - `docs/adr/`
   - accepted architecture decisions
   - frozen runtime, contract, and topology choices future sessions should not silently re-decide
+
+If a dedicated requirement traceability matrix is added later, treat it as the first stop for PRD-to-code coverage checks. Until then, use `PRD.md`, `implementationPhases.md`, `phaseBacklog.md`, and the relevant ADRs together for traceability.
 
 Update these when requirement-to-implementation mapping changes or when the recommended next work changes materially.
 
@@ -114,13 +114,14 @@ If a session changes an existing accepted architecture decision, update the affe
 For most implementation sessions, read in this order:
 
 1. `internals/rules.md`
-2. `internals/sessionHandoff-2026-03-21.md` or the newest handoff file
+2. the newest `internals/sessionHandoff-YYYY-MM-DD.md`
 3. `internals/implementationPhases.md`
-4. the active kickoff file for the next target phase
-5. `internals/deploymentGuide.md` if the session touches environments, secrets, deploys, VMs, Vercel, or Firebase
-6. `internals/releaseExecutionChecklist.md` if the session is preparing or guiding a live rollout
-7. `internals/PRD.md` and the relevant frontend design doc if product behavior is involved
-8. relevant `docs/adr/` entries when the task touches architecture, contracts, runtime behavior, or deployment shape
+4. `internals/phaseBacklog.md`
+5. `internals/whatsappBusinessApiMigrationPhases.md` when the session touches WhatsApp migration, Cloud API, webhook, inbox, or template work
+6. `internals/deploymentGuide.md` if the session touches environments, secrets, deploys, VMs, Vercel, or Firebase
+7. `internals/releaseExecutionChecklist.md` if the session is preparing or guiding a live rollout
+8. `internals/PRD.md` if product behavior is involved
+9. relevant `docs/adr/` entries when the task touches architecture, contracts, runtime behavior, or deployment shape
 
 ## 4. When To Update Existing Files
 

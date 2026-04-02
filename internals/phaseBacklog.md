@@ -1,11 +1,11 @@
 # Phase Backlog
 
 Document status: Active  
-Purpose: condensed next-work inventory after deployment workflow implementation
+Purpose: condensed next-work inventory after WhatsApp Phase 5-6 admin inbox completion
 
 ## Next Recommended Items
 
-0. WhatsApp Business Platform migration Phase 4 is now implemented. Continue from Phase 5 and Phase 6 in `internals/whatsappBusinessApiMigrationPhases.md`, not from the legacy gateway/pairing path.
+0. WhatsApp Business Platform migration Phases 5 and 6 are now implemented. Continue from Phase 8 and Phase 9 in `internals/whatsappBusinessApiMigrationPhases.md`, not from the legacy gateway/pairing path.
 1. Backfill the real Meta template IDs into `docs/WhatsApp/docs/WhatsAppTemplateRegistry.md` if the operator has not recorded them yet.
 
 2. Provision the real staging VM, DNS records, and GitHub staging secrets, then execute the first staging rollout.
@@ -32,17 +32,18 @@ Purpose: condensed next-work inventory after deployment workflow implementation
    - admin Laundry tabs should behave correctly for `Aktif`, `Hari Ini`, `History`, and default-off cancelled visibility
 9. During staging deploy, observe first-start behavior for the new order `activityAt` backfill, settings cleanup, and index creation on realistic data volume before allowing the first production push.
 10. Execute the full `productionReadinessChecklist.md` on staging before allowing the first production push.
-11. Implement Phase 5-6 admin inbox completion:
-   - webhook-backed inbox/timeline polish
-   - manual free-form send endpoint
-   - CSW-only composer eligibility
-   - media retrieval affordance in admin UI when useful
+11. Validate the implemented WhatsApp inbox/operator flow on staging end-to-end:
+   - `/admin/whatsapp` is reachable from primary nav and mobile bottom nav
+   - explicit thread-open unread clearing behaves correctly under polling refresh
+   - CSW-open manual free-form send succeeds with real Cloud API credentials
+   - CSW-closed threads stay template-only
+   - inbound media retrieval works from the admin affordance against staged GridFS data
 12. Decide whether the v1 in-process outbox and media worker remain sufficient operationally after the first hosted rollout or whether a separate queue or worker boundary is warranted.
 13. Decide whether admin notification polling should move to a delta/summary endpoint so `AdminShell` and dashboard stop re-reading the full notifications collection.
 
 ## Lower Priority Follow-Ups
 
-1. Validate webhook-backed inbound/outbound WhatsApp thread quality on real phones and decide whether unread clearing or operator chat filters are needed in v1.1.
+1. Validate webhook-backed inbound/outbound WhatsApp thread quality on real phones and decide whether operator chat filters, assignment, or draft persistence are needed in v1.1.
 2. Decide whether admin-contact labels should remain implicit `Admin 1 / Admin 2 / ...` or later become configurable display names.
 3. Review whether archived leaderboard snapshot lifecycle needs additional operator visibility in admin UI beyond the current top-customer/reporting improvements.
 4. Decide whether frontend images should stay `next start` based or move to standalone output for leaner hosted runtime images.

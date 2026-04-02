@@ -25,6 +25,10 @@ const cloudApiControls = {
   },
   lastMessagePayload: null as null | {
     to?: string
+    type?: string
+    text?: {
+      body?: string
+    }
     template?: {
       name?: string
       language?: {
@@ -66,6 +70,10 @@ const startGatewayServer = async () => {
       req.on("end", () => {
         const payload = JSON.parse(requestBody || "{}") as {
           to?: string
+          type?: string
+          text?: {
+            body?: string
+          }
           template?: {
             name?: string
             language?: {
@@ -1051,6 +1059,43 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(DateTime.fromISO(webhookChatAfterStatus?.cswExpiresAt ?? "").toMillis() < Date.now(), true)
   assert.equal(webhookChatAfterStatus?.composerMode, "template_only")
 
+  const closedWindowSend = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(webhookChatId)}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+    },
+    body: JSON.stringify({
+      body: "Harus gagal karena CSW sudah tutup",
+    }),
+    expectedStatus: 422,
+  })
+  assert.match(closedWindowSend.payload.message, /customer service window/i)
+
+  await getDatabase().collection("whatsapp_chats").insertOne({
+    _id: `wa:missing-${uniqueSuffix}`,
+    title: "Missing Recipient",
+    unreadCount: 0,
+    lastMessagePreview: "Belum ada",
+    composerMode: "free_form",
+    cswOpenedAt: new Date().toISOString(),
+    cswExpiresAt: DateTime.now().plus({ hours: 1 }).toISO() ?? new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  })
+
+  const missingRecipientSend = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`wa:missing-${uniqueSuffix}`)}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+    },
+    body: JSON.stringify({
+      body: "Harus gagal karena recipient tidak ada",
+    }),
+    expectedStatus: 422,
+  })
+  assert.match(missingRecipientSend.payload.message, /identitas penerima/i)
+
   result = await requestJson("/v1/internal/whatsapp/events", {
     method: "POST",
     headers: {
@@ -1121,12 +1166,16 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   result = await requestJson("/v1/admin/whatsapp/chats", {
     headers: { Cookie: adminCookie! }
   })
-  assert.equal(result.payload.length, 1)
-  assert.equal(result.payload[0].customerName, upperCustomerName)
-  assert.equal(result.payload[0].waId, `62${customerPhone.slice(1)}`)
-  assert.equal(result.payload[0].isCswOpen, true)
-  assert.equal(result.payload[0].isFepOpen, true)
-  assert.equal(result.payload[0].composerMode, "free_form")
+  const primaryChat = result.payload.find(
+    (chat: { chatId: string }) => chat.chatId === `wa:62${customerPhone.slice(1)}`
+  )
+  assert.ok(primaryChat)
+  assert.equal(primaryChat.customerName, upperCustomerName)
+  assert.equal(primaryChat.waId, `62${customerPhone.slice(1)}`)
+  assert.equal(primaryChat.isCswOpen, true)
+  assert.equal(primaryChat.isFepOpen, true)
+  assert.equal(primaryChat.composerMode, "free_form")
+  assert.ok(primaryChat.unreadCount >= 1)
 
   result = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`wa:62${customerPhone.slice(1)}`)}/messages`, {
     headers: { Cookie: adminCookie! }
@@ -1157,6 +1206,97 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   )
   assert.ok(confirmedMirrorMessage)
   assert.equal(confirmedMirrorMessage.providerAck, 2)
+
+  await getDatabase().collection("whatsapp_chats").updateOne(
+    { _id: `wa:62${customerPhone.slice(1)}` },
+    {
+      $set: {
+        unreadCount: 2,
+      },
+    }
+  )
+
+  await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`wa:62${customerPhone.slice(1)}`)}/messages`, {
+    headers: { Cookie: adminCookie! }
+  })
+  const unreadPreservedChat = await getDatabase().collection("whatsapp_chats").findOne({
+    _id: `wa:62${customerPhone.slice(1)}`,
+  })
+  assert.equal(unreadPreservedChat?.unreadCount, 2)
+
+  result = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`wa:62${customerPhone.slice(1)}`)}/read`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.ok, true)
+  const readClearedChat = await getDatabase().collection("whatsapp_chats").findOne({
+    _id: `wa:62${customerPhone.slice(1)}`,
+  })
+  assert.equal(readClearedChat?.unreadCount, 0)
+
+  result = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`wa:62${customerPhone.slice(1)}`)}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `manual-wa-send-${uniqueSuffix}`,
+    },
+    body: JSON.stringify({
+      body: "Balasan operator via Cloud API",
+    })
+  })
+  assert.equal(result.payload.source, "manual_operator")
+  assert.equal(result.payload.providerStatus, "accepted")
+  assert.equal(result.payload.direction, "outbound")
+  const manualMessageId = result.payload.providerMessageId
+
+  const manualMessageRecord = await waitFor(
+    async () =>
+      getDatabase().collection("whatsapp_messages").findOne({
+        _id: manualMessageId,
+      }),
+    (message) => message?.source === "manual_operator",
+  )
+  assert.equal(manualMessageRecord?.body, "Balasan operator via Cloud API")
+  assert.equal(cloudApiControls.lastMessagePayload?.type, "text")
+  assert.equal(cloudApiControls.lastMessagePayload?.text?.body, "Balasan operator via Cloud API")
+
+  const manualSendReplay = await requestJson(`/v1/admin/whatsapp/chats/${encodeURIComponent(`wa:62${customerPhone.slice(1)}`)}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!,
+      "Idempotency-Key": `manual-wa-send-${uniqueSuffix}`,
+    },
+    body: JSON.stringify({
+      body: "Balasan operator via Cloud API",
+    })
+  })
+  assert.equal(manualSendReplay.payload.providerMessageId, manualMessageId)
+
+  const manualSendAudit = await getDatabase().collection("audit_logs").findOne({
+    action: "whatsapp.manual_message.send",
+    entityType: "whatsapp_chat",
+    entityId: `wa:62${customerPhone.slice(1)}`,
+    outcome: "success",
+  })
+  assert.ok(manualSendAudit)
+
+  await postStatusWebhook("sent", {
+    id: manualMessageId,
+  })
+  const manualMessageSent = await waitFor(
+    async () =>
+      getDatabase().collection("whatsapp_messages").findOne({
+        _id: manualMessageId,
+      }),
+    (message) => message?.providerStatus === "sent",
+  )
+  assert.equal(manualMessageSent?.providerStatus, "sent")
 
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_conflict_${uniqueSuffix}`,

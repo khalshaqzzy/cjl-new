@@ -19,6 +19,8 @@ The repo now has:
 - Meta WhatsApp webhook verification and signed ingestion now exist on the active API runtime
 - outbound delivery truth, pricing visibility, CSW refresh, and template lifecycle audit can now be driven from Meta webhooks
 - inbound WhatsApp media is now persisted to Mongo GridFS with admin-only retrieval by provider message id
+- admin shell now promotes WhatsApp into the primary desktop nav and five-item mobile bottom nav
+- admin WhatsApp now supports searchable inbox threads, linked-customer shortcuts, media-open affordances, explicit unread clearing, and CSW-gated manual operator replies
 - uppercase customer-name normalization plus repo-safe startup backfill for legacy customer/order/notification name snapshots
 - PDF receipt downloads for authenticated portal order detail and PNG receipt fallback downloads for failed admin order-confirmed notifications
 - manual WhatsApp fallback for failed notification sends with admin outbox action support
@@ -90,7 +92,7 @@ Status: complete for current scope
 - POS and customer-detail flows can now show QR/login-link sheets backed by one-time customer magic links
 - POS QR registration flow now includes an explicit continue CTA so the cashier can proceed straight into service selection after showing the customer QR/login link
 - customer detail mobile hero action controls now wrap safely on narrow screens and QR/login sheets cap height with internal scroll so close controls stay reachable
-- admin WhatsApp now surfaces provider health, CSW/FEP/composer badges, and message/provider metadata instead of pairing/reconnect/reset controls
+- admin WhatsApp now surfaces provider health, searchable thread/timeline panels, CSW/FEP/composer badges, media retrieval affordances, and message/provider metadata instead of pairing/reconnect/reset controls
 
 ### Phase 4: Public Surface Integration
 
@@ -133,6 +135,7 @@ Status: complete in repo terms
 - backend integration suite added in `packages/api/test/integration.test.ts`
 - backend integration suite now also covers service-catalog seed merge, `activityAt` backfill, laundry history cursor pagination, invalid-cursor validation, and Cloud API WhatsApp delivery semantics
 - frontend end-to-end suite added in `tests/e2e/full-stack.spec.ts`
+- backend and E2E suites now also cover WhatsApp unread-clear mutations, CSW-only manual free-form send, richer inbox assertions, and media retrieval affordances
 - root scripts now cover `npm test`, `npm run test:backend`, `npm run test:e2e`, and Docker Compose helpers
 
 ### Phase 7: Release and CI Hardening
@@ -163,13 +166,13 @@ Focus:
 - automated testing is now in scope for local repo verification and is implemented
 - multiple lockfiles still exist in the monorepo, but explicit Turbopack root removed the earlier workspace-root warning blocker
 - hosted rollout is now blocked more by real-device validation than by missing WhatsApp implementation code
-- the next WhatsApp product milestone is Phase 5-6 admin inbox completion and manual free-form send on top of the new webhook-backed truth
+- the next WhatsApp product milestone is live staging validation of the Cloud-era inbox, webhook, media, and CSW-only manual-send flow
 - the repo now also has a dedicated migration plan for moving from the current `whatsapp-web.js` sidecar to the official WhatsApp Business Platform in `internals/whatsappBusinessApiMigrationPhases.md`
-- template-authoring Phase 1 for the official WhatsApp migration is now complete in repo memory; the next migration start is Phase 2 provider abstraction and data-model expansion
+- WhatsApp Business Platform migration Phases 1-6 are now implemented in repo terms, and Phase 7 test/tooling coverage is materially in place for the inbox/manual-send path
 - if the official migration is prioritized before the first production rollout, treat the current gateway/pairing runtime as deprecated code to retain in-repo, not as a runtime path to preserve
 - production hardening now includes structured runtime logging, typed error envelopes, token-hash persistence, origin checks, Mongo-backed rate limiting, and CI security gates
 - admin WhatsApp control throttling now keys by authenticated admin and only counts failed control attempts, so repeated successful reconnect/pairing operations no longer consume the same abuse budget
 - clean-checkout CI validation no longer depends on a prebuilt committed `packages/contracts/dist` artifact
 - clean-checkout CI validation now also provisions the required Playwright Chromium binary explicitly before E2E starts
-- the next meaningful milestone is webhook ingestion plus successful staging validation of the new Cloud-era runtime
+- the next meaningful milestone is successful staging validation of the new Cloud-era runtime with real Meta webhooks, inbound media, and operator reply flows
 - a remaining repo hygiene gap is that backend test files are not yet covered by a dedicated TypeScript project config, so editor warnings on `packages/api/test/*.ts` are not fully enforced by root `typecheck`

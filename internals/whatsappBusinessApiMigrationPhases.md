@@ -551,6 +551,12 @@ Acceptance gate:
 
 - delivery status, pricing visibility, and inbox messages can be driven entirely from Meta webhooks
 
+Status snapshot:
+
+- implemented on 2026-04-02 for the current repo scope
+- signed webhook verification and ingestion are active in the API runtime
+- inbound text/media, outbound status progression, template lifecycle audit, and GridFS-backed media storage are in place
+
 ### Phase 5: Admin WhatsApp Interface Upgrade
 
 Goal:
@@ -586,6 +592,13 @@ Tasks:
 Acceptance gate:
 
 - admin can inspect Cloud-era threads and message statuses without any dependency on linked-device pairing UX
+
+Status snapshot:
+
+- implemented on 2026-04-02 for the current repo scope
+- `/admin/whatsapp` is now promoted into the primary desktop nav and five-item mobile bottom nav
+- the admin surface now provides searchable thread list, desktop split-pane inbox UI, mobile thread sheet, linked-customer CTA, message source/status/pricing badges, and media-open affordances
+- polling read paths remain read-only; unread clearing moved to an explicit mutation on operator thread open
 
 ### Phase 6: Manual Operator Send Path
 
@@ -628,6 +641,13 @@ UI behavior:
 Acceptance gate:
 
 - admin can send a free-form text reply from the app when CSW is open, and cannot send one when CSW is closed
+
+Status snapshot:
+
+- implemented on 2026-04-02 for the current repo scope
+- `POST /v1/admin/whatsapp/chats/:chatId/messages` now sends idempotent text-only manual replies through Cloud API
+- `POST /v1/admin/whatsapp/chats/:chatId/read` now clears unread counts explicitly without mutating polling GET flows
+- server-side enforcement now blocks manual sends when CSW is closed, recipient identity is incomplete, or Cloud provider config is unavailable
 
 ### Phase 7: Testing and Tooling Migration
 
@@ -681,7 +701,8 @@ Acceptance gate:
 Status snapshot:
 
 - backend integration coverage now uses a Cloud API stub and passes
-- E2E coverage now asserts template-editor removal and provider-health WhatsApp UI
+- backend integration coverage now also asserts unread-clear mutation, CSW-only manual send, idempotent manual-send replay, and missing-recipient rejection
+- E2E coverage now asserts primary-nav/mobile-nav WhatsApp access, richer inbox UI, media-open affordances, unread clearing, linked-customer CTA, manual reply flow, and template-only composer state
 - lint and typecheck also pass after the Phase 2-3 changes
 
 ### Phase 8: Deployment, Env, and Runtime Topology Change
@@ -791,7 +812,7 @@ These are not part of the first migration pass:
 
 The next implementation session should start with:
 
-1. implement Phase 4 Meta webhook verification and ingestion
-2. implement Phase 5 admin inbox completion against webhook-driven state
-3. implement Phase 6 manual composer eligibility and send path using CSW rules
-4. validate the new Cloud runtime on staging and update stale deployment/runbook documentation
+1. execute Phase 8 and Phase 9 staging validation against the now-implemented Cloud runtime
+2. validate real Meta webhook, inbound media, and operator reply behavior on staging
+3. backfill real Meta template IDs into the repo registry if the operator has them
+4. update stale deployment/runbook documentation that still reflects gateway-era or pre-inbox behavior

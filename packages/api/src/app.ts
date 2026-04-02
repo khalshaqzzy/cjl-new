@@ -21,6 +21,7 @@ import {
   settingsResponseSchema,
   updateCustomerInputSchema,
   voidOrderInputSchema,
+  whatsappManualMessageInputSchema,
   whatsappInternalEventSchema,
 } from "@cjl/contracts"
 import {
@@ -92,7 +93,9 @@ import {
   ingestWhatsappInternalEvent,
   listWhatsappChats,
   listWhatsappMessages,
+  markWhatsappChatRead,
 } from "./services/whatsapp.js"
+import { sendManualWhatsappMessage } from "./services/whatsapp-manual-send.js"
 import {
   ingestMetaWhatsappWebhook,
   openStoredWhatsappMedia,
@@ -762,6 +765,29 @@ export const createApp = () => {
 
   app.get("/v1/admin/whatsapp/chats/:chatId/messages", requireAdmin, asyncRoute(async (req, res) => {
     res.json(await listWhatsappMessages(getParam(req.params.chatId)))
+  }))
+
+  app.post("/v1/admin/whatsapp/chats/:chatId/messages", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const body = whatsappManualMessageInputSchema.parse(req.body)
+    const chatId = getParam(req.params.chatId)
+    const result = await withIdempotency(req, "whatsapp-manual-send", { chatId, ...body }, () =>
+      sendManualWhatsappMessage({
+        chatId,
+        body: body.body,
+      })
+    )
+    logger.info({
+      event: "admin.whatsapp.manual_send.succeeded",
+      chatId,
+      providerMessageId: result.providerMessageId,
+    })
+    res.json(result)
+  }))
+
+  app.post("/v1/admin/whatsapp/chats/:chatId/read", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const chatId = getParam(req.params.chatId)
+    await markWhatsappChatRead(chatId)
+    res.json({ ok: true })
   }))
 
   app.get("/v1/admin/whatsapp/messages/:providerMessageId/media", requireAdmin, asyncRoute(async (req, res) => {

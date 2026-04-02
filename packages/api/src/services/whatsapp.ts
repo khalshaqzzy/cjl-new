@@ -22,6 +22,7 @@ import type {
   WhatsappMessageDocument,
   WhatsappSessionDocument,
 } from "../types.js"
+import { NotFoundError } from "../errors.js"
 import {
   type CloudMediaAttachment,
   type CloudSendResult,
@@ -393,7 +394,7 @@ const mapChat = (chat: WhatsappChatDocument): WhatsappChatSummary => ({
   composerMode: resolveComposerMode(chat),
 })
 
-const mapMessage = (message: WhatsappMessageDocument): WhatsappMessageItem => ({
+export const mapWhatsappMessage = (message: WhatsappMessageDocument): WhatsappMessageItem => ({
   providerMessageId: message._id,
   chatId: message.chatId,
   providerKind: message.providerKind,
@@ -720,7 +721,23 @@ export const listWhatsappMessages = async (chatId: string) => {
     .sort({ timestampIso: 1, createdAt: 1 })
     .toArray()
 
-  return messages.map(mapMessage)
+  return messages.map(mapWhatsappMessage)
+}
+
+export const markWhatsappChatRead = async (chatId: string) => {
+  const result = await getChatsCollection().updateOne(
+    { _id: chatId },
+    {
+      $set: {
+        unreadCount: 0,
+        updatedAt: new Date().toISOString(),
+      },
+    }
+  )
+
+  if (!result.matchedCount) {
+    throw new NotFoundError("Thread WhatsApp tidak ditemukan")
+  }
 }
 
 export const ingestWhatsappInternalEvent = async (event: WhatsappInternalEvent) => {

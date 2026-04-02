@@ -10,11 +10,13 @@ import type {
   ConfirmOrderInput,
   CustomerSearchResult,
   NotificationRecord,
+  OkResponse,
   OrderHistoryItem,
   OrderPreviewResponse,
   SettingsResponse,
   WhatsappChatSummary,
   WhatsappConnectionStatus,
+  WhatsappManualMessageInput,
   WhatsappMessageItem,
 } from "@cjl/contracts"
 
@@ -236,4 +238,17 @@ export const adminApi = {
   listWhatsappChats: () => apiFetch<WhatsappChatSummary[]>("/v1/admin/whatsapp/chats"),
   listWhatsappMessages: (chatId: string) =>
     apiFetch<WhatsappMessageItem[]>(`/v1/admin/whatsapp/chats/${encodeURIComponent(chatId)}/messages`),
+  sendWhatsappMessage: (chatId: string, body: WhatsappManualMessageInput["body"], idempotencyKey?: string) =>
+    apiFetch<WhatsappMessageItem>(`/v1/admin/whatsapp/chats/${encodeURIComponent(chatId)}/messages`, {
+      method: "POST",
+      headers: { "Idempotency-Key": resolveIdempotencyKey(idempotencyKey) },
+      body: JSON.stringify({ body }),
+    }),
+  markWhatsappChatRead: (chatId: string) =>
+    apiFetch<OkResponse>(`/v1/admin/whatsapp/chats/${encodeURIComponent(chatId)}/read`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  getWhatsappMediaUrl: (providerMessageId: string) =>
+    `${apiBaseUrl}/v1/admin/whatsapp/messages/${encodeURIComponent(providerMessageId)}/media`,
 }

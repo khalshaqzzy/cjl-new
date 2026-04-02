@@ -33,12 +33,12 @@ const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/pos", label: "POS", icon: ShoppingCart },
   { href: "/admin/laundry-aktif", label: "Laundry", icon: Shirt },
+  { href: "/admin/whatsapp", label: "WhatsApp", icon: Smartphone },
   { href: "/admin/pelanggan", label: "Pelanggan", icon: Users },
 ]
 
 const moreItems = [
   { href: "/admin/notifikasi", label: "Notifikasi", icon: Bell },
-  { href: "/admin/whatsapp", label: "WhatsApp", icon: Smartphone },
   { href: "/admin/settings", label: "Pengaturan", icon: Settings },
 ]
 

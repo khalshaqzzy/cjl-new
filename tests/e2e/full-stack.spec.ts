@@ -1,6 +1,6 @@
 import crypto from "node:crypto"
 import { expect, test } from "@playwright/test"
-import { MongoClient } from "mongodb"
+import { GridFSBucket, MongoClient } from "mongodb"
 
 const mongoUri =
   process.env.MONGODB_URI ??
@@ -54,6 +54,65 @@ const waitForDirectStatusToken = async (orderId: string) => {
   }
 
   throw new Error(`Direct status token for order ${orderId} was not found`)
+}
+
+const seedWhatsappMedia = async (providerMessageId: string) => {
+  const client = new MongoClient(mongoUri)
+  await client.connect()
+  const database = client.db()
+
+  try {
+    const startedAt = Date.now()
+    let message = null
+    while (Date.now() - startedAt < 15_000) {
+      message = await database.collection("whatsapp_messages").findOne({ _id: providerMessageId })
+      if (message) {
+        break
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+
+    if (!message) {
+      throw new Error(`WhatsApp message ${providerMessageId} was not found in time`)
+    }
+
+    if (message.mediaStorageId) {
+      return message
+    }
+
+    const bucket = new GridFSBucket(database, { bucketName: "whatsapp_media" })
+    const storageId = await new Promise<string>((resolve, reject) => {
+      const upload = bucket.openUploadStream("e2e-image.jpg", {
+        contentType: "image/jpeg",
+        metadata: {
+          providerMessageId,
+        },
+      })
+
+      upload.once("error", reject)
+      upload.once("finish", () => resolve(String(upload.id)))
+      upload.end(Buffer.from("integration-media-01"))
+    })
+
+    await database.collection("whatsapp_messages").updateOne(
+      { _id: providerMessageId },
+      {
+        $set: {
+          mediaStorageId: storageId,
+          mediaMimeType: "image/jpeg",
+          mediaName: "e2e-image.jpg",
+          mediaDownloadStatus: "downloaded",
+          mediaDownloadedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      }
+    )
+
+    return await database.collection("whatsapp_messages").findOne({ _id: providerMessageId })
+  } finally {
+    await client.close()
+  }
 }
 
 const signWhatsappWebhookPayload = (payload: unknown) => {
@@ -160,6 +219,18 @@ test("admin and public frontends stay fully integrated through the backend", asy
                     body: "Halo dari webhook E2E",
                   },
                 },
+                {
+                  from: `62${customerPhone.slice(1)}`,
+                  id: `wamid.e2e.image.${uniqueSuffix}`,
+                  timestamp: String(Math.floor(Date.now() / 1000) + 1),
+                  type: "image",
+                  image: {
+                    id: "cloud-media-image",
+                    mime_type: "image/jpeg",
+                    caption: "Foto dari webhook E2E",
+                    file_size: 19,
+                  },
+                },
               ],
             },
           },
@@ -177,6 +248,25 @@ test("admin and public frontends stay fully integrated through the backend", asy
     body: signedInboundWebhook.rawBody,
   })
   expect(webhookResponse.status).toBe(200)
+
+  const inboxClient = new MongoClient(mongoUri)
+  await inboxClient.connect()
+  try {
+    const database = inboxClient.db()
+    await database.collection("whatsapp_chats").updateOne(
+      { _id: `wa:62${customerPhone.slice(1)}` },
+      {
+        $set: {
+          cswOpenedAt: new Date().toISOString(),
+          cswExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          composerMode: "free_form",
+          unreadCount: 2,
+        },
+      }
+    )
+  } finally {
+    await inboxClient.close()
+  }
 
   await page.goto("http://127.0.0.1:3101/admin/laundry-aktif")
   await expect(page.getByText(orderCode)).toBeVisible()
@@ -198,6 +288,54 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await page.goto("http://127.0.0.1:3101/admin/whatsapp")
   await expect(page.getByText("Halo dari webhook E2E")).toBeVisible()
   await expect(page.getByText(`+62${customerPhone.slice(1)}`).first()).toBeVisible()
+  const whatsappThread = page.getByTestId(`whatsapp-thread-wa:62${customerPhone.slice(1)}`)
+  await expect(whatsappThread.getByText(/^2$/)).toBeVisible()
+  await whatsappThread.click()
+  await expect(whatsappThread.getByText(/^2$/)).toHaveCount(0)
+  await expect(page.getByTestId("whatsapp-linked-customer-link")).toBeVisible()
+  await seedWhatsappMedia(`wamid.e2e.image.${uniqueSuffix}`)
+  const mediaPopup = page.waitForEvent("popup")
+  await expect(page.getByTestId(`whatsapp-open-media-wamid.e2e.image.${uniqueSuffix}`)).toBeVisible({ timeout: 15000 })
+  await page.getByTestId(`whatsapp-open-media-wamid.e2e.image.${uniqueSuffix}`).click()
+  const mediaPage = await mediaPopup
+  await expect(mediaPage).toHaveURL(/\/v1\/admin\/whatsapp\/messages\/.*\/media/)
+  await expect(page.getByTestId("whatsapp-composer-input")).toBeEnabled()
+  await page.getByTestId("whatsapp-composer-input").fill("Balasan manual dari admin web")
+  await page.getByTestId("whatsapp-send-button").click()
+  const manualReplyBubble = page.locator('[data-testid^="whatsapp-message-"]').filter({
+    hasText: "Balasan manual dari admin web",
+  }).last()
+  await expect(manualReplyBubble).toBeVisible()
+  await page.getByTestId("whatsapp-linked-customer-link").click()
+  await expect(page).toHaveURL(new RegExp(`/admin/pelanggan/${customer?._id}$`))
+  await page.goto("http://127.0.0.1:3101/admin/whatsapp")
+  await expect(
+    page.locator('[data-testid^="whatsapp-message-"]').filter({
+      hasText: "Balasan manual dari admin web",
+    }).last()
+  ).toBeVisible()
+
+  const whatsappClient = new MongoClient(mongoUri)
+  await whatsappClient.connect()
+  try {
+    const database = whatsappClient.db()
+    await database.collection("whatsapp_chats").updateOne(
+      { _id: `wa:62${customerPhone.slice(1)}` },
+      {
+        $set: {
+          cswExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+          composerMode: "template_only",
+        },
+      }
+    )
+  } finally {
+    await whatsappClient.close()
+  }
+
+  await page.reload()
+  await page.getByTestId(`whatsapp-thread-wa:62${customerPhone.slice(1)}`).click()
+  await expect(page.getByText("Thread ini hanya boleh memakai template resmi.")).toBeVisible()
+  await expect(page.getByTestId("whatsapp-send-button")).toBeDisabled()
 
   const publicPage = await browser.newPage()
   await publicPage.goto(firstMagicLinkUrl)
@@ -314,11 +452,21 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Dibatalkan")
   await expect(directStatusPage.getByText("Alasan Pembatalan")).toBeVisible()
 
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("http://127.0.0.1:3101/admin/whatsapp")
+  await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "POS" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Laundry" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "WhatsApp" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Pelanggan" })).toBeVisible()
+
   await publicPage.setViewportSize({ width: 390, height: 844 })
   await publicPage.goto("http://127.0.0.1:3100/portal")
   await publicPage.getByTestId("portal-mobile-logout").click()
   await expect(publicPage).toHaveURL(/\/login$/)
 
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("http://127.0.0.1:3101/admin")
   await page.getByRole("button", { name: "Keluar" }).click()
   await expect(page).toHaveURL("http://127.0.0.1:3101/")
   await page.goto("http://127.0.0.1:3101/admin")

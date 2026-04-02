@@ -88,6 +88,45 @@ const graphFetch = async <T>(path: string, init: RequestInit) => {
   return (await response.json()) as T
 }
 
+const sendCloudMessage = async ({
+  to,
+  payload,
+}: {
+  to: string
+  payload: Record<string, unknown>
+}): Promise<CloudSendResult> => {
+  const statusAt = new Date().toISOString()
+  const response = await graphFetch<CloudSendResponse>(
+    `${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        ...payload,
+      }),
+    }
+  )
+
+  const providerMessageId = response.messages?.[0]?.id
+  if (!providerMessageId) {
+    throw new ValidationError("Cloud API tidak mengembalikan message ID")
+  }
+
+  return {
+    providerKind: "cloud_api",
+    providerMessageId,
+    providerStatus: "accepted",
+    providerStatusAt: statusAt,
+    sentAt: statusAt,
+    waId: response.contacts?.[0]?.wa_id ?? to,
+  }
+}
+
 const uploadMedia = async (attachment: CloudMediaAttachment) => {
   assertCloudConfigured()
 
@@ -128,7 +167,6 @@ export const sendCloudNotification = async (
 
   const template = approvedWhatsappTemplates[notification.eventType]
   const recipient = normalizeWhatsappPhone(notification.destinationPhone)
-  const statusAt = new Date().toISOString()
 
   const components: Array<Record<string, unknown>> = []
   if (template.requiresDocumentHeader) {
@@ -170,48 +208,60 @@ export const sendCloudNotification = async (
   })
 
   try {
-    const response = await graphFetch<CloudSendResponse>(
-      `${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: recipient,
-          type: "template",
-          template: {
-            name: template.templateName,
-            language: {
-              code: template.language,
-            },
-            components,
+    return await sendCloudMessage({
+      to: recipient,
+      payload: {
+        type: "template",
+        template: {
+          name: template.templateName,
+          language: {
+            code: template.language,
           },
-        }),
-      }
-    )
-
-    const providerMessageId = response.messages?.[0]?.id
-    if (!providerMessageId) {
-      throw new ValidationError("Cloud API tidak mengembalikan message ID")
-    }
-
-    return {
-      providerKind: "cloud_api",
-      providerMessageId,
-      providerStatus: "accepted",
-      providerStatusAt: statusAt,
-      sentAt: statusAt,
-      waId: response.contacts?.[0]?.wa_id ?? recipient,
-    }
+          components,
+        },
+      },
+    })
   } catch (error) {
     logger.error({
       event: "whatsapp.cloud.send.failed",
       notificationId: notification._id,
       eventType: notification.eventType,
       destinationPhone: maskPhone(notification.destinationPhone),
+      error: serializeError(error),
+    })
+    throw error
+  }
+}
+
+export const sendCloudTextMessage = async ({
+  to,
+  body,
+}: {
+  to: string
+  body: string
+}): Promise<CloudSendResult> => {
+  assertCloudConfigured()
+
+  const recipient = normalizeWhatsappPhone(to)
+  logger.info({
+    event: "whatsapp.cloud.manual_send.attempted",
+    destinationPhone: maskPhone(to),
+  })
+
+  try {
+    return await sendCloudMessage({
+      to: recipient,
+      payload: {
+        type: "text",
+        text: {
+          body,
+        },
+      },
+    })
+  } catch (error) {
+    logger.error({
+      event: "whatsapp.cloud.manual_send.failed",
+      destinationPhone: maskPhone(to),
       error: serializeError(error),
     })
     throw error

@@ -626,6 +626,14 @@ export const adminLoginInputSchema = z.object({
   password: z.string().min(1),
 })
 
+export const whatsappManualMessageInputSchema = z.object({
+  body: z.string().trim().min(1),
+})
+
+export const okResponseSchema = z.object({
+  ok: z.literal(true),
+})
+
 export type ServiceCode = z.infer<typeof serviceCodeSchema>
 export type PricingModel = z.infer<typeof pricingModelSchema>
 export type DashboardWindow = z.infer<typeof dashboardWindowSchema>
@@ -686,3 +694,5 @@ export type WhatsappInternalEvent = z.infer<typeof whatsappInternalEventSchema>
 export type WhatsappInternalSessionStateChangedEvent = z.infer<typeof whatsappInternalSessionStateChangedEventSchema>
 export type WhatsappInternalMessageUpsertedEvent = z.infer<typeof whatsappInternalMessageUpsertedEventSchema>
 export type WhatsappInternalMessageAckChangedEvent = z.infer<typeof whatsappInternalMessageAckChangedEventSchema>
+export type WhatsappManualMessageInput = z.infer<typeof whatsappManualMessageInputSchema>
+export type OkResponse = z.infer<typeof okResponseSchema>
