@@ -20,6 +20,9 @@ Purpose: condensed next-work inventory after repo-level closure of WhatsApp migr
    - outbound status progression and pricing visibility
 4. Validate the admin WhatsApp inbox on staging:
    - thread list/timeline visibility
+   - mobile list-to-detail navigation
+   - sticky thread header visibility during long-scroll sessions
+   - provider-health collapsed/default and expanded/detail states
    - explicit unread clearing
    - CSW-open manual send success
    - CSW-closed template-only state

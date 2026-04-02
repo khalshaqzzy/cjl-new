@@ -110,11 +110,13 @@ export function AdminShell({
   title,
   subtitle,
   action,
+  hideMobileNav = false,
 }: {
   children: ReactNode
   title: string
   subtitle?: string
   action?: ReactNode
+  hideMobileNav?: boolean
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -321,22 +323,24 @@ export function AdminShell({
         </header>
 
         {/* Page body */}
-        <main className="flex-1 pb-24 lg:pb-8">{children}</main>
+        <main className={cn("flex-1 min-h-0 lg:pb-8", hideMobileNav ? "pb-0" : "pb-24")}>{children}</main>
 
         {/* Mobile Bottom Tab Bar */}
-        <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
-          <div className="border-t border-line-base bg-bg-surface/95 backdrop-blur-sm">
-            <div className="flex items-center justify-around px-2">
-              {navItems.map((item) => (
-                <BottomNavItem
-                  key={item.href}
-                  {...item}
-                  isActive={pathname === item.href}
-                />
-              ))}
+        {!hideMobileNav && (
+          <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
+            <div className="border-t border-line-base bg-bg-surface/95 backdrop-blur-sm">
+              <div className="flex items-center justify-around px-2">
+                {navItems.map((item) => (
+                  <BottomNavItem
+                    key={item.href}
+                    {...item}
+                    isActive={pathname === item.href}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        </nav>
+          </nav>
+        )}
       </div>
       <Toaster richColors position="top-right" />
     </div>

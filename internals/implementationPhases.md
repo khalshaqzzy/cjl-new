@@ -23,6 +23,9 @@ The repo now has:
   - explicit unread clearing
   - CSW-gated manual text replies
   - template-only disabled state
+  - mobile list-first navigation with dedicated thread detail route
+  - compact default-collapsed provider health summary
+  - sticky thread header and contained message scrolling on desktop/mobile
 - failed-notification recovery through backend-owned resend with receipt download, `Mark as Done`, and `Ignore`
 - startup seed/backfill that now also canonicalizes legacy WhatsApp data for Cloud-era reads while preserving legacy history
 - startup WhatsApp compatibility backfill now uses a runtime migration watermark and incremental cursor-based passes after the first baseline run
@@ -42,6 +45,10 @@ Status: complete in repo terms
 ### Phase 3: Admin Surface Integration
 
 Status: complete in repo terms
+
+- admin WhatsApp inbox now has a dedicated `/admin/whatsapp/[chatId]` detail route for mobile
+- message timelines auto-scroll to the newest item on open and keep scroll ownership inside the inbox panel
+- mobile thread detail hides the bottom nav and keeps header controls visible while scrolling
 
 ### Phase 4: Public Surface Integration
 

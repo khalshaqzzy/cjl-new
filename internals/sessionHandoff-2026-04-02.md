@@ -1,10 +1,24 @@
 # Session Handoff 2026-04-02
 
 Document status: Active  
-Purpose: repo snapshot after WhatsApp migration Phase 7-9 closure in repo terms
+Purpose: repo snapshot after Cloud WhatsApp migration closure plus admin inbox mobile UX hardening
 
 ## What This Session Completed
 
+- reworked admin WhatsApp mobile UX without changing backend contracts:
+  - thread taps now open a dedicated `/admin/whatsapp/[chatId]` detail route on mobile
+  - desktop stays split-pane
+  - provider health is compact and default-collapsed
+  - mobile thread detail hides bottom nav and keeps header actions sticky
+  - thread timelines auto-scroll to newest messages on open
+  - scroll containment now stays inside the inbox/timeline instead of bleeding to the whole page
+- extracted shared admin WhatsApp UI/state blocks into `app/admin-web/components/admin/whatsapp-inbox.tsx`
+- tightened shared `ScrollArea` root overflow behavior to support contained scrolling
+- expanded E2E coverage for:
+  - desktop provider-health collapse/expand
+  - desktop thread selection staying inline
+  - desktop long-timeline scroll containment
+  - mobile thread route navigation, back behavior, and unlinked-thread reply flow
 - removed active API runtime dependence on gateway-era env variables
 - retired `POST /v1/internal/whatsapp/events` with explicit `410 legacy_whatsapp_bridge_retired`
 - extended `/ready` with Cloud provider/webhook readiness checks
@@ -43,6 +57,7 @@ Purpose: repo snapshot after WhatsApp migration Phase 7-9 closure in repo terms
 ## Verification Run
 
 - `npm run typecheck`
+- `npm run test:e2e`
 - `npm run test:backend`
 - `npm run validate:cloud-runtime`
 
@@ -56,6 +71,9 @@ Both succeeded at session end.
 - startup backfill is now split into:
   - baseline first run
   - watermark-driven incremental reruns
+- admin WhatsApp detail UX now has two intentional modes:
+  - desktop split-pane at `/admin/whatsapp`
+  - mobile-focused full detail route at `/admin/whatsapp/[chatId]`
 - staging and production now require Cloud WhatsApp secrets in GitHub environments:
   - `*_WHATSAPP_BUSINESS_ID`
   - `*_WHATSAPP_WABA_ID`
@@ -67,11 +85,10 @@ Both succeeded at session end.
 
 ## Recommended Next Start
 
-1. run `npm run test:e2e`
-2. execute the first real staging rollout with Cloud secrets present
-3. confirm the workflow passes both:
+1. execute the first real staging rollout with Cloud secrets present
+2. confirm the workflow passes both:
    - secret fail-fast validation
    - semantic `/ready` validation
-4. validate webhook, inbox, media, manual-send, and failed-notification recovery on staging
-5. restart staging once and confirm `seed.completed.summary.mode` flips from `baseline` to `incremental`
-6. only after staging signoff, allow the first production push
+3. validate webhook, inbox, media, manual-send, failed-notification recovery, and the new mobile inbox UX on staging
+4. restart staging once and confirm `seed.completed.summary.mode` flips from `baseline` to `incremental`
+5. only after staging signoff, allow the first production push

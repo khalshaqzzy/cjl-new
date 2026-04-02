@@ -286,11 +286,17 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(page.getByText("Pelanggan Teratas")).toBeVisible()
 
   await page.goto("http://127.0.0.1:3101/admin/whatsapp")
+  await expect(page.getByText("Phone Number ID")).toHaveCount(0)
+  await page.getByTestId("whatsapp-provider-toggle").click()
+  await expect(page.getByText("Phone Number ID")).toBeVisible()
+  await page.getByTestId("whatsapp-provider-toggle").click()
+  await expect(page.getByText("Phone Number ID")).toHaveCount(0)
   await expect(page.getByText("Halo dari webhook E2E")).toBeVisible()
   await expect(page.getByText(`+62${customerPhone.slice(1)}`).first()).toBeVisible()
   const whatsappThread = page.getByTestId(`whatsapp-thread-wa:62${customerPhone.slice(1)}`)
   await expect(whatsappThread.getByText(/^2$/)).toBeVisible()
   await whatsappThread.click()
+  await expect(page).toHaveURL("http://127.0.0.1:3101/admin/whatsapp")
   await expect(whatsappThread.getByText(/^2$/)).toHaveCount(0)
   await expect(page.getByTestId("whatsapp-linked-customer-link")).toBeVisible()
   await seedWhatsappMedia(`wamid.e2e.image.${uniqueSuffix}`)
@@ -306,6 +312,68 @@ test("admin and public frontends stay fully integrated through the backend", asy
     hasText: "Balasan manual dari admin web",
   }).last()
   await expect(manualReplyBubble).toBeVisible()
+
+  const overflowPayload = {
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "waba_123",
+        changes: [
+          {
+            field: "messages",
+            value: {
+              messaging_product: "whatsapp",
+              metadata: {
+                display_phone_number: "+62 877 8056 3875",
+                phone_number_id: "1234567890",
+              },
+              contacts: [
+                {
+                  profile: { name: upperCustomerName },
+                  wa_id: `62${customerPhone.slice(1)}`,
+                },
+              ],
+              messages: Array.from({ length: 18 }, (_, index) => ({
+                from: `62${customerPhone.slice(1)}`,
+                id: `wamid.inbound.overflow.${uniqueSuffix}.${index}`,
+                timestamp: String(Math.floor(Date.now() / 1000) + index + 10),
+                type: "text",
+                text: {
+                  body: `Overflow desktop ${index + 1}`,
+                },
+              })),
+            },
+          },
+        ],
+      },
+    ],
+  }
+  const signedOverflowPayload = signWhatsappWebhookPayload(overflowPayload)
+  const overflowWebhookResponse = await page.request.post("http://127.0.0.1:4100/v1/webhooks/meta/whatsapp", {
+    data: signedOverflowPayload.rawBody,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Hub-Signature-256": signedOverflowPayload.signature,
+    },
+  })
+  expect(overflowWebhookResponse.ok()).toBeTruthy()
+
+  await page.goto("http://127.0.0.1:3101/admin/whatsapp")
+  await page.getByTestId(`whatsapp-thread-wa:62${customerPhone.slice(1)}`).click()
+  const pageScrollBeforeTimelineWheel = await page.evaluate(() => window.scrollY)
+  const timeline = page.getByTestId("whatsapp-thread-timeline")
+  await expect(timeline).toBeVisible()
+  await timeline.hover()
+  await page.mouse.wheel(0, 1800)
+  await expect
+    .poll(async () =>
+      timeline.locator('[data-slot="scroll-area-viewport"]').evaluate((node) => node.scrollTop)
+    )
+    .toBeGreaterThan(0)
+  await expect
+    .poll(async () => page.evaluate(() => window.scrollY))
+    .toBe(pageScrollBeforeTimelineWheel)
+
   await page.getByTestId("whatsapp-linked-customer-link").click()
   await expect(page).toHaveURL(new RegExp(`/admin/pelanggan/${customer?._id}$`))
   await page.goto("http://127.0.0.1:3101/admin/whatsapp")
@@ -535,13 +603,86 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(directStatusPage.getByTestId("direct-status-badge")).toContainText("Dibatalkan")
   await expect(directStatusPage.getByText("Alasan Pembatalan")).toBeVisible()
 
+  const mobileUnlinkedPhone = "6287780004321"
+  const mobileUnlinkedPayload = {
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "waba_123",
+        changes: [
+          {
+            field: "messages",
+            value: {
+              messaging_product: "whatsapp",
+              metadata: {
+                display_phone_number: "+62 877 8056 3875",
+                phone_number_id: "1234567890",
+              },
+              contacts: [
+                {
+                  profile: { name: "MOBILE UNLINKED" },
+                  wa_id: mobileUnlinkedPhone,
+                },
+              ],
+              messages: [
+                {
+                  from: mobileUnlinkedPhone,
+                  id: `wamid.inbound.mobile.${uniqueSuffix}`,
+                  timestamp: String(Math.floor(Date.now() / 1000)),
+                  type: "text",
+                  text: {
+                    body: "Halo dari mobile unlinked",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  }
+  const signedMobileUnlinkedPayload = signWhatsappWebhookPayload(mobileUnlinkedPayload)
+  const mobileWebhookResponse = await page.request.post("http://127.0.0.1:4100/v1/webhooks/meta/whatsapp", {
+    data: signedMobileUnlinkedPayload.rawBody,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Hub-Signature-256": signedMobileUnlinkedPayload.signature,
+    },
+  })
+  expect(mobileWebhookResponse.ok()).toBeTruthy()
+
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto("http://127.0.0.1:3101/admin/whatsapp")
-  await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible()
-  await expect(page.getByRole("link", { name: "POS" })).toBeVisible()
-  await expect(page.getByRole("link", { name: "Laundry" })).toBeVisible()
-  await expect(page.getByRole("link", { name: "WhatsApp" })).toBeVisible()
-  await expect(page.getByRole("link", { name: "Pelanggan" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: "POS", exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Laundry", exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: "WhatsApp", exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Pelanggan", exact: true })).toBeVisible()
+  await expect(page.getByText("Phone Number ID")).toHaveCount(0)
+  await page.getByTestId("whatsapp-provider-toggle").click()
+  await expect(page.getByText("Phone Number ID")).toBeVisible()
+  await page.getByTestId("whatsapp-thread-wa:62" + customerPhone.slice(1)).click()
+  await expect(page).toHaveURL(new RegExp(`/admin/whatsapp/wa%3A62${customerPhone.slice(1)}$`))
+  await expect(page.getByTestId("whatsapp-thread-back")).toBeVisible()
+  await expect(page.getByTestId("whatsapp-linked-customer-link")).toBeVisible()
+  await expect(page.getByTestId("whatsapp-composer-input")).toBeVisible()
+  await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toHaveCount(0)
+  await page.getByTestId("whatsapp-thread-back").click()
+  await expect(page).toHaveURL("http://127.0.0.1:3101/admin/whatsapp")
+
+  await page.getByTestId(`whatsapp-thread-wa:${mobileUnlinkedPhone}`).click()
+  await expect(page).toHaveURL(new RegExp(`/admin/whatsapp/wa%3A${mobileUnlinkedPhone}$`))
+  await expect(page.getByTestId("whatsapp-linked-customer-link")).toHaveCount(0)
+  await expect(page.getByTestId("whatsapp-composer-input")).toBeEnabled()
+  await page.getByTestId("whatsapp-composer-input").fill("Balasan mobile unlinked")
+  await page.getByTestId("whatsapp-send-button").click()
+  await expect(
+    page.locator('[data-testid^="whatsapp-message-"]').filter({
+      hasText: "Balasan mobile unlinked",
+    }).last()
+  ).toBeVisible()
+  await page.getByTestId("whatsapp-thread-back").click()
+  await expect(page).toHaveURL("http://127.0.0.1:3101/admin/whatsapp")
 
   await publicPage.setViewportSize({ width: 390, height: 844 })
   await publicPage.goto("http://127.0.0.1:3100/portal")
