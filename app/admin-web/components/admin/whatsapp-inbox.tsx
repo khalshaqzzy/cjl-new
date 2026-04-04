@@ -282,53 +282,57 @@ export function ThreadListItem({
   const content = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-text-strong">{chat.title}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="min-w-0 truncate text-sm font-semibold text-text-strong">{chat.title}</p>
             <Badge
               variant="outline"
               className={cn(
-                "rounded-full px-2 py-0 text-[10px]",
+                "max-w-full shrink rounded-full px-2 py-0 text-[10px]",
                 chat.customerId ? "border-emerald-200 text-emerald-700" : "border-slate-200 text-slate-600"
               )}
             >
               {chat.customerId ? "Linked" : "Unlinked"}
             </Badge>
           </div>
-          <p className="truncate text-xs text-text-muted">
+          <p className="min-w-0 break-words text-xs text-text-muted [overflow-wrap:anywhere]">
             {chat.phone ?? chat.waId ?? chat.chatId}
           </p>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex shrink-0 flex-col items-end gap-2 text-right">
           {chat.unreadCount > 0 && (
             <Badge className="rounded-full bg-emerald-600 text-white">{chat.unreadCount}</Badge>
           )}
           <span className="text-[11px] text-text-muted">{chat.lastMessageAtLabel ?? "-"}</span>
         </div>
       </div>
-      <p className="mt-2 line-clamp-2 text-sm text-text-body">{chat.lastMessagePreview}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Badge className={cn("rounded-full text-[11px]", composerTone[chat.composerMode])}>
+      <p className="mt-2 line-clamp-2 break-words text-sm text-text-body [overflow-wrap:anywhere]">
+        {chat.lastMessagePreview}
+      </p>
+      <div className="mt-3 flex min-w-0 flex-wrap gap-2 overflow-hidden">
+        <Badge className={cn("max-w-full break-words rounded-full text-[11px] [overflow-wrap:anywhere]", composerTone[chat.composerMode])}>
           {composerLabel[chat.composerMode]}
         </Badge>
-        <Badge variant="outline" className="rounded-full text-[11px]">
+        <Badge variant="outline" className="max-w-full break-words rounded-full text-[11px] [overflow-wrap:anywhere]">
           {windowBadge(chat)}
         </Badge>
         {chat.isFepOpen && (
-          <Badge variant="outline" className="rounded-full text-[11px]">
+          <Badge variant="outline" className="max-w-full break-words rounded-full text-[11px] [overflow-wrap:anywhere]">
             FEP Open
           </Badge>
         )}
       </div>
-      <div className="mt-2 flex items-center justify-between text-[11px] text-text-muted">
-        <span>{chat.customerName ?? chat.displayName ?? "Belum terkait customer"}</span>
-        <ChevronRight className="h-3.5 w-3.5" />
+      <div className="mt-2 flex min-w-0 items-center gap-2 text-[11px] text-text-muted">
+        <span className="min-w-0 flex-1 truncate">
+          {chat.customerName ?? chat.displayName ?? "Belum terkait customer"}
+        </span>
+        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
       </div>
     </>
   )
 
   const className = cn(
-    "block w-full rounded-2xl border px-4 py-3 text-left transition-colors",
+    "block w-full min-w-0 max-w-full overflow-hidden rounded-2xl border px-4 py-3 text-left transition-colors",
     isActive
       ? "border-emerald-300 bg-emerald-50"
       : "border-line-base bg-bg-surface hover:bg-bg-subtle"
@@ -371,46 +375,48 @@ export function MessageBubble({
   return (
     <div
       className={cn(
-        "max-w-[92%] rounded-3xl px-4 py-3 shadow-sm",
+        "max-w-[min(88%,20rem)] min-w-0 overflow-hidden rounded-3xl px-4 py-3 shadow-sm sm:max-w-[92%]",
         isOutbound ? "ml-auto bg-emerald-600 text-white" : "bg-bg-subtle text-text-strong"
       )}
       data-testid={`whatsapp-message-${message.providerMessageId}`}
     >
-      <div className="flex flex-wrap items-center gap-2 text-[11px] opacity-80">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] opacity-80">
         <span>{isOutbound ? "Keluar" : "Masuk"}</span>
         <span>&bull;</span>
         <span>{message.timestampLabel}</span>
       </div>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
         {message.body ?? message.caption ?? message.textPreview}
       </p>
-      <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+      <div className="mt-3 flex min-w-0 flex-wrap gap-2 text-[11px]">
         {message.source && (
-          <Badge className={cn("rounded-full", sourceTone[message.source])}>
+          <Badge className={cn("max-w-full break-words rounded-full [overflow-wrap:anywhere]", sourceTone[message.source])}>
             {sourceLabel[message.source]}
           </Badge>
         )}
         {message.providerStatus && (
-          <Badge className={cn("rounded-full", messageStatusTone[message.providerStatus])}>
+          <Badge className={cn("max-w-full break-words rounded-full [overflow-wrap:anywhere]", messageStatusTone[message.providerStatus])}>
             {messageStatusLabel[message.providerStatus]}
           </Badge>
         )}
         {message.pricingType && (
-          <Badge variant="outline" className="rounded-full">
+          <Badge variant="outline" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
             pricing: {message.pricingType}
           </Badge>
         )}
         {message.pricingCategory && (
-          <Badge variant="outline" className="rounded-full">
+          <Badge variant="outline" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
             category: {message.pricingCategory}
           </Badge>
         )}
       </div>
       {message.hasMedia && (
-        <div className="mt-3 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-xs">
-          <div className="flex items-center gap-2">
-            <ImageIcon className="h-3.5 w-3.5" />
-            <span>{message.mediaName ?? message.mediaMimeType ?? message.messageType}</span>
+        <div className="mt-3 min-w-0 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-xs">
+          <div className="flex min-w-0 items-center gap-2">
+            <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+              {message.mediaName ?? message.mediaMimeType ?? message.messageType}
+            </span>
           </div>
           {message.mediaDownloadAvailable ? (
             <Button
@@ -431,19 +437,19 @@ export function MessageBubble({
         </div>
       )}
       {(message.latestErrorCode || message.latestErrorMessage) && (
-        <p className="mt-2 text-xs opacity-80">
+        <p className="mt-2 break-words text-xs opacity-80 [overflow-wrap:anywhere]">
           Error {message.latestErrorCode ?? "-"}: {message.latestErrorMessage ?? "-"}
         </p>
       )}
       {(message.notificationId || message.orderCode) && (
-        <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+        <div className="mt-3 flex min-w-0 flex-wrap gap-2 text-[11px]">
           {message.notificationId && (
-            <Badge variant="secondary" className="rounded-full">
+            <Badge variant="secondary" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
               Notifikasi {message.notificationId}
             </Badge>
           )}
           {message.orderCode && (
-            <Badge variant="secondary" className="rounded-full">
+            <Badge variant="secondary" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
               {message.orderCode}
             </Badge>
           )}
@@ -515,7 +521,7 @@ export function ThreadTimeline({
   return (
     <ScrollArea
       ref={rootRef}
-      className={cn("min-h-0 flex-1 overscroll-contain px-4 py-4", className)}
+      className={cn("min-h-0 flex-1 overscroll-contain overflow-x-hidden px-4 py-4", className)}
       data-testid="whatsapp-thread-timeline"
     >
       {messages.length === 0 ? (
@@ -523,7 +529,7 @@ export function ThreadTimeline({
           Belum ada pesan yang tersimpan untuk thread ini.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="min-w-0 max-w-full space-y-3">
           {messages.map((message) => (
             <MessageBubble
               key={message.providerMessageId}
@@ -569,6 +575,7 @@ export function ThreadComposer({
 
   return (
     <div
+      data-testid="whatsapp-thread-composer"
       className={cn(
         "border-t border-line-base bg-bg-surface/95 backdrop-blur-sm",
         isMobile ? "px-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom)+0.625rem)]" : "px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]",
@@ -598,7 +605,7 @@ export function ThreadComposer({
           data-testid="whatsapp-composer-input"
         />
         <div className={cn("flex justify-between gap-3", isMobile ? "items-center" : "items-end")}>
-          <p className={cn("text-text-muted", isMobile ? "text-[11px] leading-4" : "text-xs")}>
+          <p className={cn("min-w-0 flex-1 text-text-muted", isMobile ? "text-[11px] leading-4" : "text-xs")}>
             Hanya balasan teks non-template yang didukung pada fase ini.
           </p>
           <Button
@@ -654,6 +661,7 @@ export function ThreadHeader({
 
   return (
     <div
+      data-testid="whatsapp-thread-header"
       className={cn(
         "sticky top-0 z-30 border-b border-line-base bg-bg-surface/95 backdrop-blur-sm sm:px-5",
         isMobile ? "px-3 pt-1.5 pb-2" : "px-4 py-4"
@@ -742,28 +750,28 @@ export function ThreadHeader({
           </div>
         </div>
         <div className={cn("flex min-w-0 flex-wrap overflow-x-hidden", isMobile ? "gap-1.5" : "gap-2")}>
-          <Badge className={cn("rounded-full", composerTone[selectedChat.composerMode])}>
+          <Badge className={cn("max-w-full break-words rounded-full [overflow-wrap:anywhere]", composerTone[selectedChat.composerMode])}>
             {composerLabel[selectedChat.composerMode]}
           </Badge>
-          <Badge variant="outline" className="rounded-full">
+          <Badge variant="outline" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
             {windowBadge(selectedChat)}
           </Badge>
           <Badge
             variant="outline"
             className={cn(
-              "rounded-full",
+              "max-w-full break-words rounded-full [overflow-wrap:anywhere]",
               selectedChat.customerId ? "border-emerald-200 text-emerald-700" : "border-slate-200 text-slate-600"
             )}
           >
             {selectedChat.customerId ? "Terkait customer" : "Belum terkait customer"}
           </Badge>
           {selectedChat.isFepOpen && (
-            <Badge variant="outline" className="rounded-full">
+            <Badge variant="outline" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
               FEP hingga {selectedChat.fepExpiresAtLabel ?? "-"}
             </Badge>
           )}
           {status?.state !== "ready" && (
-            <Badge className={cn("rounded-full", providerTone[status?.state ?? "disabled"])}>
+            <Badge className={cn("max-w-full break-words rounded-full [overflow-wrap:anywhere]", providerTone[status?.state ?? "disabled"])}>
               Provider {status ? providerLabel[status.state] : "Tidak diketahui"}
             </Badge>
           )}

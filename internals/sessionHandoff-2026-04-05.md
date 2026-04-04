@@ -41,6 +41,12 @@ Purpose: repo snapshot after admin-only service catalog expansion and redemption
   - desktop thread-panel height fill
   - mobile thread-panel width fill
 - removed the larger status note above the mobile composer on focused thread detail to recover more message space
+- hardened mobile width containment on WhatsApp list/detail surfaces so long previews, bubble content, notification IDs, order codes, and media labels wrap instead of pushing content off-screen
+- added explicit mobile-detail assertions that:
+  - thread list items stay within the viewport width
+  - message bubbles stay within the viewport width
+  - header and composer positions stay stable while the timeline scrolls
+  - `window.scrollY` remains unchanged while the message viewport scrolls
 
 ## Verification Run
 
@@ -74,3 +80,4 @@ All succeeded at session end.
    - `/admin/whatsapp/[chatId]` keeps `WhatsApp` active in the mobile bottom nav
    - long thread scrolling does not move the whole page
    - header and composer remain visually pinned while the timeline scrolls
+   - long text, codes, and metadata do not overflow past the right edge on narrow mobile devices

@@ -181,7 +181,7 @@ export default function WhatsappThreadDetailPage() {
         ) : (
           <div
             data-testid="whatsapp-thread-panel"
-            className="flex min-h-0 flex-1 max-w-full flex-col overflow-hidden"
+            className="fixed inset-x-0 bottom-24 top-14 flex min-h-0 max-w-full flex-col overflow-hidden bg-bg-surface lg:static lg:inset-auto lg:flex-1"
           >
             <div className="flex min-h-0 flex-1 max-w-full flex-col overflow-hidden lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)] lg:min-h-0">
               <ThreadHeader
@@ -218,20 +218,24 @@ export default function WhatsappThreadDetailPage() {
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-bg-surface">
-                  <ThreadTimeline messages={messages} onOpenMedia={openMedia} />
+                  <ThreadTimeline
+                    messages={messages}
+                    onOpenMedia={openMedia}
+                    className="min-w-0 max-w-full"
+                  />
                   <ThreadComposer
                     status={status}
                     selectedChat={selectedChat}
-                  composerValue={composerValue}
-                  onComposerChange={setComposerValue}
-                  onSend={() => void handleSendMessage()}
-                  isSending={isSending}
-                  composerError={composerError}
-                  showStatusNote={false}
-                  className="shrink-0"
-                />
-              </div>
-            )}
+                    composerValue={composerValue}
+                    onComposerChange={setComposerValue}
+                    onSend={() => void handleSendMessage()}
+                    isSending={isSending}
+                    composerError={composerError}
+                    showStatusNote={false}
+                    className="sticky bottom-0 z-20 shrink-0"
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}

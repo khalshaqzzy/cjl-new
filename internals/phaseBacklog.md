@@ -1,7 +1,7 @@
 # Phase Backlog
 
 Document status: Active  
-Last updated: 2026-04-05  
+Last updated: 2026-04-06  
 Purpose: condensed next-work inventory after repo-level closure of WhatsApp migration Phases 7-9
 
 ## Next Recommended Items
@@ -25,6 +25,7 @@ Purpose: condensed next-work inventory after repo-level closure of WhatsApp migr
    - sticky thread header visibility during long-scroll sessions
    - mobile composer remains pinned above the bottom nav while only the timeline scrolls
    - mobile bottom nav remains visible on thread detail and still marks `WhatsApp` as active
+   - long thread previews, badges, and message metadata do not overflow horizontally on narrow mobile viewports
    - provider-health collapsed/default and expanded/detail states
    - explicit unread clearing
    - CSW-open manual send success

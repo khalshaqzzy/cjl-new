@@ -247,13 +247,13 @@ export default function WhatsappAdminPage() {
                     )}
                   </div>
                 </div>
-                <ScrollArea className="min-h-0 flex-1 px-2.5 py-2.5">
+                <ScrollArea className="min-h-0 flex-1 overflow-x-hidden px-2.5 py-2.5">
                   {filteredChats.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-line-base px-4 py-10 text-center text-sm text-text-muted">
                       Belum ada thread yang cocok dengan filter saat ini.
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="min-w-0 max-w-full space-y-2">
                       {filteredChats.map((chat) => (
                         <ThreadListItem
                           key={chat.chatId}
