@@ -56,6 +56,21 @@ const waitForDirectStatusToken = async (orderId: string) => {
   throw new Error(`Direct status token for order ${orderId} was not found`)
 }
 
+const setCustomerPoints = async (customerId: string, currentPoints: number) => {
+  const client = new MongoClient(mongoUri)
+  await client.connect()
+  const database = client.db()
+
+  try {
+    await database.collection("customers").updateOne(
+      { _id: customerId },
+      { $set: { currentPoints, updatedAt: new Date().toISOString() } }
+    )
+  } finally {
+    await client.close()
+  }
+}
+
 const seedWhatsappMedia = async (providerMessageId: string) => {
   const client = new MongoClient(mongoUri)
   await client.connect()
@@ -175,11 +190,16 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(page.getByTestId("pos-selected-customer-summary")).toContainText(`+62${customerPhone.slice(1)}`)
 
   await page.getByTestId("pos-weight-input").fill("3")
-  await page.getByTestId("service-plus-washer").click()
-  await page.getByTestId("service-plus-dryer").click()
+  await page.getByTestId("service-plus-wash_dry_package").click()
   await page.getByTestId("service-toggle-ironing_only").click()
-  await page.getByTestId("service-plus-laundry_plastic").click()
+  await page.getByTestId("service-plus-laundry_plastic_large").click()
+  await page.getByTestId("service-plus-laundry_hanger").click()
+  await page.getByTestId("service-plus-laundry_hanger").click()
   await page.getByTestId("pos-open-summary").click()
+  const firstSummaryDialog = page.getByRole("dialog")
+  await expect(firstSummaryDialog.getByText(/^Paket Cuci Kering$/)).toBeVisible()
+  await expect(firstSummaryDialog.getByText(/^Plastik Laundry Besar$/)).toBeVisible()
+  await expect(firstSummaryDialog.getByText(/^Gantungan Laundry$/)).toBeVisible()
   await page.getByTestId("pos-confirm-order").click()
 
   await expect(page.getByText("Order Berhasil Dibuat!")).toBeVisible()
@@ -190,6 +210,36 @@ test("admin and public frontends stay fully integrated through the backend", asy
   const directStatusToken = await waitForDirectStatusToken(order._id)
 
   expect(customer?._id).toBeTruthy()
+  expect(order.items.some((item: { serviceCode: string }) => item.serviceCode === "wash_dry_package")).toBeTruthy()
+  expect(order.items.some((item: { serviceCode: string }) => item.serviceCode === "laundry_plastic_large")).toBeTruthy()
+  expect(order.items.some((item: { serviceCode: string }) => item.serviceCode === "laundry_hanger")).toBeTruthy()
+  expect(order.earnedStamps).toBe(1)
+
+  await setCustomerPoints(customer!._id, 20)
+
+  await page.getByRole("button", { name: "Order Baru" }).click()
+  await page.getByTestId("pos-customer-search").fill(customerPhone)
+  await page.getByTestId(`customer-result-${customer!._id}`).click()
+  await page.getByTestId("pos-next-to-services").click()
+  await expect(page.getByTestId("pos-selected-customer-summary")).toContainText("20")
+  await page.getByTestId("pos-weight-input").fill("3")
+  await page.getByTestId("service-plus-washer").click()
+  await page.getByTestId("service-plus-washer").click()
+  await page.getByTestId("service-plus-dryer").click()
+  await page.getByTestId("service-plus-dryer").click()
+  await page.getByTestId("pos-redeem-plus").click()
+  await expect(page.getByText("Washer yang digratiskan lewat redeem tidak dihitung sebagai penambahan stamp.")).toBeVisible()
+  await expect(page.getByText(/Pelanggan akan mendapat 1 poin/)).toBeVisible()
+  await page.getByTestId("pos-open-summary").click()
+  const redeemSummaryDialog = page.getByRole("dialog")
+  await expect(redeemSummaryDialog.getByText("Saldo Setelah")).toBeVisible()
+  await expect(redeemSummaryDialog.getByText("11 poin")).toBeVisible()
+  await page.getByTestId("pos-confirm-order").click()
+
+  const redeemOrderCode = (await page.getByTestId("pos-success-order-code").innerText()).trim()
+  const { order: redeemOrder } = await waitForOrderRecord(redeemOrderCode)
+  expect(redeemOrder.earnedStamps).toBe(1)
+  expect(redeemOrder.redeemedPoints).toBe(10)
 
   const inboundWebhookPayload = {
     object: "whatsapp_business_account",
@@ -425,8 +475,10 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await publicPage.getByText(orderCode).click()
   await expect(publicPage.getByRole("heading", { name: "Detail Order" }).first()).toBeVisible()
   await expect(publicPage.getByText("Aktif")).toBeVisible()
+  await expect(publicPage.getByText("Paket Cuci Kering", { exact: true })).toBeVisible()
   await expect(publicPage.getByText("Setrika Saja", { exact: true })).toBeVisible()
-  await expect(publicPage.getByText("Plastik Laundry", { exact: true })).toBeVisible()
+  await expect(publicPage.getByText("Plastik Laundry Besar", { exact: true })).toBeVisible()
+  await expect(publicPage.getByText("Gantungan Laundry", { exact: true })).toBeVisible()
   await expect(publicPage.getByText("Rincian Receipt")).toBeVisible()
   await expect(publicPage.getByText("Subtotal")).toBeVisible()
   await expect(publicPage.getByText("Total", { exact: true })).toBeVisible()

@@ -548,6 +548,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
       { serviceCode: "detergent", quantity: 0, selected: false },
       { serviceCode: "softener", quantity: 0, selected: false },
       { serviceCode: "wash_dry_fold_package", quantity: 0, selected: false },
+      { serviceCode: "wash_dry_package", quantity: 0, selected: false },
       { serviceCode: "ironing", quantity: 0, selected: false }
     ]
   }
@@ -560,10 +561,76 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
     },
     body: JSON.stringify(firstOrderPayload)
   })
-  assert.equal(result.payload.earnedStamps, 2)
+  assert.equal(result.payload.earnedStamps, 1)
   assert.equal(result.payload.redeemedPoints, 10)
   assert.equal(result.payload.total, 30000)
-  assert.equal(result.payload.resultingPointBalance, 12)
+  assert.equal(result.payload.resultingPointBalance, 11)
+
+  const redeemSinglePairPayload = {
+    ...firstOrderPayload,
+    items: firstOrderPayload.items.map((item) =>
+      item.serviceCode === "washer"
+        ? { ...item, quantity: 1, selected: true }
+        : item.serviceCode === "dryer"
+          ? { ...item, quantity: 1, selected: true }
+          : item
+    )
+  }
+
+  result = await requestJson("/v1/admin/orders/preview", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(redeemSinglePairPayload)
+  })
+  assert.equal(result.payload.earnedStamps, 0)
+  assert.equal(result.payload.resultingPointBalance, 10)
+
+  const redeemAsymmetricPayload = {
+    ...firstOrderPayload,
+    items: firstOrderPayload.items.map((item) =>
+      item.serviceCode === "washer"
+        ? { ...item, quantity: 2, selected: true }
+        : item.serviceCode === "dryer"
+          ? { ...item, quantity: 1, selected: true }
+          : item
+    )
+  }
+
+  result = await requestJson("/v1/admin/orders/preview", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(redeemAsymmetricPayload)
+  })
+  assert.equal(result.payload.earnedStamps, 1)
+  assert.equal(result.payload.resultingPointBalance, 11)
+
+  const redeemWasherOnlyPayload = {
+    ...firstOrderPayload,
+    items: firstOrderPayload.items.map((item) =>
+      item.serviceCode === "washer"
+        ? { ...item, quantity: 1, selected: true }
+        : item.serviceCode === "dryer"
+          ? { ...item, quantity: 0, selected: false }
+          : item
+    )
+  }
+
+  result = await requestJson("/v1/admin/orders/preview", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(redeemWasherOnlyPayload)
+  })
+  assert.equal(result.payload.earnedStamps, 0)
+  assert.equal(result.payload.resultingPointBalance, 10)
 
   const confirmKey = `confirm-${uniqueSuffix}`
   const confirmFirst = await requestJson("/v1/admin/orders", {
@@ -604,7 +671,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   result = await requestJson(`/v1/admin/customers/${customerId}`, {
     headers: { Cookie: adminCookie! }
   })
-  assert.equal(result.payload.profile.currentPoints, 12)
+  assert.equal(result.payload.profile.currentPoints, 11)
 
   result = await requestJson("/v1/public/auth/login", {
     method: "POST",
@@ -1445,7 +1512,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   result = await requestJson(`/v1/admin/customers/${customerId}`, {
     headers: { Cookie: adminCookie! }
   })
-  assert.equal(result.payload.profile.currentPoints, 12)
+  assert.equal(result.payload.profile.currentPoints, 11)
 
   result = await requestJson(`/v1/public/leaderboard?month=${previousMonthKey}`)
   assert.equal(result.payload.rows.length, 0)
@@ -1716,7 +1783,7 @@ test("seed adds missing service catalog entries without overwriting existing set
 
   const customWasherPrice = 12345
   const degradedServices = originalSettings.services
-    .filter((service: { serviceCode: string }) => !["ironing_only", "laundry_plastic"].includes(service.serviceCode))
+    .filter((service: { serviceCode: string }) => !["ironing_only", "laundry_plastic", "wash_dry_package", "laundry_plastic_large", "laundry_hanger"].includes(service.serviceCode))
     .map((service: { serviceCode: string; price: number }) =>
       service.serviceCode === "washer"
         ? { ...service, price: customWasherPrice }
@@ -1737,12 +1804,21 @@ test("seed adds missing service catalog entries without overwriting existing set
     const washerService = upgradedSettings.services.find((service: { serviceCode: string }) => service.serviceCode === "washer")
     const ironingOnlyService = upgradedSettings.services.find((service: { serviceCode: string }) => service.serviceCode === "ironing_only")
     const laundryPlasticService = upgradedSettings.services.find((service: { serviceCode: string }) => service.serviceCode === "laundry_plastic")
+    const washDryPackageService = upgradedSettings.services.find((service: { serviceCode: string }) => service.serviceCode === "wash_dry_package")
+    const laundryPlasticLargeService = upgradedSettings.services.find((service: { serviceCode: string }) => service.serviceCode === "laundry_plastic_large")
+    const laundryHangerService = upgradedSettings.services.find((service: { serviceCode: string }) => service.serviceCode === "laundry_hanger")
 
     assert.equal(washerService?.price, customWasherPrice)
     assert.equal(ironingOnlyService?.displayName, "Setrika Saja")
     assert.equal(ironingOnlyService?.price, 5000)
     assert.equal(laundryPlasticService?.displayName, "Plastik Laundry")
     assert.equal(laundryPlasticService?.price, 2000)
+    assert.equal(washDryPackageService?.displayName, "Paket Cuci Kering")
+    assert.equal(washDryPackageService?.price, 25000)
+    assert.equal(laundryPlasticLargeService?.displayName, "Plastik Laundry Besar")
+    assert.equal(laundryPlasticLargeService?.price, 4000)
+    assert.equal(laundryHangerService?.displayName, "Gantungan Laundry")
+    assert.equal(laundryHangerService?.price, 2000)
   } finally {
     await settingsCollection.updateOne(
       { _id: "app-settings" },
@@ -2149,6 +2225,9 @@ test("backend covers POS-only services, laundry filters, notification terminal s
   const landingCodes = result.payload.services.map((service: { code: string }) => service.code)
   assert.equal(landingCodes.includes("ironing_only"), false)
   assert.equal(landingCodes.includes("laundry_plastic"), false)
+  assert.equal(landingCodes.includes("wash_dry_package"), false)
+  assert.equal(landingCodes.includes("laundry_plastic_large"), false)
+  assert.equal(landingCodes.includes("laundry_hanger"), false)
 
   result = await requestJson("/v1/admin/customers", {
     method: "POST",
@@ -2171,9 +2250,12 @@ test("backend covers POS-only services, laundry filters, notification terminal s
       { serviceCode: "detergent", quantity: 0, selected: false },
       { serviceCode: "softener", quantity: 0, selected: false },
       { serviceCode: "wash_dry_fold_package", quantity: 0, selected: false },
+      { serviceCode: "wash_dry_package", quantity: 1, selected: true },
       { serviceCode: "ironing", quantity: 0, selected: false },
       { serviceCode: "ironing_only", quantity: 1, selected: true },
-      { serviceCode: "laundry_plastic", quantity: 2, selected: true }
+      { serviceCode: "laundry_plastic", quantity: 0, selected: false },
+      { serviceCode: "laundry_plastic_large", quantity: 1, selected: true },
+      { serviceCode: "laundry_hanger", quantity: 2, selected: true }
     ]
   }
 
@@ -2185,12 +2267,16 @@ test("backend covers POS-only services, laundry filters, notification terminal s
     },
     body: JSON.stringify(specialtyPayload)
   })
-  assert.equal(result.payload.total, 14000)
-  assert.equal(result.payload.items.length, 2)
-  assert.equal(result.payload.items[0].serviceCode, "ironing_only")
-  assert.equal(result.payload.items[0].quantityLabel, "2.0 kg")
-  assert.equal(result.payload.items[1].serviceCode, "laundry_plastic")
-  assert.equal(result.payload.items[1].lineTotal, 4000)
+  assert.equal(result.payload.total, 43000)
+  assert.equal(result.payload.earnedStamps, 1)
+  assert.equal(result.payload.items.length, 4)
+  assert.equal(result.payload.items[0].serviceCode, "wash_dry_package")
+  assert.equal(result.payload.items[1].serviceCode, "ironing_only")
+  assert.equal(result.payload.items[1].quantityLabel, "2.0 kg")
+  assert.equal(result.payload.items[2].serviceCode, "laundry_plastic_large")
+  assert.equal(result.payload.items[2].lineTotal, 4000)
+  assert.equal(result.payload.items[3].serviceCode, "laundry_hanger")
+  assert.equal(result.payload.items[3].lineTotal, 4000)
 
   result = await requestJson("/v1/admin/orders", {
     method: "POST",
@@ -2209,8 +2295,10 @@ test("backend covers POS-only services, laundry filters, notification terminal s
   const activeLaundryOrder = result.payload.items.find((order: { orderId: string }) => order.orderId === firstOrderId)
   assert.ok(activeLaundryOrder)
   assert.equal(activeLaundryOrder.status, "Active")
+  assert.match(activeLaundryOrder.serviceSummary, /Paket Cuci Kering/)
   assert.match(activeLaundryOrder.serviceSummary, /Setrika Saja/)
-  assert.match(activeLaundryOrder.serviceSummary, /Plastik Laundry/)
+  assert.match(activeLaundryOrder.serviceSummary, /Plastik Laundry Besar/)
+  assert.match(activeLaundryOrder.serviceSummary, /Gantungan Laundry/)
 
   result = await requestJson(`/v1/admin/orders/${firstOrderId}/done`, {
     method: "POST",
@@ -2240,9 +2328,12 @@ test("backend covers POS-only services, laundry filters, notification terminal s
       { serviceCode: "detergent", quantity: 0, selected: false },
       { serviceCode: "softener", quantity: 0, selected: false },
       { serviceCode: "wash_dry_fold_package", quantity: 0, selected: false },
+      { serviceCode: "wash_dry_package", quantity: 0, selected: false },
       { serviceCode: "ironing", quantity: 0, selected: false },
       { serviceCode: "ironing_only", quantity: 0, selected: false },
-      { serviceCode: "laundry_plastic", quantity: 0, selected: false }
+      { serviceCode: "laundry_plastic", quantity: 0, selected: false },
+      { serviceCode: "laundry_plastic_large", quantity: 0, selected: false },
+      { serviceCode: "laundry_hanger", quantity: 0, selected: false }
     ]
   }
 
@@ -2319,10 +2410,15 @@ test("backend covers POS-only services, laundry filters, notification terminal s
   result = await requestJson(`/v1/public/me/orders/${firstOrderId}`, {
     headers: { Cookie: publicCookie! }
   })
+  assert.equal(result.payload.earnedStamps, 1)
+  assert.match(result.payload.serviceSummary, /Paket Cuci Kering/)
   assert.match(result.payload.serviceSummary, /Setrika Saja/)
-  assert.match(result.payload.serviceSummary, /Plastik Laundry/)
+  assert.match(result.payload.serviceSummary, /Plastik Laundry Besar/)
+  assert.match(result.payload.serviceSummary, /Gantungan Laundry/)
+  assert.equal(result.payload.items.some((item: { serviceCode: string }) => item.serviceCode === "wash_dry_package"), true)
   assert.equal(result.payload.items.some((item: { serviceCode: string }) => item.serviceCode === "ironing_only"), true)
-  assert.equal(result.payload.items.some((item: { serviceCode: string }) => item.serviceCode === "laundry_plastic"), true)
+  assert.equal(result.payload.items.some((item: { serviceCode: string }) => item.serviceCode === "laundry_plastic_large"), true)
+  assert.equal(result.payload.items.some((item: { serviceCode: string }) => item.serviceCode === "laundry_hanger"), true)
 
   await getDatabase().collection("notifications").insertOne({
     _id: `notification_complete_${uniqueSuffix}`,

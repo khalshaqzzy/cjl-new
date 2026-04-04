@@ -53,9 +53,12 @@ const serviceIcons: Record<string, typeof Shirt> = {
   detergent: Droplets,
   softener: SprayCan,
   wash_dry_fold_package: Package,
+  wash_dry_package: Package,
   ironing: Shirt,
   ironing_only: Shirt,
   laundry_plastic: ShoppingBag,
+  laundry_plastic_large: ShoppingBag,
+  laundry_hanger: Shirt,
 }
 
 const createServicePickerItem = (
@@ -594,7 +597,7 @@ function StepServices({
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-text-body">Washer gratis</p>
-                    <p className="text-xs text-text-muted">10 poin = 1 Washer gratis</p>
+                    <p className="text-xs text-text-muted">10 poin = 1 Washer gratis, dan Washer gratis tidak menambah stamp</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button type="button" data-testid="pos-redeem-minus" onClick={() => setRedeemCount(Math.max(0, redeemCount - 1))} disabled={redeemCount === 0} className={cn("flex h-8 w-8 items-center justify-center rounded-lg border transition-colors", redeemCount === 0 ? "border-line-base text-text-placeholder cursor-not-allowed" : "border-line-base hover:bg-bg-subtle text-text-body")}>
@@ -618,6 +621,17 @@ function StepServices({
               <Star className="h-4 w-4 text-warning flex-shrink-0" />
               <p className="text-xs text-warning font-medium">
                 Pelanggan akan mendapat <strong>{preview?.earnedStamps} poin</strong> dari order ini
+              </p>
+            </div>
+          </div>
+        )}
+
+        {(preview?.redeemedPoints ?? 0) > 0 && (
+          <div className="px-4 pb-5">
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-info/10 border border-info/20">
+              <Gift className="h-4 w-4 text-info flex-shrink-0" />
+              <p className="text-xs text-info font-medium">
+                Washer yang digratiskan lewat redeem tidak dihitung sebagai penambahan stamp.
               </p>
             </div>
           </div>
@@ -707,6 +721,7 @@ function OrderSummarySheet({ open, onOpenChange, customer, preview, onConfirm, i
               <div className="flex items-center justify-between"><span className="text-sm text-text-muted">Poin saat ini</span><span className="text-sm font-semibold text-text-body tabular-nums">{customer.currentPoints}</span></div>
               {(preview?.redeemedPoints ?? 0) > 0 && <div className="flex items-center justify-between"><span className="text-sm text-text-muted">Digunakan</span><span className="text-sm font-semibold text-danger tabular-nums">-{preview?.redeemedPoints ?? 0}</span></div>}
               {(preview?.earnedStamps ?? 0) > 0 && <div className="flex items-center justify-between"><span className="text-sm text-text-muted">Diperoleh</span><span className="text-sm font-semibold text-success tabular-nums">+{preview?.earnedStamps ?? 0}</span></div>}
+              {(preview?.redeemedPoints ?? 0) > 0 && <p className="text-xs text-text-muted">Stamp hanya dihitung dari Washer yang tidak digratiskan dan paket yang memenuhi syarat.</p>}
               <div className="flex items-center justify-between pt-2 border-t border-warning/20"><span className="text-sm font-semibold text-text-strong">Saldo Setelah</span><span className="text-sm font-bold text-text-strong tabular-nums">{preview?.resultingPointBalance ?? customer.currentPoints} poin</span></div>
             </div>
           </div>

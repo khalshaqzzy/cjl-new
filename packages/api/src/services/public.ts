@@ -31,6 +31,14 @@ import {
 
 const db = () => getDatabase()
 
+const adminOnlyServiceCodes = new Set([
+  "ironing_only",
+  "laundry_plastic",
+  "wash_dry_package",
+  "laundry_plastic_large",
+  "laundry_hanger",
+])
+
 const mapCustomerSession = (customer: CustomerDocument) => ({
   customerId: customer._id,
   name: customer.name,
@@ -73,7 +81,7 @@ export const getLandingData = async (): Promise<LandingResponse> => {
       operatingHours: settings.business.operatingHours
     },
     services: settings.services
-      .filter((service) => service.isActive && !["ironing_only", "laundry_plastic"].includes(service.serviceCode))
+      .filter((service) => service.isActive && !adminOnlyServiceCodes.has(service.serviceCode))
       .map((service) => ({
       code: service.serviceCode,
       name: service.displayName,

@@ -36,9 +36,12 @@ const serviceIcons: Record<string, typeof Shirt> = {
   detergent: Droplets,
   softener: SprayCan,
   wash_dry_fold_package: Package,
+  wash_dry_package: Package,
   ironing: Shirt,
   ironing_only: Shirt,
   laundry_plastic: ShoppingBag,
+  laundry_plastic_large: ShoppingBag,
+  laundry_hanger: Shirt,
 }
 
 const createContactDraft = (): AdminWhatsappContact => ({
@@ -488,7 +491,8 @@ export default function SettingsPage() {
               {[
                 { label: "Washer + Dryer berpasangan", desc: "1 stamp untuk setiap pasangan Washer dan Dryer yang cocok pada order", value: "1", color: "bg-rose-50 text-rose-600" },
                 { label: "Paket Cuci Kering Lipat", desc: "1 stamp untuk setiap unit paket", value: "1", color: "bg-rose-50 text-rose-600" },
-                { label: "Redeem 1 Washer Gratis", desc: "Poin yang dibutuhkan untuk 1 Washer gratis", value: "10", color: "bg-success/10 text-success" },
+                { label: "Paket Cuci Kering", desc: "1 stamp untuk setiap unit paket cuci kering", value: "1", color: "bg-rose-50 text-rose-600" },
+                { label: "Redeem 1 Washer Gratis", desc: "Poin yang dibutuhkan untuk 1 Washer gratis. Washer gratis tidak menambah stamp.", value: "10", color: "bg-success/10 text-success" },
                 { label: "Penyesuaian Manual", desc: "Menambah saldo poin pelanggan tanpa memengaruhi leaderboard", value: "0", color: "bg-info/10 text-info" },
               ].map(({ label, desc, value, color }) => (
                 <div key={label} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">

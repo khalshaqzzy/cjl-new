@@ -6,9 +6,12 @@ export const serviceCodeSchema = z.enum([
   "detergent",
   "softener",
   "wash_dry_fold_package",
+  "wash_dry_package",
   "ironing",
   "ironing_only",
   "laundry_plastic",
+  "laundry_plastic_large",
+  "laundry_hanger",
 ])
 
 export const pricingModelSchema = z.enum(["fixed", "per_kg"])

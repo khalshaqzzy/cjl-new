@@ -61,6 +61,7 @@ Seluruh aplikasi v1 di-deploy sebagai satu monolith pada VM per environment. Run
 - Stamp dihitung saat order dikonfirmasi, bukan saat selesai.
 - Qty per item layanan diperbolehkan.
 - Redeem 10 poin dapat dipakai berulang untuk menggratiskan 1 Washer unit per 10 poin.
+- Washer unit yang digratiskan melalui redeem tidak boleh ikut dihitung sebagai penambahan stamp.
 - Manual point addition dari admin memengaruhi saldo poin customer, tetapi tidak memengaruhi leaderboard.
 - Cancel/void membalik poin dan memicu recalculation leaderboard untuk bulan order terkait, termasuk bulan yang sudah diarsipkan.
 - Harga layanan dapat diubah dari admin settings, tetapi setiap order menyimpan snapshot harga saat transaksi dibuat.
@@ -171,18 +172,20 @@ Initial service catalog:
 | Detergent | `detergent` | fixed per unit | Rp 1.000 |
 | Softener | `softener` | fixed per unit | Rp 1.000 |
 | Paket Cuci Kering Lipat | `wash_dry_fold_package` | fixed per unit | Rp 35.000 |
+| Paket Cuci Kering | `wash_dry_package` | fixed per unit | Rp 25.000 |
 | Setrika | `ironing` | per kg | Rp 4.500/kg |
 | Setrika Saja | `ironing_only` | per kg | Rp 5.000/kg |
 | Plastik Laundry | `laundry_plastic` | fixed per unit | Rp 2.000 |
+| Plastik Laundry Besar | `laundry_plastic_large` | fixed per unit | Rp 4.000 |
+| Gantungan Laundry | `laundry_hanger` | fixed per unit | Rp 2.000 |
 
 Rules:
 
-- `washer`, `dryer`, `detergent`, `softener`, and `wash_dry_fold_package` use integer quantity.
-- `laundry_plastic` uses integer quantity.
+- `washer`, `dryer`, `detergent`, `softener`, `wash_dry_fold_package`, `wash_dry_package`, `laundry_plastic`, `laundry_plastic_large`, and `laundry_hanger` use integer quantity.
 - `ironing` and `ironing_only` are selectable services whose line total is `order_weight_kg x service_price_per_kg`.
 - Admin settings may change prices and active status of catalog items, but may not change service codes or pricing model in v1.
 - Each confirmed order stores a price snapshot for every line item and for overall totals.
-- `ironing_only` and `laundry_plastic` are POS-only catalog items and must not appear on the public landing page service list in v1.
+- `ironing_only`, `laundry_plastic`, `wash_dry_package`, `laundry_plastic_large`, and `laundry_hanger` are POS-only catalog items and must not appear on the public landing page service list in v1.
 
 ## 9. Information Architecture
 
@@ -1216,8 +1219,8 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 
 ### 22.3 Point logic
 
-- Washer/Dryer pairs earn 1 stamp per matched pair.
-- Package earns 1 stamp per package unit.
+- Washer/Dryer pairs earn 1 stamp per matched pair dari Washer yang tidak digratiskan oleh redeem.
+- `wash_dry_fold_package` and `wash_dry_package` each earn 1 stamp per package unit.
 - Redemption spends 10 points per free Washer unit.
 - Manual point addition changes balance but not leaderboard.
 - Void reverses points and recalculates the relevant leaderboard month even if that month is already archived.

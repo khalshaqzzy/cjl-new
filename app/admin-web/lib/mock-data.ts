@@ -17,7 +17,18 @@ export type CustomerSearchResultVM = {
 }
 
 export type ServicePickerItemVM = {
-  serviceCode: "washer" | "dryer" | "detergent" | "softener" | "wash_dry_fold_package" | "ironing"
+  serviceCode:
+    | "washer"
+    | "dryer"
+    | "detergent"
+    | "softener"
+    | "wash_dry_fold_package"
+    | "wash_dry_package"
+    | "ironing"
+    | "ironing_only"
+    | "laundry_plastic"
+    | "laundry_plastic_large"
+    | "laundry_hanger"
   label: string
   pricingLabel: string
   quantity: number
@@ -135,7 +146,12 @@ export const mockServices: ServicePickerItemVM[] = [
   { serviceCode: "detergent", label: "Detergent", pricingLabel: "Rp 1.000/unit", quantity: 0, selected: false, pricePerUnit: 1000, pricingModel: "fixed" },
   { serviceCode: "softener", label: "Softener", pricingLabel: "Rp 1.000/unit", quantity: 0, selected: false, pricePerUnit: 1000, pricingModel: "fixed" },
   { serviceCode: "wash_dry_fold_package", label: "Paket Cuci Kering Lipat", pricingLabel: "Rp 35.000/unit", quantity: 0, selected: false, pricePerUnit: 35000, pricingModel: "fixed" },
+  { serviceCode: "wash_dry_package", label: "Paket Cuci Kering", pricingLabel: "Rp 25.000/unit", quantity: 0, selected: false, pricePerUnit: 25000, pricingModel: "fixed" },
   { serviceCode: "ironing", label: "Setrika", pricingLabel: "Rp 4.500/kg", quantity: 0, selected: false, pricePerUnit: 4500, pricingModel: "per_kg" },
+  { serviceCode: "ironing_only", label: "Setrika Saja", pricingLabel: "Rp 5.000/kg", quantity: 0, selected: false, pricePerUnit: 5000, pricingModel: "per_kg" },
+  { serviceCode: "laundry_plastic", label: "Plastik Laundry", pricingLabel: "Rp 2.000/unit", quantity: 0, selected: false, pricePerUnit: 2000, pricingModel: "fixed" },
+  { serviceCode: "laundry_plastic_large", label: "Plastik Laundry Besar", pricingLabel: "Rp 4.000/unit", quantity: 0, selected: false, pricePerUnit: 4000, pricingModel: "fixed" },
+  { serviceCode: "laundry_hanger", label: "Gantungan Laundry", pricingLabel: "Rp 2.000/unit", quantity: 0, selected: false, pricePerUnit: 2000, pricingModel: "fixed" },
 ]
 
 export const mockActiveOrders: ActiveOrderCardVM[] = [
@@ -177,7 +193,12 @@ export const mockServicePrices: ServicePriceSettingVM[] = [
   { serviceCode: "detergent", displayName: "Detergent", pricingModel: "fixed", price: 1000, isActive: true },
   { serviceCode: "softener", displayName: "Softener", pricingModel: "fixed", price: 1000, isActive: true },
   { serviceCode: "wash_dry_fold_package", displayName: "Paket Cuci Kering Lipat", pricingModel: "fixed", price: 35000, isActive: true },
+  { serviceCode: "wash_dry_package", displayName: "Paket Cuci Kering", pricingModel: "fixed", price: 25000, isActive: true },
   { serviceCode: "ironing", displayName: "Setrika", pricingModel: "per_kg", price: 4500, isActive: true },
+  { serviceCode: "ironing_only", displayName: "Setrika Saja", pricingModel: "per_kg", price: 5000, isActive: true },
+  { serviceCode: "laundry_plastic", displayName: "Plastik Laundry", pricingModel: "fixed", price: 2000, isActive: true },
+  { serviceCode: "laundry_plastic_large", displayName: "Plastik Laundry Besar", pricingModel: "fixed", price: 4000, isActive: true },
+  { serviceCode: "laundry_hanger", displayName: "Gantungan Laundry", pricingModel: "fixed", price: 2000, isActive: true },
 ]
 
 export const mockCustomerProfile: CustomerProfileVM = {

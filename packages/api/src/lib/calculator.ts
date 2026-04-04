@@ -32,12 +32,15 @@ export const calculateOrderPreview = (
   const washerCount = input.items.find((item) => item.serviceCode === "washer")?.quantity ?? 0
   const dryerCount = input.items.find((item) => item.serviceCode === "dryer")?.quantity ?? 0
   const packageCount = input.items.find((item) => item.serviceCode === "wash_dry_fold_package")?.quantity ?? 0
+  const washDryPackageCount = input.items.find((item) => item.serviceCode === "wash_dry_package")?.quantity ?? 0
   const maxRedeemableWashers = Math.min(Math.floor(currentPoints / 10), washerCount)
   const redeemCount = Math.min(input.redeemCount, maxRedeemableWashers)
   const subtotal = activeItems.reduce((sum, item) => sum + item.lineTotal, 0)
   const discount = redeemCount * (serviceMap.get("washer")?.price ?? 10000)
   const total = Math.max(0, subtotal - discount)
-  const earnedStamps = Math.min(washerCount, dryerCount) + packageCount
+  const earnedWasherDryerPairs = Math.min(Math.max(washerCount - redeemCount, 0), dryerCount)
+  const earnedPackageStamps = packageCount + washDryPackageCount
+  const earnedStamps = earnedWasherDryerPairs + earnedPackageStamps
   const redeemedPoints = redeemCount * 10
   const resultingPointBalance = currentPoints - redeemedPoints + earnedStamps
 

@@ -59,6 +59,13 @@ export const defaultSettings = (): SettingsDocument => ({
       publicDescription: "Layanan lengkap cuci, kering, dan lipat"
     },
     {
+      serviceCode: "wash_dry_package",
+      displayName: "Paket Cuci Kering",
+      pricingModel: "fixed",
+      price: 25000,
+      isActive: true,
+    },
+    {
       serviceCode: "ironing",
       displayName: "Setrika",
       pricingModel: "per_kg",
@@ -76,6 +83,20 @@ export const defaultSettings = (): SettingsDocument => ({
     {
       serviceCode: "laundry_plastic",
       displayName: "Plastik Laundry",
+      pricingModel: "fixed",
+      price: 2000,
+      isActive: true,
+    },
+    {
+      serviceCode: "laundry_plastic_large",
+      displayName: "Plastik Laundry Besar",
+      pricingModel: "fixed",
+      price: 4000,
+      isActive: true,
+    },
+    {
+      serviceCode: "laundry_hanger",
+      displayName: "Gantungan Laundry",
       pricingModel: "fixed",
       price: 2000,
       isActive: true,
