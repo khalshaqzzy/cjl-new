@@ -547,6 +547,7 @@ export function ThreadComposer({
   onSend,
   isSending,
   composerError,
+  showStatusNote = true,
   className,
 }: {
   status: WhatsappConnectionStatus | null
@@ -556,6 +557,7 @@ export function ThreadComposer({
   onSend: () => void
   isSending: boolean
   composerError: string | null
+  showStatusNote?: boolean
   className?: string
 }) {
   const isMobile = useIsMobile()
@@ -574,9 +576,11 @@ export function ThreadComposer({
         className
       )}
     >
-      <div className={cn("rounded-2xl bg-bg-subtle text-text-muted", isMobile ? "mb-2 px-3 py-1.5 text-[11px] leading-5" : "mb-3 px-3 py-2 text-xs")}>
-        {getThreadDisabledReason(status, selectedChat)}
-      </div>
+      {showStatusNote && (
+        <div className={cn("rounded-2xl bg-bg-subtle text-text-muted", isMobile ? "mb-2 px-3 py-1.5 text-[11px] leading-5" : "mb-3 px-3 py-2 text-xs")}>
+          {getThreadDisabledReason(status, selectedChat)}
+        </div>
+      )}
       {composerError && (
         <div className={cn("rounded-2xl border border-rose-200 bg-rose-50 text-rose-700", isMobile ? "mb-2 px-3 py-1.5 text-xs" : "mb-3 px-3 py-2 text-sm")}>
           {composerError}
@@ -797,37 +801,39 @@ export function ThreadPanel({
 }) {
   if (!selectedChat) {
     return (
-      <Card className="overflow-hidden rounded-3xl border-line-base">
-        <CardContent className="flex min-h-[32rem] items-center justify-center px-6 py-10 text-center text-sm text-text-muted lg:max-h-[calc(100dvh-11rem)] lg:min-h-[calc(100dvh-11rem)]">
-          Pilih thread di panel kiri untuk melihat timeline dan membalas pesan pelanggan.
-        </CardContent>
-      </Card>
+      <div
+        data-testid="whatsapp-thread-panel"
+        className="flex min-h-[32rem] items-center justify-center px-6 py-10 text-center text-sm text-text-muted lg:h-[calc(100dvh-11rem)] lg:max-h-[calc(100dvh-11rem)] lg:min-h-0"
+      >
+        Pilih thread di panel kiri untuk melihat timeline dan membalas pesan pelanggan.
+      </div>
     )
   }
 
   return (
-    <Card className="overflow-hidden rounded-3xl border-line-base lg:min-h-0">
-      <div className="flex min-h-[32rem] max-w-full flex-col lg:min-h-0 lg:max-h-[calc(100dvh-11rem)] lg:h-[calc(100dvh-11rem)]">
-        <ThreadHeader
+    <div
+      data-testid="whatsapp-thread-panel"
+      className="flex min-h-[32rem] max-w-full flex-col overflow-hidden lg:h-[calc(100dvh-11rem)] lg:max-h-[calc(100dvh-11rem)] lg:min-h-0"
+    >
+      <ThreadHeader
+        status={status}
+        selectedChat={selectedChat}
+        detailHref={getWhatsappThreadHref(selectedChat.chatId)}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
+      />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ThreadTimeline messages={messages} onOpenMedia={onOpenMedia} />
+        <ThreadComposer
           status={status}
           selectedChat={selectedChat}
-          detailHref={getWhatsappThreadHref(selectedChat.chatId)}
-          onRefresh={onRefresh}
-          isRefreshing={isRefreshing}
+          composerValue={composerValue}
+          onComposerChange={onComposerChange}
+          onSend={onSend}
+          isSending={isSending}
+          composerError={composerError}
         />
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ThreadTimeline messages={messages} onOpenMedia={onOpenMedia} />
-          <ThreadComposer
-            status={status}
-            selectedChat={selectedChat}
-            composerValue={composerValue}
-            onComposerChange={onComposerChange}
-            onSend={onSend}
-            isSending={isSending}
-            composerError={composerError}
-          />
-        </div>
       </div>
-    </Card>
+    </div>
   )
 }

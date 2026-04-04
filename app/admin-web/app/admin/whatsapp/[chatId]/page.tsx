@@ -19,7 +19,6 @@ import {
   updateChatReadState,
 } from "@/components/admin/whatsapp-inbox"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { adminApi } from "@/lib/api"
 
 const decodeChatId = (value: string) => {
@@ -173,16 +172,18 @@ export default function WhatsappThreadDetailPage() {
     <AdminShell
       title="Thread WhatsApp"
       subtitle="Tampilan penuh untuk percakapan pelanggan"
-      hideMobileNav
     >
-      <div className="flex h-full min-h-0 max-w-full flex-col overflow-hidden px-3 py-3 lg:px-6 lg:py-4">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
         {isLoading ? (
-          <div className="rounded-2xl border border-line-base bg-bg-surface px-4 py-10 text-center text-sm text-text-muted">
+          <div className="px-4 py-10 text-center text-sm text-text-muted">
             Memuat thread WhatsApp...
           </div>
         ) : (
-          <Card className="max-w-full overflow-hidden rounded-3xl border-line-base lg:min-h-0">
-            <div className="flex h-[calc(100dvh-6.5rem)] min-h-0 max-w-full flex-col lg:min-h-0 lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)]">
+          <div
+            data-testid="whatsapp-thread-panel"
+            className="flex min-h-0 flex-1 max-w-full flex-col overflow-hidden"
+          >
+            <div className="flex min-h-0 flex-1 max-w-full flex-col overflow-hidden lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)] lg:min-h-0">
               <ThreadHeader
                 status={status}
                 selectedChat={selectedChat}
@@ -193,7 +194,7 @@ export default function WhatsappThreadDetailPage() {
               />
 
               {loadError || !selectedChat ? (
-                <CardContent className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+                <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
                   <div className="max-w-md space-y-4 text-center">
                     <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-warning-bg text-warning">
                       <TriangleAlert className="h-5 w-5" />
@@ -214,23 +215,25 @@ export default function WhatsappThreadDetailPage() {
                       Kembali ke daftar thread
                     </Button>
                   </div>
-                </CardContent>
+                </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-bg-surface">
                   <ThreadTimeline messages={messages} onOpenMedia={openMedia} />
                   <ThreadComposer
                     status={status}
                     selectedChat={selectedChat}
-                    composerValue={composerValue}
-                    onComposerChange={setComposerValue}
-                    onSend={() => void handleSendMessage()}
-                    isSending={isSending}
-                    composerError={composerError}
-                  />
-                </div>
-              )}
+                  composerValue={composerValue}
+                  onComposerChange={setComposerValue}
+                  onSend={() => void handleSendMessage()}
+                  isSending={isSending}
+                  composerError={composerError}
+                  showStatusNote={false}
+                  className="shrink-0"
+                />
+              </div>
+            )}
             </div>
-          </Card>
+          </div>
         )}
       </div>
     </AdminShell>

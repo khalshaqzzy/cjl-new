@@ -19,7 +19,6 @@ import {
   mergeLatestMessageIntoChats,
   updateChatReadState,
 } from "@/components/admin/whatsapp-inbox"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useIsMobile } from "@/components/ui/use-mobile"
@@ -205,9 +204,9 @@ export default function WhatsappAdminPage() {
 
   return (
     <AdminShell title="WhatsApp" subtitle="Inbox internal berbasis Cloud API, webhook status, dan balasan operator">
-      <div className="flex h-full min-h-0 max-w-full flex-col space-y-4 overflow-x-hidden px-3 py-3 lg:gap-5 lg:space-y-0 lg:overflow-hidden lg:px-6 lg:py-5">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
         {isLoading ? (
-          <div className="rounded-2xl border border-line-base bg-bg-surface px-4 py-10 text-center text-sm text-text-muted">
+          <div className="mx-4 my-4 rounded-2xl border border-line-base bg-bg-surface px-4 py-4 text-center text-sm text-text-muted">
             Memuat panel WhatsApp...
           </div>
         ) : (
@@ -224,10 +223,10 @@ export default function WhatsappAdminPage() {
               isRefreshing={isRefreshing}
             />
 
-            <div className="grid max-w-full gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[360px_minmax(0,1fr)] lg:overflow-hidden">
-              <Card className="max-w-full overflow-hidden rounded-3xl border-line-base lg:flex lg:min-h-0 lg:flex-col">
-                <CardHeader className="pb-3 max-lg:px-4 max-lg:pt-4">
-                  <CardTitle className="text-base font-semibold text-text-strong">Thread List</CardTitle>
+            <div className="grid min-h-0 flex-1 overflow-hidden divide-line-base lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:divide-x">
+              <div className="flex min-h-0 flex-col overflow-hidden border-b border-line-base bg-bg-surface lg:border-b-0">
+                <div className="flex-none border-b border-line-base px-4 pb-3 pt-4">
+                  <p className="mb-3 text-base font-semibold text-text-strong">Thread List</p>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
                     <Input
@@ -247,29 +246,27 @@ export default function WhatsappAdminPage() {
                       </button>
                     )}
                   </div>
-                </CardHeader>
-                <CardContent className="min-w-0 px-2.5 pb-2.5 max-lg:pt-0 lg:min-h-0 lg:flex-1">
-                  <ScrollArea className="max-w-full pr-2 lg:h-full">
-                    {filteredChats.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-line-base px-4 py-10 text-center text-sm text-text-muted">
-                        Belum ada thread yang cocok dengan filter saat ini.
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {filteredChats.map((chat) => (
-                          <ThreadListItem
-                            key={chat.chatId}
-                            chat={chat}
-                            isActive={!isMobile && selectedChatId === chat.chatId}
-                            href={isMobile ? getWhatsappThreadHref(chat.chatId) : undefined}
-                            onSelect={isMobile ? undefined : () => void selectChat(chat)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
-                </CardContent>
-              </Card>
+                </div>
+                <ScrollArea className="min-h-0 flex-1 px-2.5 py-2.5">
+                  {filteredChats.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-line-base px-4 py-10 text-center text-sm text-text-muted">
+                      Belum ada thread yang cocok dengan filter saat ini.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {filteredChats.map((chat) => (
+                        <ThreadListItem
+                          key={chat.chatId}
+                          chat={chat}
+                          isActive={!isMobile && selectedChatId === chat.chatId}
+                          href={isMobile ? getWhatsappThreadHref(chat.chatId) : undefined}
+                          onSelect={isMobile ? undefined : () => void selectChat(chat)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
 
               {!isMobile && (
                 <ThreadPanel

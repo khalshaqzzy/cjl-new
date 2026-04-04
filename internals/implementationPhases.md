@@ -1,7 +1,7 @@
 # Implementation Phases
 
 Document status: Active  
-Last updated: 2026-04-02  
+Last updated: 2026-04-05  
 Purpose: compact repo-level implementation status snapshot
 
 ## Current Repo Status
@@ -25,7 +25,10 @@ The repo now has:
   - template-only disabled state
   - mobile list-first navigation with dedicated thread detail route
   - compact default-collapsed provider health summary
-  - sticky thread header and contained message scrolling on desktop/mobile
+  - flat full-shell thread surfaces without card chrome on desktop/mobile
+  - sticky/frozen thread header and timeline-owned scrolling on desktop/mobile
+  - mobile focused thread detail that keeps the bottom nav visible while preserving timeline-only scroll
+  - subtree-aware active nav highlighting for `/admin/whatsapp/[chatId]`
 - failed-notification recovery through backend-owned resend with receipt download, `Mark as Done`, and `Ignore`
 - startup seed/backfill that now also canonicalizes legacy WhatsApp data for Cloud-era reads while preserving legacy history
 - startup WhatsApp compatibility backfill now uses a runtime migration watermark and incremental cursor-based passes after the first baseline run
@@ -48,7 +51,8 @@ Status: complete in repo terms
 
 - admin WhatsApp inbox now has a dedicated `/admin/whatsapp/[chatId]` detail route for mobile
 - message timelines auto-scroll to the newest item on open and keep scroll ownership inside the inbox panel
-- mobile thread detail hides the bottom nav and keeps header controls visible while scrolling
+- admin WhatsApp detail/layout now uses flat full-shell surfaces with fixed header/composer framing and subtree-aware WhatsApp nav highlighting
+- mobile thread detail keeps the bottom nav visible while the timeline remains the only intended scroll region
 
 ### Phase 4: Public Surface Integration
 

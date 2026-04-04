@@ -424,6 +424,13 @@ test("admin and public frontends stay fully integrated through the backend", asy
     .poll(async () => page.evaluate(() => window.scrollY))
     .toBe(pageScrollBeforeTimelineWheel)
 
+  // Layout: thread panel must fill the available viewport without Card chrome
+  const threadPanel = page.getByTestId("whatsapp-thread-panel")
+  await expect(threadPanel).toBeVisible()
+  const panelBox = await threadPanel.boundingBox()
+  const viewportSize = page.viewportSize()!
+  expect(panelBox!.height).toBeGreaterThan(viewportSize.height * 0.7)
+
   await page.getByTestId("whatsapp-linked-customer-link").click()
   await expect(page).toHaveURL(new RegExp(`/admin/pelanggan/${customer?._id}$`))
   await page.goto("http://127.0.0.1:3101/admin/whatsapp")
@@ -718,7 +725,22 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await expect(page.getByTestId("whatsapp-thread-back")).toBeVisible()
   await expect(page.getByTestId("whatsapp-linked-customer-link")).toBeVisible()
   await expect(page.getByTestId("whatsapp-composer-input")).toBeVisible()
-  await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: "WhatsApp", exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: "WhatsApp", exact: true })).toHaveClass(
+    /text-rose-600/
+  )
+  await page.getByTestId("whatsapp-thread-back").click()
+  await expect(page).toHaveURL("http://127.0.0.1:3101/admin/whatsapp")
+
+  // Mobile layout: detail page thread panel must span the full viewport width
+  await page.getByTestId(`whatsapp-thread-wa:62${customerPhone.slice(1)}`).click()
+  await expect(page).toHaveURL(new RegExp(`/admin/whatsapp/wa%3A62${customerPhone.slice(1)}$`))
+  const mobilePanel = page.getByTestId("whatsapp-thread-panel")
+  await expect(mobilePanel).toBeVisible()
+  const mobilePanelBox = await mobilePanel.boundingBox()
+  const mobileViewport = page.viewportSize()!
+  expect(mobilePanelBox!.width).toBeGreaterThan(mobileViewport.width * 0.9)
   await page.getByTestId("whatsapp-thread-back").click()
   await expect(page).toHaveURL("http://127.0.0.1:3101/admin/whatsapp")
 

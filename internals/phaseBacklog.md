@@ -1,7 +1,7 @@
 # Phase Backlog
 
 Document status: Active  
-Last updated: 2026-04-02  
+Last updated: 2026-04-05  
 Purpose: condensed next-work inventory after repo-level closure of WhatsApp migration Phases 7-9
 
 ## Next Recommended Items
@@ -20,8 +20,11 @@ Purpose: condensed next-work inventory after repo-level closure of WhatsApp migr
    - outbound status progression and pricing visibility
 4. Validate the admin WhatsApp inbox on staging:
    - thread list/timeline visibility
+   - flat full-shell thread surfaces on desktop and mobile detail routes
    - mobile list-to-detail navigation
    - sticky thread header visibility during long-scroll sessions
+   - mobile composer remains pinned above the bottom nav while only the timeline scrolls
+   - mobile bottom nav remains visible on thread detail and still marks `WhatsApp` as active
    - provider-health collapsed/default and expanded/detail states
    - explicit unread clearing
    - CSW-open manual send success

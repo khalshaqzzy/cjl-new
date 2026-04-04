@@ -27,11 +27,28 @@ Purpose: repo snapshot after admin-only service catalog expansion and redemption
   - verifying they appear in order detail surfaces
   - redeeming 10 points for 1 free Washer while earned stamps stay based on residual Washer units only
 
+## Supplemental Update: WhatsApp Page Improvement Pass
+
+- removed card-chrome framing from the admin WhatsApp thread surfaces so the inbox/detail views use the shell area more directly
+- kept desktop split-pane behavior while restoring bounded thread-panel heights so long timelines stay scroll-contained inside the message viewport
+- kept the dedicated `/admin/whatsapp/[chatId]` mobile route, but changed it to retain the mobile bottom nav instead of hiding it
+- updated mobile thread detail so the intended layout is:
+  - fixed header at the top
+  - timeline as the only scroll owner
+  - composer pinned at the bottom of the thread column
+- made bottom-nav active highlighting subtree-aware so `/admin/whatsapp/[chatId]` still marks `WhatsApp` as active
+- added E2E layout assertions for:
+  - desktop thread-panel height fill
+  - mobile thread-panel width fill
+- removed the larger status note above the mobile composer on focused thread detail to recover more message space
+
 ## Verification Run
 
 - `npm run typecheck`
 - `npm run test:backend`
 - `npm run test:e2e -- tests/e2e/full-stack.spec.ts`
+- `npm run build:admin`
+- `npx playwright test tests/e2e/full-stack.spec.ts`
 
 All succeeded at session end.
 
@@ -53,3 +70,7 @@ All succeeded at session end.
    - `laundry_plastic_large`
    - `laundry_hanger`
    - `2 washer + 2 dryer + redeem 1` earning exactly 1 stamp
+3. during the next staging WhatsApp pass, explicitly verify:
+   - `/admin/whatsapp/[chatId]` keeps `WhatsApp` active in the mobile bottom nav
+   - long thread scrolling does not move the whole page
+   - header and composer remain visually pinned while the timeline scrolls

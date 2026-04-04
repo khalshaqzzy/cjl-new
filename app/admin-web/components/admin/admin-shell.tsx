@@ -127,6 +127,8 @@ export function AdminShell({
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const failedNotificationsPrimedRef = useRef(false)
   const compactMobileChrome = hideMobileNav && isMobile
+  const isNavItemActive = (href: string) =>
+    pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`))
 
   useEffect(() => {
     adminApi
@@ -245,7 +247,7 @@ export function AdminShell({
             Menu Utama
           </p>
           {navItems.map((item) => (
-            <SideNavItem key={item.href} {...item} isActive={pathname === item.href} />
+            <SideNavItem key={item.href} {...item} isActive={isNavItemActive(item.href)} />
           ))}
           <div className="my-3 h-px bg-line-base" />
           <p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
@@ -349,7 +351,7 @@ export function AdminShell({
                   <BottomNavItem
                     key={item.href}
                     {...item}
-                    isActive={pathname === item.href}
+                    isActive={isNavItemActive(item.href)}
                   />
                 ))}
               </div>
