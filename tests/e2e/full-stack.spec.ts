@@ -750,6 +750,15 @@ test("admin and public frontends stay fully integrated through the backend", asy
   expect(mobilePanelBox!.width).toBeGreaterThan(mobileViewport.width * 0.9)
   expect(mobilePanelBox!.x).toBeGreaterThanOrEqual(0)
   expect(mobilePanelBox!.x + mobilePanelBox!.width).toBeLessThanOrEqual(mobileViewport.width + 1)
+  const mobileTimelineViewportSize = await mobileTimeline
+    .locator('[data-slot="scroll-area-viewport"]')
+    .evaluate((node) => ({
+      clientWidth: node.clientWidth,
+      scrollWidth: node.scrollWidth,
+    }))
+  expect(mobileTimelineViewportSize.scrollWidth).toBeLessThanOrEqual(
+    mobileTimelineViewportSize.clientWidth + 1
+  )
   const mobileBubble = page.locator('[data-testid^="whatsapp-message-"]').last()
   const mobileBubbleBox = await mobileBubble.boundingBox()
   expect(mobileBubbleBox!.x).toBeGreaterThanOrEqual(0)
@@ -785,6 +794,25 @@ test("admin and public frontends stay fully integrated through the backend", asy
       hasText: "Balasan mobile unlinked",
     }).last()
   ).toBeVisible()
+  const mobileOutboundBubble = page
+    .locator('[data-testid^="whatsapp-message-"]')
+    .filter({ hasText: "Balasan mobile unlinked" })
+    .last()
+  const mobileOutboundBubbleBox = await mobileOutboundBubble.boundingBox()
+  expect(mobileOutboundBubbleBox!.x).toBeGreaterThanOrEqual(0)
+  expect(mobileOutboundBubbleBox!.x + mobileOutboundBubbleBox!.width).toBeLessThanOrEqual(
+    mobileViewport.width + 1
+  )
+  const mobileTimelineViewportAfterSend = await page
+    .getByTestId("whatsapp-thread-timeline")
+    .locator('[data-slot="scroll-area-viewport"]')
+    .evaluate((node) => ({
+      clientWidth: node.clientWidth,
+      scrollWidth: node.scrollWidth,
+    }))
+  expect(mobileTimelineViewportAfterSend.scrollWidth).toBeLessThanOrEqual(
+    mobileTimelineViewportAfterSend.clientWidth + 1
+  )
   await page.getByTestId("whatsapp-thread-back").click()
   await expect(page).toHaveURL("http://127.0.0.1:3101/admin/whatsapp")
 

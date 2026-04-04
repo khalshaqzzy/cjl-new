@@ -373,88 +373,90 @@ export function MessageBubble({
   const isOutbound = message.direction === "outbound"
 
   return (
-    <div
-      className={cn(
-        "max-w-[min(88%,20rem)] min-w-0 overflow-hidden rounded-3xl px-4 py-3 shadow-sm sm:max-w-[92%]",
-        isOutbound ? "ml-auto bg-emerald-600 text-white" : "bg-bg-subtle text-text-strong"
-      )}
-      data-testid={`whatsapp-message-${message.providerMessageId}`}
-    >
-      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] opacity-80">
-        <span>{isOutbound ? "Keluar" : "Masuk"}</span>
-        <span>&bull;</span>
-        <span>{message.timestampLabel}</span>
-      </div>
-      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
-        {message.body ?? message.caption ?? message.textPreview}
-      </p>
-      <div className="mt-3 flex min-w-0 flex-wrap gap-2 text-[11px]">
-        {message.source && (
-          <Badge className={cn("max-w-full break-words rounded-full [overflow-wrap:anywhere]", sourceTone[message.source])}>
-            {sourceLabel[message.source]}
-          </Badge>
+    <div className={cn("flex w-full min-w-0", isOutbound ? "justify-end" : "justify-start")}>
+      <div
+        className={cn(
+          "w-fit min-w-0 max-w-[min(88%,20rem)] overflow-hidden rounded-3xl px-4 py-3 shadow-sm sm:max-w-[min(92%,28rem)]",
+          isOutbound ? "bg-emerald-600 text-white" : "bg-bg-subtle text-text-strong"
         )}
-        {message.providerStatus && (
-          <Badge className={cn("max-w-full break-words rounded-full [overflow-wrap:anywhere]", messageStatusTone[message.providerStatus])}>
-            {messageStatusLabel[message.providerStatus]}
-          </Badge>
-        )}
-        {message.pricingType && (
-          <Badge variant="outline" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
-            pricing: {message.pricingType}
-          </Badge>
-        )}
-        {message.pricingCategory && (
-          <Badge variant="outline" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
-            category: {message.pricingCategory}
-          </Badge>
-        )}
-      </div>
-      {message.hasMedia && (
-        <div className="mt-3 min-w-0 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-xs">
-          <div className="flex min-w-0 items-center gap-2">
-            <ImageIcon className="h-3.5 w-3.5 shrink-0" />
-            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-              {message.mediaName ?? message.mediaMimeType ?? message.messageType}
-            </span>
-          </div>
-          {message.mediaDownloadAvailable ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="mt-2 rounded-xl"
-              onClick={() => onOpenMedia(message.providerMessageId)}
-              data-testid={`whatsapp-open-media-${message.providerMessageId}`}
-            >
-              Buka Media
-            </Button>
-          ) : (
-            <p className="mt-2 opacity-80">
-              Media {message.mediaDownloadStatus === "failed" ? "gagal diunduh" : "masih diproses"}.
-            </p>
-          )}
+        data-testid={`whatsapp-message-${message.providerMessageId}`}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] opacity-80">
+          <span>{isOutbound ? "Keluar" : "Masuk"}</span>
+          <span>&bull;</span>
+          <span>{message.timestampLabel}</span>
         </div>
-      )}
-      {(message.latestErrorCode || message.latestErrorMessage) && (
-        <p className="mt-2 break-words text-xs opacity-80 [overflow-wrap:anywhere]">
-          Error {message.latestErrorCode ?? "-"}: {message.latestErrorMessage ?? "-"}
+        <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
+          {message.body ?? message.caption ?? message.textPreview}
         </p>
-      )}
-      {(message.notificationId || message.orderCode) && (
         <div className="mt-3 flex min-w-0 flex-wrap gap-2 text-[11px]">
-          {message.notificationId && (
-            <Badge variant="secondary" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
-              Notifikasi {message.notificationId}
+          {message.source && (
+            <Badge className={cn("max-w-full break-words rounded-full [overflow-wrap:anywhere]", sourceTone[message.source])}>
+              {sourceLabel[message.source]}
             </Badge>
           )}
-          {message.orderCode && (
-            <Badge variant="secondary" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
-              {message.orderCode}
+          {message.providerStatus && (
+            <Badge className={cn("max-w-full break-words rounded-full [overflow-wrap:anywhere]", messageStatusTone[message.providerStatus])}>
+              {messageStatusLabel[message.providerStatus]}
+            </Badge>
+          )}
+          {message.pricingType && (
+            <Badge variant="outline" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
+              pricing: {message.pricingType}
+            </Badge>
+          )}
+          {message.pricingCategory && (
+            <Badge variant="outline" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
+              category: {message.pricingCategory}
             </Badge>
           )}
         </div>
-      )}
+        {message.hasMedia && (
+          <div className="mt-3 min-w-0 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-xs">
+            <div className="flex min-w-0 items-center gap-2">
+              <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                {message.mediaName ?? message.mediaMimeType ?? message.messageType}
+              </span>
+            </div>
+            {message.mediaDownloadAvailable ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-2 rounded-xl"
+                onClick={() => onOpenMedia(message.providerMessageId)}
+                data-testid={`whatsapp-open-media-${message.providerMessageId}`}
+              >
+                Buka Media
+              </Button>
+            ) : (
+              <p className="mt-2 opacity-80">
+                Media {message.mediaDownloadStatus === "failed" ? "gagal diunduh" : "masih diproses"}.
+              </p>
+            )}
+          </div>
+        )}
+        {(message.latestErrorCode || message.latestErrorMessage) && (
+          <p className="mt-2 break-words text-xs opacity-80 [overflow-wrap:anywhere]">
+            Error {message.latestErrorCode ?? "-"}: {message.latestErrorMessage ?? "-"}
+          </p>
+        )}
+        {(message.notificationId || message.orderCode) && (
+          <div className="mt-3 flex min-w-0 flex-wrap gap-2 text-[11px]">
+            {message.notificationId && (
+              <Badge variant="secondary" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
+                Notifikasi {message.notificationId}
+              </Badge>
+            )}
+            {message.orderCode && (
+              <Badge variant="secondary" className="max-w-full break-words rounded-full [overflow-wrap:anywhere]">
+                {message.orderCode}
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -529,7 +531,7 @@ export function ThreadTimeline({
           Belum ada pesan yang tersimpan untuk thread ini.
         </div>
       ) : (
-        <div className="min-w-0 max-w-full space-y-3">
+        <div className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
           {messages.map((message) => (
             <MessageBubble
               key={message.providerMessageId}
@@ -820,7 +822,7 @@ export function ThreadPanel({
   return (
     <div
       data-testid="whatsapp-thread-panel"
-      className="flex min-h-[32rem] max-w-full flex-col overflow-hidden lg:h-[calc(100dvh-11rem)] lg:max-h-[calc(100dvh-11rem)] lg:min-h-0"
+      className="flex min-h-[32rem] min-w-0 max-w-full flex-col overflow-hidden lg:h-[calc(100dvh-11rem)] lg:max-h-[calc(100dvh-11rem)] lg:min-h-0"
     >
       <ThreadHeader
         status={status}

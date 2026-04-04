@@ -29,7 +29,9 @@ The repo now has:
   - sticky/frozen thread header and timeline-owned scrolling on desktop/mobile
   - mobile focused thread detail that keeps the bottom nav visible while preserving timeline-only scroll
   - subtree-aware active nav highlighting for `/admin/whatsapp/[chatId]`
-  - mobile width containment for thread list items, header badges, message bubbles, and long metadata strings so WhatsApp surfaces no longer overflow horizontally
+  - mobile width containment for thread list items, header badges, timeline wrappers, message bubbles, and long metadata strings so WhatsApp surfaces no longer overflow horizontally
+  - hardened `ScrollArea` viewport wrapper contract so the Radix scroll-content wrapper cannot widen the timeline beyond the mobile viewport
+  - row-based outbound/inbound bubble alignment so right-edge placement is anchored to the viewport width instead of an accidentally widened content wrapper
 - failed-notification recovery through backend-owned resend with receipt download, `Mark as Done`, and `Ignore`
 - startup seed/backfill that now also canonicalizes legacy WhatsApp data for Cloud-era reads while preserving legacy history
 - startup WhatsApp compatibility backfill now uses a runtime migration watermark and incremental cursor-based passes after the first baseline run
@@ -54,7 +56,7 @@ Status: complete in repo terms
 - message timelines auto-scroll to the newest item on open and keep scroll ownership inside the inbox panel
 - admin WhatsApp detail/layout now uses flat full-shell surfaces with fixed header/composer framing and subtree-aware WhatsApp nav highlighting
 - mobile thread detail keeps the bottom nav visible while the timeline remains the only intended scroll region
-- mobile WhatsApp list/detail now explicitly harden against right-edge overflow from long previews, badges, order codes, notification IDs, and media labels
+- mobile WhatsApp list/detail now explicitly harden against right-edge overflow from long previews, badges, order codes, notification IDs, media labels, and scroll-wrapper width leaks
 
 ### Phase 4: Public Surface Integration
 

@@ -181,9 +181,9 @@ export default function WhatsappThreadDetailPage() {
         ) : (
           <div
             data-testid="whatsapp-thread-panel"
-            className="fixed inset-x-0 bottom-24 top-14 flex min-h-0 max-w-full flex-col overflow-hidden bg-bg-surface lg:static lg:inset-auto lg:flex-1"
+            className="fixed inset-x-0 bottom-24 top-14 flex min-h-0 min-w-0 max-w-full flex-col overflow-hidden bg-bg-surface lg:static lg:inset-auto lg:flex-1"
           >
-            <div className="flex min-h-0 flex-1 max-w-full flex-col overflow-hidden lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)] lg:min-h-0">
+            <div className="flex min-h-0 min-w-0 flex-1 max-w-full flex-col overflow-hidden lg:h-[calc(100dvh-9rem)] lg:max-h-[calc(100dvh-9rem)] lg:min-h-0">
               <ThreadHeader
                 status={status}
                 selectedChat={selectedChat}

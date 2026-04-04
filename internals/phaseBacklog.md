@@ -26,6 +26,8 @@ Purpose: condensed next-work inventory after repo-level closure of WhatsApp migr
    - mobile composer remains pinned above the bottom nav while only the timeline scrolls
    - mobile bottom nav remains visible on thread detail and still marks `WhatsApp` as active
    - long thread previews, badges, and message metadata do not overflow horizontally on narrow mobile viewports
+   - timeline viewport wrapper does not report horizontal overflow (`scrollWidth <= clientWidth`) on narrow mobile devices
+   - outbound reply bubbles sent from the mobile composer remain fully inside the right edge after send and after subsequent refresh polling
    - provider-health collapsed/default and expanded/detail states
    - explicit unread clearing
    - CSW-open manual send success

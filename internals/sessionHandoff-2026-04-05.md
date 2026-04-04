@@ -48,6 +48,19 @@ Purpose: repo snapshot after admin-only service catalog expansion and redemption
   - header and composer positions stay stable while the timeline scrolls
   - `window.scrollY` remains unchanged while the message viewport scrolls
 
+## Supplemental Update: Wrapper-Level Mobile Overflow Fix
+
+- traced a remaining real-device WhatsApp mobile overflow to the timeline wrapper stack, not to the bubble text renderer alone
+- hardened the admin `ScrollArea` viewport contract so the internal Radix content wrapper is forced to `block`, `w-full`, and `min-w-0` instead of widening to long message content
+- converted thread bubbles to row-based alignment:
+  - outer row owns left/right placement
+  - bubble body uses `w-fit` with explicit mobile/desktop max widths
+  - outbound bubbles no longer anchor against an accidentally widened parent
+- added `min-w-0` guards on the focused mobile thread panel/container so the fixed detail route keeps the viewport as the hard width boundary
+- expanded Playwright coverage to assert:
+  - mobile timeline viewport `scrollWidth` never exceeds `clientWidth`
+  - outbound mobile reply bubbles remain fully inside the viewport after send
+
 ## Verification Run
 
 - `npm run typecheck`
@@ -81,3 +94,4 @@ All succeeded at session end.
    - long thread scrolling does not move the whole page
    - header and composer remain visually pinned while the timeline scrolls
    - long text, codes, and metadata do not overflow past the right edge on narrow mobile devices
+   - the message timeline viewport itself has no horizontal overflow on real devices after inbound and outbound activity
