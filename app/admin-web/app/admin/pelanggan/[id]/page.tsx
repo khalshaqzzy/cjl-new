@@ -28,6 +28,7 @@ import {
   Edit2,
   Send,
   Plus,
+  Minus,
   ChevronLeft,
   Loader2,
   Package,
@@ -135,7 +136,9 @@ function OrderHistoryRow({
 }
 
 function PointLedgerRow({ entry }: { entry: PointLedgerItem }) {
-  const config = pointToneConfig[entry.tone] ?? pointToneConfig.adjustment
+  const config = entry.tone === "adjustment" && entry.delta < 0
+    ? { icon: ArrowDownRight, bg: "bg-danger/10", color: "text-danger", sign: "" }
+    : pointToneConfig[entry.tone] ?? pointToneConfig.adjustment
   const Icon = config.icon
   return (
     <div className="flex items-center gap-3 py-3.5 border-b border-line-base last:border-b-0">
@@ -165,6 +168,20 @@ function PointLedgerRow({ entry }: { entry: PointLedgerItem }) {
 }
 
 const QUICK_POINT_CHIPS = [5, 10, 20, 50]
+
+const parseManualPointAmount = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed === 0) {
+    return null
+  }
+
+  return parsed
+}
 
 export default function CustomerDetailPage() {
   const params = useParams<{ id: string }>()
@@ -239,18 +256,19 @@ export default function CustomerDetailPage() {
   }
 
   const handleAddPoints = async () => {
-    if (!addPointsAmount || !addPointsNote) return
+    const points = parseManualPointAmount(addPointsAmount)
+    if (!points || !addPointsNote.trim()) return
     setIsAddingPoints(true)
     try {
       if (customerId) {
-        const payload = await adminApi.addCustomerPoints(customerId, parseInt(addPointsAmount), addPointsNote)
+        const payload = await adminApi.addCustomerPoints(customerId, points, addPointsNote.trim())
         setCustomer(payload.profile)
         setPointLedger(payload.pointLedger)
         setOrderHistory(payload.orderHistory)
-        setFeedback({ tone: "success", message: "Poin manual berhasil ditambahkan." })
+        setFeedback({ tone: "success", message: points > 0 ? "Poin manual berhasil ditambahkan." : "Poin manual berhasil dikurangi." })
       }
     } catch (error) {
-      setFeedback({ tone: "danger", message: error instanceof Error ? error.message : "Gagal menambahkan poin manual" })
+      setFeedback({ tone: "danger", message: error instanceof Error ? error.message : "Gagal menyimpan penyesuaian poin manual" })
     } finally {
       setIsAddingPoints(false)
       setShowAddPointsSheet(false)
@@ -280,9 +298,19 @@ export default function CustomerDetailPage() {
     }
   }
 
-  const newPointsBalance = addPointsAmount && customer
-    ? customer.currentPoints + (parseInt(addPointsAmount) || 0)
+  const manualPointAmount = parseManualPointAmount(addPointsAmount)
+  const newPointsBalance = manualPointAmount !== null && customer
+    ? customer.currentPoints + manualPointAmount
     : null
+  const hasManualPointInputError = addPointsAmount.trim() !== "" && manualPointAmount === null
+  const wouldMakePointsNegative = newPointsBalance !== null && newPointsBalance < 0
+  const canSubmitPointAdjustment = manualPointAmount !== null && !wouldMakePointsNegative && Boolean(addPointsNote.trim()) && !isAddingPoints
+
+  const applyManualPointSign = (sign: 1 | -1) => {
+    const parsed = parseManualPointAmount(addPointsAmount)
+    const magnitude = parsed === null ? 1 : Math.abs(parsed)
+    setAddPointsAmount(String(magnitude * sign))
+  }
 
   const handleGenerateMagicLink = async () => {
     if (!customerId) {
@@ -640,7 +668,7 @@ export default function CustomerDetailPage() {
       <Sheet open={showAddPointsSheet} onOpenChange={setShowAddPointsSheet}>
         <SheetContent side="bottom" className="rounded-t-2xl" aria-describedby={undefined}>
           <SheetHeader className="pb-4 border-b border-line-base">
-            <SheetTitle className="text-base font-semibold text-text-strong">Tambah Poin Manual</SheetTitle>
+            <SheetTitle className="text-base font-semibold text-text-strong">Penyesuaian Poin Manual</SheetTitle>
           </SheetHeader>
           <div className="py-5 space-y-4">
             {/* Current balance */}
@@ -654,7 +682,10 @@ export default function CustomerDetailPage() {
                 {newPointsBalance !== null && newPointsBalance !== customer.currentPoints && (
                   <>
                     <ChevronLeft className="h-3 w-3 text-text-muted rotate-180" />
-                    <span className="text-sm font-bold text-emerald-600 tabular-nums">{newPointsBalance}</span>
+                    <span className={cn(
+                      "text-sm font-bold tabular-nums",
+                      newPointsBalance > customer.currentPoints ? "text-emerald-600" : "text-danger"
+                    )}>{newPointsBalance}</span>
                   </>
                 )}
               </div>
@@ -680,14 +711,43 @@ export default function CustomerDetailPage() {
                   </button>
                 ))}
               </div>
-              <Input
-                type="number"
-                min="1"
-                placeholder="Atau ketik jumlah lain..."
-                value={addPointsAmount}
-                onChange={(e) => setAddPointsAmount(e.target.value)}
-                className="h-11 rounded-lg border-line-base text-center font-semibold"
-              />
+              <div className="relative">
+                <Input
+                  data-testid="manual-points-input"
+                  type="number"
+                  step="1"
+                  placeholder="Contoh: 10 atau -5"
+                  value={addPointsAmount}
+                  onChange={(e) => setAddPointsAmount(e.target.value)}
+                  className="h-11 rounded-lg border-line-base pr-20 text-center font-semibold"
+                />
+                <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 gap-1">
+                  <button
+                    type="button"
+                    data-testid="manual-points-sign-minus"
+                    onClick={() => applyManualPointSign(-1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md border border-line-base bg-bg-surface text-text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                    aria-label="Jadikan pengurangan poin"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="manual-points-sign-plus"
+                    onClick={() => applyManualPointSign(1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md border border-line-base bg-bg-surface text-text-muted transition-colors hover:bg-emerald-50 hover:text-emerald-600"
+                    aria-label="Jadikan penambahan poin"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              {hasManualPointInputError && (
+                <p className="text-xs text-danger">Masukkan angka bulat selain 0.</p>
+              )}
+              {wouldMakePointsNegative && (
+                <p className="text-xs text-danger">Saldo poin tidak boleh menjadi negatif.</p>
+              )}
             </div>
 
             {/* Note */}
@@ -710,12 +770,15 @@ export default function CustomerDetailPage() {
               <Button variant="outline" className="flex-1 rounded-lg">Batal</Button>
             </SheetClose>
             <Button
+              data-testid="manual-points-submit"
               className="flex-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold"
               onClick={handleAddPoints}
-              disabled={!addPointsAmount || !addPointsNote.trim() || isAddingPoints}
+              disabled={!canSubmitPointAdjustment}
             >
               {isAddingPoints ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menambahkan...</>
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</>
+              ) : manualPointAmount !== null && manualPointAmount < 0 ? (
+                <><Minus className="h-4 w-4 mr-2" />Kurangi Poin</>
               ) : (
                 <><Plus className="h-4 w-4 mr-2" />Tambah Poin</>
               )}

@@ -527,7 +527,7 @@ function StepServices({
 }) {
   const weight = Number(weightKg) || 0
   const selectedServices = services.filter((service) => service.selected)
-  const maxRedeem = preview?.maxRedeemableWashers ?? Math.floor(customer.currentPoints / 10)
+  const maxRedeem = preview?.maxRedeemableUnits ?? Math.floor(customer.currentPoints / 10)
   const hasWeightError = weightKg.trim().length > 0 && weight <= 0
   const hasServiceError = selectedServices.length === 0
 
@@ -596,8 +596,8 @@ function StepServices({
               <div className="px-4 py-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-text-body">Washer gratis</p>
-                    <p className="text-xs text-text-muted">10 poin = 1 Washer gratis, dan Washer gratis tidak menambah stamp</p>
+                    <p className="text-sm text-text-body">Diskon reward</p>
+                    <p className="text-xs text-text-muted">10 poin = diskon Rp 10.000 untuk Washer atau paket, dan mengurangi 1 kesempatan poin</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button type="button" data-testid="pos-redeem-minus" onClick={() => setRedeemCount(Math.max(0, redeemCount - 1))} disabled={redeemCount === 0} className={cn("flex h-8 w-8 items-center justify-center rounded-lg border transition-colors", redeemCount === 0 ? "border-line-base text-text-placeholder cursor-not-allowed" : "border-line-base hover:bg-bg-subtle text-text-body")}>
@@ -631,7 +631,7 @@ function StepServices({
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-info/10 border border-info/20">
               <Gift className="h-4 w-4 text-info flex-shrink-0" />
               <p className="text-xs text-info font-medium">
-                Washer yang digratiskan lewat redeem tidak dihitung sebagai penambahan stamp.
+                Setiap redeem memberi diskon Rp 10.000 dan mengurangi 1 kesempatan poin dari order ini.
               </p>
             </div>
           </div>
@@ -710,7 +710,7 @@ function OrderSummarySheet({ open, onOpenChange, customer, preview, onConfirm, i
             {(preview?.discount ?? 0) > 0 && (
               <>
                 <div className="flex items-center justify-between px-4 py-3 border-b border-line-base"><span className="text-sm text-text-muted">Subtotal</span><span className="text-sm text-text-muted tabular-nums">{preview?.subtotalLabel}</span></div>
-                <div className="flex items-center justify-between px-4 py-3 border-b border-line-base"><span className="text-sm text-success">{(preview?.redeemedPoints ?? 0) / 10}x Washer Gratis</span><span className="text-sm text-success font-medium tabular-nums">{preview?.discountLabel}</span></div>
+                <div className="flex items-center justify-between px-4 py-3 border-b border-line-base"><span className="text-sm text-success">{(preview?.redeemedPoints ?? 0) / 10}x Diskon Reward</span><span className="text-sm text-success font-medium tabular-nums">{preview?.discountLabel}</span></div>
               </>
             )}
             <div className="flex items-center justify-between px-4 py-3 bg-bg-subtle"><span className="text-sm font-bold text-text-strong">Total Bayar</span><span className="text-xl font-bold text-rose-600 tabular-nums">{preview?.totalLabel ?? "Rp 0"}</span></div>
@@ -721,7 +721,7 @@ function OrderSummarySheet({ open, onOpenChange, customer, preview, onConfirm, i
               <div className="flex items-center justify-between"><span className="text-sm text-text-muted">Poin saat ini</span><span className="text-sm font-semibold text-text-body tabular-nums">{customer.currentPoints}</span></div>
               {(preview?.redeemedPoints ?? 0) > 0 && <div className="flex items-center justify-between"><span className="text-sm text-text-muted">Digunakan</span><span className="text-sm font-semibold text-danger tabular-nums">-{preview?.redeemedPoints ?? 0}</span></div>}
               {(preview?.earnedStamps ?? 0) > 0 && <div className="flex items-center justify-between"><span className="text-sm text-text-muted">Diperoleh</span><span className="text-sm font-semibold text-success tabular-nums">+{preview?.earnedStamps ?? 0}</span></div>}
-              {(preview?.redeemedPoints ?? 0) > 0 && <p className="text-xs text-text-muted">Stamp hanya dihitung dari Washer yang tidak digratiskan dan paket yang memenuhi syarat.</p>}
+              {(preview?.redeemedPoints ?? 0) > 0 && <p className="text-xs text-text-muted">Setiap redeem mengurangi 1 kesempatan poin dari order ini.</p>}
               <div className="flex items-center justify-between pt-2 border-t border-warning/20"><span className="text-sm font-semibold text-text-strong">Saldo Setelah</span><span className="text-sm font-bold text-text-strong tabular-nums">{preview?.resultingPointBalance ?? customer.currentPoints} poin</span></div>
             </div>
           </div>
@@ -799,7 +799,7 @@ export default function POSPage() {
         if (!active) return
         setPreview(response)
         setPreviewError("")
-        if (redeemCount > response.maxRedeemableWashers) setRedeemCount(response.maxRedeemableWashers)
+        if (redeemCount > response.maxRedeemableUnits) setRedeemCount(response.maxRedeemableUnits)
       })
       .catch((error) => {
         if (active) {

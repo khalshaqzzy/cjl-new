@@ -1,6 +1,17 @@
 import type { ConfirmOrderInput, ServiceSetting } from "@cjl/contracts"
 import { ValidationError } from "../errors.js"
 
+const REDEEMABLE_SERVICE_CODES = new Set([
+  "washer",
+  "wash_dry_fold_package",
+  "wash_dry_package",
+])
+const POINTS_PER_REDEEM_UNIT = 10
+const DISCOUNT_PER_REDEEM_UNIT = 10000
+
+const getSelectedQuantity = (input: ConfirmOrderInput, serviceCode: string) =>
+  input.items.find((item) => item.serviceCode === serviceCode && item.selected)?.quantity ?? 0
+
 export const calculateOrderPreview = (
   services: ServiceSetting[],
   currentPoints: number,
@@ -29,19 +40,22 @@ export const calculateOrderPreview = (
       }
     })
 
-  const washerCount = input.items.find((item) => item.serviceCode === "washer")?.quantity ?? 0
-  const dryerCount = input.items.find((item) => item.serviceCode === "dryer")?.quantity ?? 0
-  const packageCount = input.items.find((item) => item.serviceCode === "wash_dry_fold_package")?.quantity ?? 0
-  const washDryPackageCount = input.items.find((item) => item.serviceCode === "wash_dry_package")?.quantity ?? 0
-  const maxRedeemableWashers = Math.min(Math.floor(currentPoints / 10), washerCount)
-  const redeemCount = Math.min(input.redeemCount, maxRedeemableWashers)
+  const washerCount = getSelectedQuantity(input, "washer")
+  const dryerCount = getSelectedQuantity(input, "dryer")
+  const packageCount = getSelectedQuantity(input, "wash_dry_fold_package")
+  const washDryPackageCount = getSelectedQuantity(input, "wash_dry_package")
+  const redeemableUnitCount = input.items
+    .filter((item) => item.selected && REDEEMABLE_SERVICE_CODES.has(item.serviceCode))
+    .reduce((sum, item) => sum + item.quantity, 0)
+  const maxRedeemableUnits = Math.min(Math.floor(currentPoints / POINTS_PER_REDEEM_UNIT), redeemableUnitCount)
+  const redeemCount = Math.min(input.redeemCount, maxRedeemableUnits)
   const subtotal = activeItems.reduce((sum, item) => sum + item.lineTotal, 0)
-  const discount = redeemCount * (serviceMap.get("washer")?.price ?? 10000)
+  const discount = redeemCount * DISCOUNT_PER_REDEEM_UNIT
   const total = Math.max(0, subtotal - discount)
-  const earnedWasherDryerPairs = Math.min(Math.max(washerCount - redeemCount, 0), dryerCount)
+  const earnedWasherDryerPairs = Math.min(washerCount, dryerCount)
   const earnedPackageStamps = packageCount + washDryPackageCount
-  const earnedStamps = earnedWasherDryerPairs + earnedPackageStamps
-  const redeemedPoints = redeemCount * 10
+  const earnedStamps = Math.max(0, earnedWasherDryerPairs + earnedPackageStamps - redeemCount)
+  const redeemedPoints = redeemCount * POINTS_PER_REDEEM_UNIT
   const resultingPointBalance = currentPoints - redeemedPoints + earnedStamps
 
   return {
@@ -52,6 +66,6 @@ export const calculateOrderPreview = (
     earnedStamps,
     redeemedPoints,
     resultingPointBalance,
-    maxRedeemableWashers
+    maxRedeemableUnits
   }
 }

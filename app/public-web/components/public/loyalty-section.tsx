@@ -15,8 +15,8 @@ const benefits = [
   },
   {
     icon: Gift,
-    title: '1 Gratis Washer',
-    description: 'Kumpulkan 10 stamp untuk 1x gratis cuci. Stamp tidak kadaluarsa.',
+    title: 'Diskon Reward',
+    description: 'Kumpulkan 10 stamp untuk diskon Rp 10.000 pada Washer atau paket. Stamp tidak kadaluarsa.',
   },
   {
     icon: History,
@@ -223,7 +223,7 @@ function LoopingStampCard() {
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-white" />
               <span className="text-[10px] sm:text-xs text-white/80 font-medium tracking-tight">
-                Gratis Washer tersedia: <strong className="text-white">2x</strong>
+                Diskon reward tersedia: <strong className="text-white">2x</strong>
               </span>
             </div>
             <div className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.1em] bg-white text-pink-hot shadow-sm">

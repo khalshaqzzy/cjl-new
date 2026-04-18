@@ -60,9 +60,9 @@ Seluruh aplikasi v1 di-deploy sebagai satu monolith pada VM per environment. Run
 - Link status order dari WA membuka order spesifik secara langsung tanpa login.
 - Stamp dihitung saat order dikonfirmasi, bukan saat selesai.
 - Qty per item layanan diperbolehkan.
-- Redeem 10 poin dapat dipakai berulang untuk menggratiskan 1 Washer unit per 10 poin.
-- Washer unit yang digratiskan melalui redeem tidak boleh ikut dihitung sebagai penambahan stamp.
-- Manual point addition dari admin memengaruhi saldo poin customer, tetapi tidak memengaruhi leaderboard.
+- Redeem 10 poin dapat dipakai berulang untuk diskon Rp 10.000 per unit pada `washer`, `wash_dry_fold_package`, dan `wash_dry_package`.
+- Setiap 1 redeem mengurangi 1 kesempatan poin/stamp dari order terkait, dibatasi minimum 0 earned stamp.
+- Manual point adjustment dari admin dapat bernilai positif atau negatif, memengaruhi saldo poin customer, tetapi tidak memengaruhi leaderboard.
 - Cancel/void membalik poin dan memicu recalculation leaderboard untuk bulan order terkait, termasuk bulan yang sudah diarsipkan.
 - Harga layanan dapat diubah dari admin settings, tetapi setiap order menyimpan snapshot harga saat transaksi dibuat.
 - WhatsApp bot memakai 1 nomor khusus CJ Laundry yang dipair ke bot di VM, tanpa Official WhatsApp API.
@@ -150,7 +150,7 @@ Customer laundry yang:
 - Laundry tab with `Aktif`, `Hari Ini`, and `History`
 - Notification status / outbox
 - Customer detail / history tab
-- Manual point addition
+- Manual point adjustment
 - Settings for service prices and business profile
 
 ### 7.2 Public surface
@@ -261,7 +261,7 @@ Rules:
    - line totals,
    - subtotal before redemption,
    - available redemption capacity from current point balance,
-   - redeemed Washer units selected by admin,
+   - redeemed reward units selected by admin,
    - discount amount,
    - net total,
    - earned stamps.
@@ -348,9 +348,11 @@ Admin can:
 - edit customer name,
 - edit customer phone number.
 
-Manual point addition rules:
+Manual point adjustment rules:
 
-- Positive addition only in v1.
+- Positive adjustment menambah poin; negative adjustment mengurangi poin.
+- Adjustment `0` tidak valid.
+- Negative adjustment tidak boleh membuat saldo poin customer menjadi negatif.
 - Must require admin note/reason.
 - Creates ledger entry type `admin_adjustment`.
 - Updates point balance immediately.
@@ -535,7 +537,7 @@ Content goals:
 - Shows customer identity and current point balance.
 - Shows active orders and completed orders.
 - Shows points ledger history.
-- Supports manual point addition with reason.
+- Supports positive and negative manual point adjustment with reason.
 - Supports audited edit of customer name and phone.
 
 ### 12.8 Settings
@@ -625,7 +627,7 @@ Core fields:
 - `net_amount`
 - `earned_stamps`
 - `redeemed_points`
-- `redeemed_free_washer_units`
+- `redeemed_reward_units`
 - `created_at`
 - `completed_at`
 - `voided_at`
@@ -680,7 +682,7 @@ Expected `entry_type` values:
 
 - `order_stamp_earned_pair`
 - `order_stamp_earned_package`
-- `order_redeem_free_washer`
+- `order_redeem_reward_discount`
 - `order_void_reversal_earned`
 - `order_void_reversal_redeem`
 - `admin_adjustment`
@@ -786,29 +788,31 @@ For an order:
 
 ### 14.6 Redeem calculation
 
-- Every 10 points can redeem 1 Washer unit discount.
-- `max_redeemable_free_washer_units = min(washer_qty, floor(current_points_balance / 10))`
-- Admin selects how many free Washer units to apply from `0` up to max redeemable.
-- `redeemed_points = redeemed_free_washer_units x 10`
-- `discount_amount = redeemed_free_washer_units x washer_price_snapshot`
+- Every 10 points can redeem 1 reward discount worth Rp 10.000.
+- Redeemable unit codes are `washer`, `wash_dry_fold_package`, and `wash_dry_package`.
+- `max_redeemable_units = min(washer_qty + wash_dry_fold_package_qty + wash_dry_package_qty, floor(current_points_balance / 10))`
+- Admin selects how many reward discounts to apply from `0` up to max redeemable.
+- `redeemed_points = redeemed_units x 10`
+- `discount_amount = redeemed_units x 10000`
 - `net_amount = subtotal_amount - discount_amount`
 
 Rule clarification:
 
-- Redeemed Washer units remain part of the service composition.
+- Redeemed units remain part of the service composition.
 - Redemption changes price only, not service presence.
 
 ### 14.7 Earned stamp calculation
 
 - Earned stamp from Washer/Dryer pairs:
   - `pair_stamps = min(washer_qty, dryer_qty)`
-- Earned stamp from package:
-  - `package_stamps = package_qty`
-- `earned_stamps = pair_stamps + package_stamps`
+- Earned stamp from packages:
+  - `package_stamps = wash_dry_fold_package_qty + wash_dry_package_qty`
+- `base_earned_stamps = pair_stamps + package_stamps`
+- `earned_stamps = max(0, base_earned_stamps - redeemed_units)`
 
 Rule clarification:
 
-- Free Washer units obtained by redemption still count toward pair matching if a Dryer unit exists, because the service still occurred.
+- Every redeemed unit removes 1 stamp opportunity from the order, whether redemption is applied against Washer or package capacity.
 - Detergent, softener, and ironing do not generate stamps.
 
 ### 14.8 Point balance update
@@ -1049,7 +1053,7 @@ Suggested summary fields:
 - total weight processed
 - total earned stamps
 - total redeemed points
-- number of free Washer units used
+- number of reward discounts used
 
 ### 18.3 Order history presentation
 
@@ -1219,10 +1223,10 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 
 ### 22.3 Point logic
 
-- Washer/Dryer pairs earn 1 stamp per matched pair dari Washer yang tidak digratiskan oleh redeem.
+- Washer/Dryer pairs earn 1 stamp per matched pair before generic redeem reduction.
 - `wash_dry_fold_package` and `wash_dry_package` each earn 1 stamp per package unit.
-- Redemption spends 10 points per free Washer unit.
-- Manual point addition changes balance but not leaderboard.
+- Redemption spends 10 points per reward discount and removes 1 stamp opportunity per redeem.
+- Manual point adjustment can add or subtract balance but does not affect leaderboard.
 - Void reverses points and recalculates the relevant leaderboard month even if that month is already archived.
 
 ### 22.4 Order completion
@@ -1278,9 +1282,9 @@ The implementation must explicitly cover at minimum:
 2. Re-register existing phone number.
 3. Multiple concurrent active orders for one customer.
 4. Order with multiple Washer/Dryer quantities and correct stamp pairing.
-5. Order redeeming multiple Washer units with sufficient points.
+5. Order redeeming multiple eligible reward units across Washer and package services with sufficient points.
 6. Order cancellation after receipt/WA creation and proper rollback of points plus leaderboard.
-7. Manual point adjustment visibility in customer portal without affecting leaderboard.
+7. Positive and negative manual point adjustment visibility in customer portal without affecting leaderboard.
 8. Price catalog change after historical orders already exist.
 9. Direct public order link access without login while still blocking unrelated customer data.
 10. Leaderboard current month vs archived previous months.

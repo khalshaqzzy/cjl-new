@@ -60,7 +60,7 @@ const calculateMonthlySummary = async (customerId: string) => {
     totalWeightProcessedLabel: formatWeightLabel(monthOrders.reduce((sum, order) => sum + order.weightKg, 0)),
     totalEarnedStamps: monthOrders.reduce((sum, order) => sum + order.earnedStamps, 0),
     totalRedeemedPoints: monthOrders.reduce((sum, order) => sum + order.redeemedPoints, 0),
-    freeWasherUnitsUsed: monthOrders.reduce((sum, order) => sum + order.redeemedPoints / 10, 0)
+    rewardDiscountsUsed: monthOrders.reduce((sum, order) => sum + order.redeemedPoints / 10, 0)
   }
 }
 
@@ -172,7 +172,7 @@ export const getPublicDashboard = async (customerId: string): Promise<PublicDash
     adminWhatsappContacts: settings.business.adminWhatsappContacts,
     stampBalance: {
       currentPoints: customer.currentPoints,
-      eligibleFreeWashers: Math.floor(customer.currentPoints / 10),
+      eligibleRewardDiscounts: Math.floor(customer.currentPoints / 10),
       lifetimeEarnedStamps: orders.reduce((sum, order) => sum + order.earnedStamps, 0)
     },
     summaryCards: [
@@ -249,7 +249,7 @@ export const listCustomerRedemptions = async (customerId: string) => {
   return entries.map((entry) => ({
     entryId: entry._id,
     redeemedPoints: Math.abs(entry.delta),
-    freeWasherUnits: Math.abs(entry.delta) / 10,
+    rewardDiscountUnits: Math.abs(entry.delta) / 10,
     createdAtLabel: formatDateTime(entry.createdAt),
     relatedOrderCode: entry.orderCode
   }))

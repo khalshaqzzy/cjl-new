@@ -174,7 +174,7 @@ export const mockOutboxNotifications: OutboxNotificationVM[] = [
 export const mockPointLedger: PointLedgerItemVM[] = [
   { entryId: "p1", label: "Order CJ-240318-001 - Stamp diperoleh", delta: 4, balanceAfter: 49, createdAtLabel: "Hari ini, 08:30", tone: "earned", relatedOrderCode: "CJ-240318-001" },
   { entryId: "p2", label: "Order CJ-240317-015 - Stamp diperoleh", delta: 4, balanceAfter: 45, createdAtLabel: "Kemarin, 14:20", tone: "earned", relatedOrderCode: "CJ-240317-015" },
-  { entryId: "p3", label: "Order CJ-240315-010 - Redeem 1 Washer Gratis", delta: -10, balanceAfter: 41, createdAtLabel: "3 hari lalu", tone: "redeemed", relatedOrderCode: "CJ-240315-010" },
+  { entryId: "p3", label: "Order CJ-240315-010 - Redeem diskon reward", delta: -10, balanceAfter: 41, createdAtLabel: "3 hari lalu", tone: "redeemed", relatedOrderCode: "CJ-240315-010" },
   { entryId: "p4", label: "Penyesuaian Admin - Bonus loyalitas", delta: 15, balanceAfter: 51, createdAtLabel: "1 minggu lalu", tone: "adjustment" },
   { entryId: "p5", label: "Order CJ-240310-005 - Stamp diperoleh", delta: 6, balanceAfter: 36, createdAtLabel: "1 minggu lalu", tone: "earned", relatedOrderCode: "CJ-240310-005" },
 ]

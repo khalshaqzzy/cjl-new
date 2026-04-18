@@ -13,7 +13,7 @@ Purpose: repo snapshot after admin-only service catalog expansion and redemption
   - `wash_dry_package` after `wash_dry_fold_package`
   - `laundry_plastic_large` and `laundry_hanger` after `laundry_plastic`
 - updated the backend order calculator so redeemed free Washer units no longer count toward earned stamps
-- kept the redemption cap logic unchanged: `maxRedeemableWashers = min(floor(points / 10), washerQty)`
+- kept the then-current redemption cap logic unchanged: redeem capacity followed available point balance and Washer quantity
 - updated public landing filtering so all 5 admin-only services stay hidden from the marketing service list
 - updated admin POS/settings copy to explain that redeemed free Washer units do not add stamps
 - expanded backend integration coverage for:

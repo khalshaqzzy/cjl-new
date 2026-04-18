@@ -107,7 +107,7 @@ export const publicApi = {
   getOrderReceipt: (orderId: string) => apiFetchBlob(`/v1/public/me/orders/${orderId}/receipt`),
   listPoints: () => apiFetch<PointLedgerItem[]>("/v1/public/me/points"),
   listRedemptions: () =>
-    apiFetch<Array<{ entryId: string; redeemedPoints: number; freeWasherUnits: number; createdAtLabel: string; relatedOrderCode?: string }>>("/v1/public/me/redemptions"),
+    apiFetch<Array<{ entryId: string; redeemedPoints: number; rewardDiscountUnits: number; createdAtLabel: string; relatedOrderCode?: string }>>("/v1/public/me/redemptions"),
   getMonthlySummary: () => apiFetch<MonthlySummary>("/v1/public/me/monthly-summary"),
   getLeaderboard: (month?: string) =>
     apiFetch<{ rows: LeaderboardRow[]; availableMonths: Array<{ key: string; label: string; isCurrent: boolean }> }>(

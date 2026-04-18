@@ -171,7 +171,7 @@ export const orderPreviewResponseSchema = z.object({
   earnedStamps: z.number().int(),
   redeemedPoints: z.number().int(),
   resultingPointBalance: z.number().int(),
-  maxRedeemableWashers: z.number().int(),
+  maxRedeemableUnits: z.number().int(),
   items: z.array(orderLinePreviewSchema),
 })
 
@@ -419,7 +419,7 @@ export const monthlySummarySchema = z.object({
   totalWeightProcessedLabel: z.string(),
   totalEarnedStamps: z.number().int(),
   totalRedeemedPoints: z.number().int(),
-  freeWasherUnitsUsed: z.number().int(),
+  rewardDiscountsUsed: z.number().int(),
 })
 
 export const publicDashboardResponseSchema = z.object({
@@ -432,7 +432,7 @@ export const publicDashboardResponseSchema = z.object({
   adminWhatsappContacts: z.array(adminWhatsappContactSchema),
   stampBalance: z.object({
     currentPoints: z.number().int(),
-    eligibleFreeWashers: z.number().int(),
+    eligibleRewardDiscounts: z.number().int(),
     lifetimeEarnedStamps: z.number().int(),
   }),
   summaryCards: z.array(
@@ -589,7 +589,9 @@ export const updateCustomerInputSchema = z.object({
 })
 
 export const manualPointAdjustmentInputSchema = z.object({
-  points: z.number().int().positive(),
+  points: z.number().int().refine((value) => value !== 0, {
+    message: "Jumlah poin tidak boleh 0",
+  }),
   reason: z.string().min(3),
 })
 

@@ -47,17 +47,17 @@ function useCountUp(target: number, duration = 1200, active = false) {
 
 function StampHeroCard({
   currentPoints,
-  eligibleFreeWashers,
+  eligibleRewardDiscounts,
   lifetimeEarnedStamps,
 }: {
   currentPoints: number
-  eligibleFreeWashers: number
+  eligibleRewardDiscounts: number
   lifetimeEarnedStamps: number
 }) {
   const cardRef = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
   const stampCount = useCountUp(currentPoints, 1000, visible)
-  const freeCount = useCountUp(eligibleFreeWashers, 800, visible)
+  const rewardCount = useCountUp(eligibleRewardDiscounts, 800, visible)
   const progressPct = (currentPoints % 10) * 10
 
   useEffect(() => {
@@ -91,10 +91,10 @@ function StampHeroCard({
           </div>
           <div className="text-right">
             <div className="flex items-center gap-2 mb-1 justify-end">
-              <span className="text-xs font-semibold uppercase tracking-wider text-white/70">Gratis Washer</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-white/70">Diskon Reward</span>
               <Gift className="w-3.5 h-3.5 text-white/60" />
             </div>
-            <p className="font-display text-5xl font-bold text-white leading-none">{visible ? freeCount : 0}x</p>
+            <p className="font-display text-5xl font-bold text-white leading-none">{visible ? rewardCount : 0}x</p>
           </div>
         </div>
 
@@ -146,7 +146,7 @@ export default function PortalDashboard() {
 
   const session = dashboard?.session ?? null
   const adminWhatsappContacts = dashboard?.adminWhatsappContacts ?? []
-  const stampBalance = dashboard?.stampBalance ?? { currentPoints: 0, eligibleFreeWashers: 0, lifetimeEarnedStamps: 0 }
+  const stampBalance = dashboard?.stampBalance ?? { currentPoints: 0, eligibleRewardDiscounts: 0, lifetimeEarnedStamps: 0 }
   const summaryCards = dashboard?.summaryCards ?? []
   const activeOrders = dashboard?.activeOrders ?? []
   const monthlySummary = dashboard?.monthlySummary
@@ -182,7 +182,7 @@ export default function PortalDashboard() {
             <div data-testid="portal-stamp-hero">
               <StampHeroCard
               currentPoints={stampBalance.currentPoints}
-              eligibleFreeWashers={stampBalance.eligibleFreeWashers}
+              eligibleRewardDiscounts={stampBalance.eligibleRewardDiscounts}
               lifetimeEarnedStamps={stampBalance.lifetimeEarnedStamps}
               />
             </div>
@@ -280,7 +280,7 @@ export default function PortalDashboard() {
 
           <div className="grid grid-cols-2 gap-3">
             {[
-              { href: '/portal/stamp', icon: Star, label: 'Stamp & Reward', sub: `${stampBalance.eligibleFreeWashers}x gratis tersedia`, primary: true },
+              { href: '/portal/stamp', icon: Star, label: 'Stamp & Reward', sub: `${stampBalance.eligibleRewardDiscounts}x diskon tersedia`, primary: true },
               { href: '/portal/leaderboard', icon: Trophy, label: 'Leaderboard', sub: 'Lihat peringkat Anda', primary: false },
             ].map((item, index) => (
               <Link
@@ -331,8 +331,8 @@ export default function PortalDashboard() {
                   <p className="mt-1 text-xl font-bold text-text-strong">{monthlySummary.totalRedeemedPoints}</p>
                 </div>
                 <div className="rounded-xl bg-bg-soft p-3">
-                  <p className="text-xs text-text-muted">Washer gratis dipakai</p>
-                  <p className="mt-1 text-xl font-bold text-text-strong">{monthlySummary.freeWasherUnitsUsed}</p>
+                  <p className="text-xs text-text-muted">Diskon reward dipakai</p>
+                  <p className="mt-1 text-xl font-bold text-text-strong">{monthlySummary.rewardDiscountsUsed}</p>
                 </div>
               </div>
             </div>

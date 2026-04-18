@@ -564,6 +564,10 @@ export const addManualPoints = async (customerId: string, points: number, reason
     throw new NotFoundError("Pelanggan tidak ditemukan")
   }
 
+  if (customer.currentPoints + points < 0) {
+    throw new ValidationError("Saldo poin tidak boleh menjadi negatif")
+  }
+
   await withMongoTransaction(async (session) => {
     const now = new Date().toISOString()
     const balanceAfter = customer.currentPoints + points
@@ -620,7 +624,7 @@ export const getOrderPreview = async (input: ConfirmOrderInput): Promise<OrderPr
     earnedStamps: preview.earnedStamps,
     redeemedPoints: preview.redeemedPoints,
     resultingPointBalance: preview.resultingPointBalance,
-    maxRedeemableWashers: preview.maxRedeemableWashers,
+    maxRedeemableUnits: preview.maxRedeemableUnits,
     items: preview.activeItems.map((item) => ({
       serviceCode: item.serviceCode,
       serviceLabel: item.serviceLabel,
@@ -720,7 +724,7 @@ export const confirmOrder = async (input: ConfirmOrderInput) =>
         customerId: customer._id,
         orderId,
         orderCode,
-        label: `Order ${orderCode} - Redeem Washer gratis`,
+        label: `Order ${orderCode} - Redeem diskon reward`,
         delta: -preview.redeemedPoints,
         balanceAfter: customer.currentPoints - preview.redeemedPoints,
         tone: "redeemed",

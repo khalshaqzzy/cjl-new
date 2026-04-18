@@ -51,7 +51,7 @@ export interface OrderHistoryCardVM {
 
 export interface StampBalanceVM {
   currentPoints: number
-  eligibleFreeWashers: number
+  eligibleRewardDiscounts: number
   lifetimeEarnedStamps: number
 }
 
@@ -67,7 +67,7 @@ export interface PointLedgerItemVM {
 export interface RedemptionHistoryItemVM {
   entryId: string
   redeemedPoints: number
-  freeWasherUnits: number
+  rewardDiscountUnits: number
   createdAtLabel: string
   relatedOrderCode?: string
 }
@@ -169,7 +169,7 @@ export const mockCustomerSession: CustomerSession = {
 
 export const mockStampBalance: StampBalanceVM = {
   currentPoints: 24,
-  eligibleFreeWashers: 2,
+  eligibleRewardDiscounts: 2,
   lifetimeEarnedStamps: 156,
 }
 
@@ -366,21 +366,21 @@ export const mockRedemptionHistory: RedemptionHistoryItemVM[] = [
   {
     entryId: 'redeem_001',
     redeemedPoints: 10,
-    freeWasherUnits: 1,
+    rewardDiscountUnits: 1,
     createdAtLabel: '15 Mar 2026, 16:30',
     relatedOrderCode: 'CJ-20260315-022',
   },
   {
     entryId: 'redeem_002',
     redeemedPoints: 20,
-    freeWasherUnits: 2,
+    rewardDiscountUnits: 2,
     createdAtLabel: '25 Feb 2026, 11:00',
     relatedOrderCode: 'CJ-20260225-007',
   },
   {
     entryId: 'redeem_003',
     redeemedPoints: 10,
-    freeWasherUnits: 1,
+    rewardDiscountUnits: 1,
     createdAtLabel: '10 Feb 2026, 09:15',
     relatedOrderCode: 'CJ-20260210-003',
   },

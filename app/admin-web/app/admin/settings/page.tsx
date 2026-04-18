@@ -492,7 +492,7 @@ export default function SettingsPage() {
                 { label: "Washer + Dryer berpasangan", desc: "1 stamp untuk setiap pasangan Washer dan Dryer yang cocok pada order", value: "1", color: "bg-rose-50 text-rose-600" },
                 { label: "Paket Cuci Kering Lipat", desc: "1 stamp untuk setiap unit paket", value: "1", color: "bg-rose-50 text-rose-600" },
                 { label: "Paket Cuci Kering", desc: "1 stamp untuk setiap unit paket cuci kering", value: "1", color: "bg-rose-50 text-rose-600" },
-                { label: "Redeem 1 Washer Gratis", desc: "Poin yang dibutuhkan untuk 1 Washer gratis. Washer gratis tidak menambah stamp.", value: "10", color: "bg-success/10 text-success" },
+                { label: "Redeem 1 Diskon Reward", desc: "Poin yang dibutuhkan untuk diskon Rp 10.000 pada Washer atau paket. Setiap redeem mengurangi 1 kesempatan poin.", value: "10", color: "bg-success/10 text-success" },
                 { label: "Penyesuaian Manual", desc: "Menambah saldo poin pelanggan tanpa memengaruhi leaderboard", value: "0", color: "bg-info/10 text-info" },
               ].map(({ label, desc, value, color }) => (
                 <div key={label} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">

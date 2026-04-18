@@ -19,9 +19,9 @@ export default function StampPage() {
   const [activeTab, setActiveTab] = useState<TabType>('earned')
   const [mounted, setMounted] = useState(false)
   const [session, setSession] = useState<{ customerId: string; name: string; phone: string } | null>(null)
-  const [dashboardPoints, setDashboardPoints] = useState({ currentPoints: 0, eligibleFreeWashers: 0, lifetimeEarnedStamps: 0 })
+  const [dashboardPoints, setDashboardPoints] = useState({ currentPoints: 0, eligibleRewardDiscounts: 0, lifetimeEarnedStamps: 0 })
   const [pointLedger, setPointLedger] = useState<Array<{ entryId: string; label: string; delta: number; createdAtLabel: string; relatedOrderCode?: string; tone: 'earned' | 'redeemed' | 'adjustment' | 'reversal' }>>([])
-  const [redemptions, setRedemptions] = useState<Array<{ entryId: string; redeemedPoints: number; freeWasherUnits: number; createdAtLabel: string; relatedOrderCode?: string }>>([])
+  const [redemptions, setRedemptions] = useState<Array<{ entryId: string; redeemedPoints: number; rewardDiscountUnits: number; createdAtLabel: string; relatedOrderCode?: string }>>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
 
@@ -87,7 +87,7 @@ export default function StampPage() {
                     <div className="text-right">
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full mb-2 bg-pink-cloud border border-pink-soft">
                         <Gift className="w-3.5 h-3.5 text-pink-hot" />
-                        <span className="text-xs font-semibold text-pink-hot">{dashboardPoints.eligibleFreeWashers}x Gratis</span>
+                        <span className="text-xs font-semibold text-pink-hot">{dashboardPoints.eligibleRewardDiscounts}x Diskon</span>
                       </div>
                       <div className="flex items-center gap-1.5 justify-end">
                         <span className="text-xs text-text-muted">{dashboardPoints.lifetimeEarnedStamps} lifetime</span>
@@ -203,7 +203,7 @@ export default function StampPage() {
                     <Gift className="w-4 h-4" style={{ color: '#5e6ad2' }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-text-strong">Gratis {entry.freeWasherUnits}x Washer</p>
+                    <p className="font-semibold text-sm text-text-strong">{entry.rewardDiscountUnits}x Diskon Reward</p>
                     <p className="text-xs text-text-muted">{entry.createdAtLabel}</p>
                     {entry.relatedOrderCode && <p className="text-xs text-text-muted/70 font-mono mt-0.5">{entry.relatedOrderCode}</p>}
                   </div>

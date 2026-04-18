@@ -538,6 +538,49 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   })
   assert.equal(result.payload.profile.currentPoints, 20)
 
+  result = await requestJson(`/v1/admin/customers/${customerId}/points`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({ points: -5, reason: "Koreksi integration" })
+  })
+  assert.equal(result.payload.profile.currentPoints, 15)
+  assert.equal(result.payload.pointLedger[0].delta, -5)
+
+  result = await requestJson(`/v1/admin/customers/${customerId}/points`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({ points: 0, reason: "Invalid zero" }),
+    expectedStatus: 422
+  })
+  assert.match(result.payload.message, /valid/i)
+
+  result = await requestJson(`/v1/admin/customers/${customerId}/points`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({ points: -100, reason: "Invalid overdraft" }),
+    expectedStatus: 422
+  })
+  assert.match(result.payload.message, /negatif/i)
+
+  result = await requestJson(`/v1/admin/customers/${customerId}/points`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify({ points: 5, reason: "Restore integration balance" })
+  })
+  assert.equal(result.payload.profile.currentPoints, 20)
+
   const firstOrderPayload = {
     customerId,
     weightKg: 3,
@@ -565,6 +608,7 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   assert.equal(result.payload.redeemedPoints, 10)
   assert.equal(result.payload.total, 30000)
   assert.equal(result.payload.resultingPointBalance, 11)
+  assert.equal(result.payload.maxRedeemableUnits, 2)
 
   const redeemSinglePairPayload = {
     ...firstOrderPayload,
@@ -607,8 +651,8 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
     },
     body: JSON.stringify(redeemAsymmetricPayload)
   })
-  assert.equal(result.payload.earnedStamps, 1)
-  assert.equal(result.payload.resultingPointBalance, 11)
+  assert.equal(result.payload.earnedStamps, 0)
+  assert.equal(result.payload.resultingPointBalance, 10)
 
   const redeemWasherOnlyPayload = {
     ...firstOrderPayload,
@@ -631,6 +675,83 @@ test("backend integration flow covers auth, transactions, idempotency, outbox st
   })
   assert.equal(result.payload.earnedStamps, 0)
   assert.equal(result.payload.resultingPointBalance, 10)
+
+  const redeemFoldPackagePayload = {
+    ...firstOrderPayload,
+    redeemCount: 5,
+    items: firstOrderPayload.items.map((item) =>
+      item.serviceCode === "wash_dry_fold_package"
+        ? { ...item, quantity: 1, selected: true }
+        : { ...item, quantity: 0, selected: false }
+    )
+  }
+
+  result = await requestJson("/v1/admin/orders/preview", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(redeemFoldPackagePayload)
+  })
+  assert.equal(result.payload.discount, 10000)
+  assert.equal(result.payload.total, 25000)
+  assert.equal(result.payload.earnedStamps, 0)
+  assert.equal(result.payload.redeemedPoints, 10)
+  assert.equal(result.payload.maxRedeemableUnits, 1)
+  assert.equal(result.payload.resultingPointBalance, 10)
+
+  const redeemWashDryPackagePayload = {
+    ...firstOrderPayload,
+    redeemCount: 5,
+    items: firstOrderPayload.items.map((item) =>
+      item.serviceCode === "wash_dry_package"
+        ? { ...item, quantity: 2, selected: true }
+        : { ...item, quantity: 0, selected: false }
+    )
+  }
+
+  result = await requestJson("/v1/admin/orders/preview", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(redeemWashDryPackagePayload)
+  })
+  assert.equal(result.payload.discount, 20000)
+  assert.equal(result.payload.total, 30000)
+  assert.equal(result.payload.earnedStamps, 0)
+  assert.equal(result.payload.redeemedPoints, 20)
+  assert.equal(result.payload.maxRedeemableUnits, 2)
+  assert.equal(result.payload.resultingPointBalance, 0)
+
+  const mixedRedeemPayload = {
+    ...firstOrderPayload,
+    redeemCount: 5,
+    items: firstOrderPayload.items.map((item) => {
+      if (["washer", "dryer", "wash_dry_fold_package", "wash_dry_package"].includes(item.serviceCode)) {
+        return { ...item, quantity: 1, selected: true }
+      }
+
+      return { ...item, quantity: 0, selected: false }
+    })
+  }
+
+  result = await requestJson("/v1/admin/orders/preview", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie!
+    },
+    body: JSON.stringify(mixedRedeemPayload)
+  })
+  assert.equal(result.payload.discount, 20000)
+  assert.equal(result.payload.total, 60000)
+  assert.equal(result.payload.earnedStamps, 1)
+  assert.equal(result.payload.redeemedPoints, 20)
+  assert.equal(result.payload.maxRedeemableUnits, 2)
+  assert.equal(result.payload.resultingPointBalance, 1)
 
   const confirmKey = `confirm-${uniqueSuffix}`
   const confirmFirst = await requestJson("/v1/admin/orders", {
