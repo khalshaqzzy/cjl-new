@@ -6,7 +6,8 @@
     "packages/*"
   ],
   "overrides": {
-    "lodash": "4.18.0"
+    "lodash": "4.18.0",
+    "postcss": "8.5.10"
   },
   "scripts": {
     "build": "npm run build --workspace @cjl/contracts && npm run build --workspace @cjl/api && npm run build --workspace @cjl/admin-web && npm run build --workspace @cjl/public-web",
