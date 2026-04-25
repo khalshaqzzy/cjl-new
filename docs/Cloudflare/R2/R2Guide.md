@@ -228,8 +228,11 @@ Recommended checks:
 - no leading/trailing spaces
 - bucket name exactly matches Cloudflare
 - account ID is not the endpoint URL
+- account ID is only the 32-character hex value, for example `ec02f3445a2be8d8a9d43824f8a59a1f`
+- bucket is only the bucket name, for example `cjlaundry-production-backups`, not `https://...r2.cloudflarestorage.com/cjlaundry-production-backups`
 - access key and secret access key are from an R2 S3 API token
 - secret access key is not a Cloudflare API token string or global API key
+- when using a Cloudflare token `id` and raw token `value`, the secret access key is the 64-character SHA-256 hex hash of the raw token value
 
 ### 4.3 What The Workflow Does With These Secrets
 
@@ -429,6 +432,29 @@ Likely causes:
 - token lacks Object Read & Write
 - token is scoped to a different bucket
 - account ID is wrong
+
+### R2 upload fails with `HeadObject ... 400 BadRequest`
+
+This usually means the R2 S3 endpoint or credentials are shaped incorrectly, even if MongoDB backup creation succeeded.
+
+Check the GitHub production secrets:
+
+```text
+PRODUCTION_R2_ACCOUNT_ID=ec02f3445a2be8d8a9d43824f8a59a1f
+PRODUCTION_R2_BUCKET=cjlaundry-production-backups
+PRODUCTION_R2_ACCESS_KEY_ID=<Cloudflare token id / R2 S3 access key id>
+PRODUCTION_R2_SECRET_ACCESS_KEY=<64-character sha256 hex of token value / R2 S3 secret access key>
+```
+
+Do not use these values:
+
+```text
+PRODUCTION_R2_ACCOUNT_ID=https://ec02f3445a2be8d8a9d43824f8a59a1f.r2.cloudflarestorage.com
+PRODUCTION_R2_BUCKET=https://ec02f3445a2be8d8a9d43824f8a59a1f.r2.cloudflarestorage.com/cjlaundry-production-backups
+PRODUCTION_R2_SECRET_ACCESS_KEY=<raw Cloudflare bearer token value>
+```
+
+The backup script validates these common mistakes before `mongodump` starts and performs an R2 access preflight before creating the local archive.
 
 ### Timer does not run
 

@@ -80,11 +80,58 @@ rclone() {
     env_args+=("${item}")
   done < <(rclone_env_args)
 
+  local volume_args=()
+  if [[ -n "${TMP_DIR:-}" ]]; then
+    volume_args=(-v "${TMP_DIR}:/data")
+  fi
+
   docker run --rm \
     "${env_args[@]}" \
-    -v "${TMP_DIR}:/data" \
+    "${volume_args[@]}" \
     "${RCLONE_IMAGE}" \
     "$@"
+}
+
+validate_r2_config() {
+  if [[ "${R2_ACCOUNT_ID}" == http://* || "${R2_ACCOUNT_ID}" == https://* || "${R2_ACCOUNT_ID}" == */* ]]; then
+    echo "R2_ACCOUNT_ID must be only the 32-character Cloudflare account ID, not the R2 endpoint URL." >&2
+    exit 1
+  fi
+
+  if [[ ! "${R2_ACCOUNT_ID}" =~ ^[A-Fa-f0-9]{32}$ ]]; then
+    echo "R2_ACCOUNT_ID must be the 32-character hexadecimal Cloudflare account ID." >&2
+    exit 1
+  fi
+
+  if [[ "${R2_BUCKET}" == http://* || "${R2_BUCKET}" == https://* || "${R2_BUCKET}" == */* ]]; then
+    echo "R2_BUCKET must be only the bucket name, not an R2 URL or path." >&2
+    exit 1
+  fi
+
+  if [[ ! "${R2_BUCKET}" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]]; then
+    echo "R2_BUCKET must be a valid bucket name, for example cjlaundry-production-backups." >&2
+    exit 1
+  fi
+
+  if [[ "${R2_SECRET_ACCESS_KEY}" == http://* || "${R2_SECRET_ACCESS_KEY}" == https://* ]]; then
+    echo "R2_SECRET_ACCESS_KEY must be the R2 S3 secret access key, not a URL." >&2
+    exit 1
+  fi
+
+  if [[ ! "${R2_SECRET_ACCESS_KEY}" =~ ^[A-Fa-f0-9]{64}$ ]]; then
+    echo "R2_SECRET_ACCESS_KEY must be a 64-character SHA-256 hex value when using a Cloudflare R2 API token." >&2
+    echo "Use the token id as R2_ACCESS_KEY_ID and sha256(token value) as R2_SECRET_ACCESS_KEY." >&2
+    exit 1
+  fi
+}
+
+r2_preflight() {
+  echo "Checking production R2 backup target."
+  if ! rclone lsd "r2:${R2_BUCKET}" >/dev/null; then
+    echo "Unable to access R2 bucket '${R2_BUCKET}' through endpoint https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com." >&2
+    echo "Check that R2_ACCOUNT_ID is not the full endpoint URL, R2_BUCKET is only the bucket name, and the access key/secret are R2 S3 credentials." >&2
+    exit 1
+  fi
 }
 
 current_release_sha() {
@@ -189,6 +236,7 @@ prepare_runtime() {
   require_var R2_BUCKET
   require_var R2_ACCESS_KEY_ID
   require_var R2_SECRET_ACCESS_KEY
+  validate_r2_config
 
   R2_PREFIX="${R2_PREFIX:-${BACKUP_PREFIX_DEFAULT}}"
   RELEASE_DIR="${BASE_DIR}/current"
@@ -306,6 +354,7 @@ run_backup() {
 
   prepare_runtime
   ensure_production
+  r2_preflight
 
   CURRENT_SHA="$(current_release_sha)"
   if [[ -n "${EXPECTED_CURRENT_SHA}" && "${CURRENT_SHA}" != "${EXPECTED_CURRENT_SHA}" ]]; then
