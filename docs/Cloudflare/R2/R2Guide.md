@@ -344,6 +344,7 @@ Expected behavior:
 - uploads final archive to `production/mongodb/success/...`
 - removes the in-progress object best-effort
 - runs retention because the reason is `daily`
+- logs Docker Compose service status, MongoDB container health, host/container MongoDB data directory usage, logical MongoDB database stats, local archive size/hash, and final R2 object size
 
 Check logs:
 

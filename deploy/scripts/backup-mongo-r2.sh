@@ -53,6 +53,20 @@ json_escape() {
   printf '%s' "${value}"
 }
 
+log_section() {
+  echo
+  echo "== $1 =="
+}
+
+human_bytes() {
+  local bytes="$1"
+  if command -v numfmt >/dev/null 2>&1; then
+    numfmt --to=iec-i --suffix=B "${bytes}" 2>/dev/null || printf '%s bytes' "${bytes}"
+  else
+    printf '%s bytes' "${bytes}"
+  fi
+}
+
 compose() {
   docker compose \
     --project-name "cjl-${APP_ENV}" \
@@ -143,6 +157,7 @@ r2_preflight() {
     echo "Check that R2_ACCOUNT_ID is not the full endpoint URL, R2_BUCKET is only the bucket name, and the access key/secret are R2 S3 credentials." >&2
     exit 1
   fi
+  echo "R2 preflight succeeded for bucket=${R2_BUCKET} prefix=${R2_PREFIX}."
 }
 
 current_release_sha() {
@@ -259,6 +274,100 @@ prepare_runtime() {
 
   COMPOSE_FILE="${RELEASE_DIR}/deploy/api/docker-compose.remote.yml"
   require_file "${COMPOSE_FILE}" "Compose file"
+}
+
+log_compose_status() {
+  log_section "Docker Compose service status"
+  compose ps || true
+
+  log_section "Docker container status for project cjl-${APP_ENV}"
+  docker ps \
+    --filter "label=com.docker.compose.project=cjl-${APP_ENV}" \
+    --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' || true
+}
+
+log_mongo_container_status() {
+  local mongo_container="$1"
+
+  log_section "MongoDB container status"
+  docker inspect \
+    --format 'name={{.Name}} status={{.State.Status}} running={{.State.Running}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}} startedAt={{.State.StartedAt}} restartCount={{.RestartCount}}' \
+    "${mongo_container}" || true
+
+  echo "Recent MongoDB container logs:"
+  docker logs --tail 20 "${mongo_container}" 2>&1 || true
+}
+
+log_mongo_storage_usage() {
+  local mongo_container="$1"
+  local mongo_data_dir="${BASE_DIR}/shared/mongo-data"
+
+  log_section "MongoDB storage usage"
+  if [[ -d "${mongo_data_dir}" ]]; then
+    echo "Host MongoDB data directory: ${mongo_data_dir}"
+    du -sh "${mongo_data_dir}" 2>/dev/null || true
+    df -h "${mongo_data_dir}" 2>/dev/null || true
+  else
+    echo "Host MongoDB data directory not found: ${mongo_data_dir}"
+  fi
+
+  echo "MongoDB /data/db usage inside container:"
+  docker exec "${mongo_container}" sh -lc 'du -sh /data/db 2>/dev/null || true; df -h /data/db 2>/dev/null || true' || true
+}
+
+log_mongo_database_stats() {
+  log_section "MongoDB logical database stats"
+  compose exec -T mongo mongosh \
+    --quiet \
+    "mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@127.0.0.1:27017/admin?authSource=admin&replicaSet=rs0" \
+    --eval '
+const names = db.adminCommand({ listDatabases: 1 }).databases.map((database) => database.name).sort();
+for (const name of names) {
+  const stats = db.getSiblingDB(name).stats(1024 * 1024);
+  print(`${name}: collections=${stats.collections} objects=${stats.objects} dataSizeMiB=${stats.dataSize.toFixed(2)} storageSizeMiB=${stats.storageSize.toFixed(2)} indexSizeMiB=${stats.indexSize.toFixed(2)}`);
+}
+' || true
+}
+
+log_backup_inputs() {
+  log_section "Backup execution context"
+  echo "environment=${APP_ENV}"
+  echo "reason=${REASON}"
+  echo "currentReleaseSha=${CURRENT_SHA:-none}"
+  echo "incomingReleaseSha=${INCOMING_SHA:-none}"
+  echo "expectedCurrentReleaseSha=${EXPECTED_CURRENT_SHA:-none}"
+  echo "releaseDir=${RELEASE_DIR}"
+  echo "composeFile=${COMPOSE_FILE}"
+  echo "r2Bucket=${R2_BUCKET}"
+  echo "r2Prefix=${R2_PREFIX}"
+}
+
+log_local_archive_metadata() {
+  local archive_path="$1"
+  local manifest_path="$2"
+
+  log_section "Local backup artifact"
+  echo "archiveName=${ARCHIVE_NAME}"
+  echo "archivePath=${archive_path}"
+  echo "archiveSizeBytes=${ARCHIVE_SIZE}"
+  echo "archiveSizeHuman=$(human_bytes "${ARCHIVE_SIZE}")"
+  echo "archiveSha256=${ARCHIVE_SHA256}"
+  echo "manifestPath=${manifest_path}"
+  wc -c "${manifest_path}" | awk '{print "manifestSizeBytes="$1}'
+  du -h "${archive_path}" "${manifest_path}" 2>/dev/null || true
+}
+
+log_r2_object_metadata() {
+  local archive_key="$1"
+  local manifest_key="$2"
+
+  log_section "R2 backup artifact"
+  echo "archiveKey=${archive_key}"
+  rclone lsl "r2:${R2_BUCKET}/${archive_key}" || true
+  rclone size --json "r2:${R2_BUCKET}/${archive_key}" || true
+  echo "manifestKey=${manifest_key}"
+  rclone lsl "r2:${R2_BUCKET}/${manifest_key}" || true
+  rclone size --json "r2:${R2_BUCKET}/${manifest_key}" || true
 }
 
 create_manifest() {
@@ -398,7 +507,6 @@ run_backup() {
   local archive_key="${R2_PREFIX}/success/${year}/${month}/${ARCHIVE_NAME}"
   local manifest_key="${R2_PREFIX}/manifests/${year}/${month}/${manifest_name}"
 
-  echo "Creating production MongoDB backup archive for reason=${REASON}."
   local mongo_container
   mongo_container="$(compose ps -q mongo 2>/dev/null || true)"
   if [[ -z "${mongo_container}" ]]; then
@@ -406,6 +514,14 @@ run_backup() {
     exit 1
   fi
 
+  log_backup_inputs
+  log_compose_status
+  log_mongo_container_status "${mongo_container}"
+  log_mongo_storage_usage "${mongo_container}"
+  log_mongo_database_stats
+
+  log_section "Creating production MongoDB backup archive"
+  echo "reason=${REASON}"
   compose exec -T mongo mongodump \
     --uri="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@127.0.0.1:27017/?authSource=admin&replicaSet=rs0" \
     --archive \
@@ -421,14 +537,16 @@ run_backup() {
 
   ARCHIVE_SHA256="$(sha256sum "${archive_path}" | awk '{print $1}')"
   create_manifest "${manifest_path}" "${archive_key}" "${manifest_key}"
+  log_local_archive_metadata "${archive_path}" "${manifest_path}"
 
-  echo "Uploading production MongoDB backup to R2."
+  log_section "Uploading production MongoDB backup to R2"
   rclone copyto "/data/${ARCHIVE_NAME}" "r2:${R2_BUCKET}/${in_progress_key}"
   rclone lsf --files-only "r2:${R2_BUCKET}/${R2_PREFIX}/in-progress/${year}/${month}" \
     | grep -Fx "${ARCHIVE_NAME}" >/dev/null
   rclone copyto "/data/${manifest_name}" "r2:${R2_BUCKET}/${manifest_key}"
   rclone copyto "/data/${ARCHIVE_NAME}" "r2:${R2_BUCKET}/${archive_key}"
   rclone deletefile "r2:${R2_BUCKET}/${in_progress_key}" || true
+  log_r2_object_metadata "${archive_key}" "${manifest_key}"
 
   run_retention_after_daily
 

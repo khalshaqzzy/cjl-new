@@ -1,7 +1,7 @@
 # CJ Laundry POS Web App v1 PRD
 
 Document status: Draft for implementation  
-Last updated: 2026-03-28  
+Last updated: 2026-04-26
 Primary timezone: Asia/Jakarta  
 Primary currency: IDR  
 Scope type: MVP that is implementation-ready
@@ -71,6 +71,8 @@ Seluruh aplikasi v1 di-deploy sebagai satu monolith pada VM per environment. Run
 - Arsitektur runtime v1 adalah monolith yang berjalan di VM per environment, bukan frontend terpisah di platform hosting terpisah.
 - Database utama v1 adalah MongoDB yang berjalan di Docker Compose dan tidak diekspos langsung ke public internet.
 - Push ke branch `staging` harus memicu auto-deploy ke VM staging, dan push ke branch `main` harus memicu auto-deploy ke VM production.
+- Production MongoDB harus memiliki backup otomatis ke Cloudflare R2 sebelum deploy, harian, dan setelah deploy berhasil; staging tidak menjalankan backup R2 otomatis.
+- Deploy tidak boleh memiliki jalur reset yang dapat menghapus volume/data MongoDB saat runtime environment berubah.
 
 ## 4. Key Constraints and Product Risks
 
@@ -1161,7 +1163,21 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 
 ### 20.5 Backup and recovery
 
-- MongoDB data volume should be backed up according to operational policy, with separate backup sets for staging and production.
+- Production MongoDB must be backed up to a private Cloudflare R2 bucket using unencrypted `mongodump --archive --gzip --oplog` artifacts.
+- Production backup scope is MongoDB data only. It must include the full MongoDB instance dump required for live replica-set consistency, including app collections, MongoDB auth metadata, GridFS collections, and the captured oplog slice needed for `mongorestore --oplogReplay`.
+- A MongoDB backup artifact is sufficient for database-state recovery, but not full application restoration by itself. Full application recovery still requires reproducible app code/images, runtime secrets, VM/systemd/Docker setup, DNS/TLS, provider-side WhatsApp state, and R2/GitHub configuration.
+- Production backups must run:
+  - daily at `02:00 Asia/Jakarta`,
+  - before every production deploy image build after CI succeeds and after release/runtime env upload,
+  - 3 hours after a successful production deploy, only if that deployed SHA is still current.
+- The pre-deploy production backup is deployment-blocking. If it fails, production deploy must stop before replacing the running app image/release.
+- Backup tooling must run through containers on the VM, not require host-level MongoDB or rclone installs.
+- Backup uploads must write archive and JSON manifest objects under the production MongoDB R2 prefix.
+- Backup jobs must use locking so daily, pre-deploy, and delayed post-deploy backups cannot overlap.
+- Temporary compressed backup archives on the VM must be deleted after the backup script exits, including successful upload paths.
+- Daily backup retention must run only after a successful daily backup. It must keep every successful backup newer than 72 hours, the newest daily backup, and the two most recent commit-boundary daily backups. It must never prune from failed daily backups and must never delete in-progress objects.
+- Backup restore must be drilled into an isolated MongoDB instance with `mongorestore --archive --gzip --oplogReplay` before relying on backups operationally.
+- Staging must not require R2 backup secrets or run automatic R2 backup hooks unless a future product/architecture decision explicitly changes production-only backup scope.
 - WhatsApp bot session data and generated receipt references must survive container restarts.
 
 ## 21. Deployment Topology
@@ -1198,6 +1214,9 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - Push ke branch `main` memicu pipeline build, artifact update, dan deploy otomatis ke VM production.
 - Staging dan production harus memakai secret set, MongoDB volume, dan endpoint/domain yang terpisah.
 - Deployment harus menjalankan smoke check minimum untuk proses app, koneksi MongoDB, dan health endpoint setelah release.
+- Production deployment must validate R2 backup secrets, upload production backup configuration to the VM, run the blocking pre-deploy MongoDB backup before replacing the running release, and register the delayed post-deploy backup only after smoke/readiness checks pass.
+- Production deployment must automatically ensure backup systemd timers are installed using existing bootstrap-created VM permissions and directories; it must not require rerunning `bootstrap-vm.sh`.
+- Deployment scripts must never call `docker compose down --volumes` or delete MongoDB data volumes as a result of runtime environment changes, secret rotation, or reset-token/fingerprint changes.
 
 ## 22. Acceptance Criteria
 
@@ -1262,17 +1281,31 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - Direct status token cannot be guessed or expanded into broader data access.
 - Cross-month correction and leaderboard rebuilds leave auditable snapshot version trail.
 
-### 22.9 Deployment workflow
-
-- Push to `staging` results in an automated deployment to the staging VM without manual image promotion steps outside the pipeline.
-- Push to `main` results in an automated deployment to the production VM.
-- A failed deployment must not overwrite the previous healthy MongoDB volume or leave the app without a recoverable prior release path.
-
 ### 22.8 Reporting
 
 - Daily, weekly, and monthly reports exclude voided orders.
 - Reports use Asia/Jakarta boundaries.
 - Dashboard shows at least the required metrics listed in this PRD.
+
+### 22.9 Deployment workflow
+
+- Push to `staging` results in an automated deployment to the staging VM without manual image promotion steps outside the pipeline.
+- Push to `main` results in an automated deployment to the production VM.
+- A failed deployment must not overwrite the previous healthy MongoDB volume or leave the app without a recoverable prior release path.
+- Production deploy runs a blocking pre-deploy MongoDB R2 backup before image build/release replacement.
+- Production deploy automatically installs or verifies backup systemd timers without manual VM SSH.
+- Runtime environment changes cannot trigger MongoDB reset or volume deletion.
+- Staging deploy has no R2 backup secret requirement and no automatic R2 backup hook.
+- Successful production deploy records a delayed backup for 3 hours after deploy, and the delayed job skips itself if a newer SHA has become current.
+
+### 22.10 Backup and restore
+
+- A successful production backup creates a non-empty `.archive.gz` object and matching JSON manifest in the private R2 bucket under `production/mongodb`.
+- Production backup object naming records timestamp, environment, reason, current release SHA, and incoming release SHA when applicable.
+- Manual restore drill into an isolated MongoDB instance succeeds with `mongorestore --archive --gzip --oplogReplay`.
+- Daily retention preserves all backups younger than 72 hours, the newest daily backup, and the two most recent commit-boundary daily backups.
+- Failed or in-progress backups do not trigger retention and are not treated as successful recovery points.
+- Backup failure before production deploy blocks the deploy without deleting or replacing MongoDB data.
 
 ## 23. Test Scenarios
 
@@ -1297,6 +1330,11 @@ The implementation must explicitly cover at minimum:
 17. Welcome WA one-time auto-login link succeeds once and rejects token reuse.
 18. Additional QR/login links generated from customer detail do not revoke older unused one-time links.
 19. Landing page and portal contact CTA follow the primary configured admin WhatsApp contact with fallback `087780563875`.
+20. Production pre-deploy backup blocks deploy when R2 is unreachable or credentials are invalid, before replacing the running release.
+21. Production daily backup retention keeps the newest daily, the two most recent commit-boundary dailies, and all successful backups younger than 72 hours.
+22. Delayed post-deploy backup runs only when the scheduled release SHA is still current.
+23. Deployment/runtime env changes do not reset MongoDB or delete MongoDB volumes under any circumstances.
+24. Isolated MongoDB restore drill from an R2 `.archive.gz` backup succeeds with `mongorestore --oplogReplay`.
 
 ## 24. Suggested Implementation Notes
 
@@ -1320,7 +1358,7 @@ The following should be detailed in separate design/technical docs, not re-decid
 - Admin UI interaction design and screen layouts.
 - Public landing page visual direction and section copy.
 - Exact API route definitions and payload schemas.
-- MongoDB collection naming, indexing strategy, and backup rotation policy.
+- MongoDB collection naming and indexing strategy.
 - Receipt rendering technology.
 - Specific WhatsApp library/runtime selection.
 

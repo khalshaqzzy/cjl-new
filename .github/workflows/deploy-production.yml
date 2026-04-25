@@ -171,8 +171,13 @@ jobs:
           cat backup.env | ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
             "umask 077 && cat > '$REMOTE_BACKUP_ENV'"
 
-      - name: Run pre-deploy MongoDB backup
+      - name: Run pre-deploy MongoDB backup with diagnostics
         run: |
+          echo "::group::Production MongoDB pre-deploy backup"
+          trap 'echo "::endgroup::"' EXIT
+          echo "releaseSha=$RELEASE_SHA"
+          echo "previousRelease=${PREVIOUS_RELEASE:-none}"
+          echo "remoteBaseDir=$REMOTE_BASE_DIR"
           ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
             "bash '$REMOTE_BASE_DIR/releases/$RELEASE_SHA/deploy/scripts/backup-mongo-r2.sh' \
              backup '$APP_ENV' '$REMOTE_BASE_DIR' '$REMOTE_RUNTIME_ENV' '$REMOTE_BACKUP_ENV' pre-deploy '$RELEASE_SHA'"
