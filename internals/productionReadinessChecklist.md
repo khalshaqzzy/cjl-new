@@ -41,6 +41,13 @@ Purpose: final gate checklist before the first production push after Cloud-only 
   - `WHATSAPP_APP_SECRET`
   - `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
   - `WHATSAPP_WEBHOOK_PATH`
+- production includes R2 backup secrets:
+  - `PRODUCTION_R2_ACCOUNT_ID`
+  - `PRODUCTION_R2_BUCKET`
+  - `PRODUCTION_R2_ACCESS_KEY_ID`
+  - `PRODUCTION_R2_SECRET_ACCESS_KEY`
+- production deploy renders `/opt/cjl/production/shared/backup.env` with mode `0600`
+- deploy workflows no longer require or reference `*_DEPLOY_RESET_TOKEN`
 
 ## API And Observability
 
@@ -60,6 +67,11 @@ Purpose: final gate checklist before the first production push after Cloud-only 
 ## Security And Data Protection
 
 - admin/public/API domains return security headers
+- production MongoDB R2 bucket is private and has no public `r2.dev` access
+- production MongoDB backups are unencrypted client-side by decision and stored only behind private R2 credentials
+- production backup automation uses a full-instance `mongodump --archive --gzip --oplog`
+- production backup retention keeps all backups newer than 72 hours, the newest daily, and the two most recent commit-boundary dailies
+- `deploy/scripts/remote-deploy.sh` has no path that deletes `shared/mongo-data`
 - staging runs CSP in report-only mode
 - session-authenticated write routes enforce trusted origin checks
 - Mongo-backed rate limiting works for admin login, customer login, magic-link redeem, and admin WhatsApp send/read actions
@@ -98,6 +110,11 @@ Purpose: final gate checklist before the first production push after Cloud-only 
 ## Production Go/No-Go
 
 - production release candidate commit already passed staging validation
+- pre-deploy production MongoDB backup succeeds before VM image build
+- production delayed backup state is recorded only after production smoke/readiness checks pass
+- production workflow `Ensure MongoDB backup timers` step succeeds
+- production backup timers are installed automatically and visible in `systemctl list-timers 'cjl-mongo-r2-*'`
+- isolated restore drill from an R2 backup has succeeded with `mongorestore --gzip --oplogReplay`
 - staging proved the baseline startup backfill does not cause unacceptable startup degradation on realistic data volume
 - staging proved subsequent restarts run the incremental path rather than rescanning full WhatsApp history
 - previous healthy release SHA is known before deploy

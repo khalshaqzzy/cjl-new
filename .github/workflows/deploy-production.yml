@@ -24,7 +24,7 @@ jobs:
        github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       APP_ENV: production
       DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.event.workflow_run.head_sha }}
@@ -36,6 +36,7 @@ jobs:
       ADMIN_DOMAIN: admin.cjlaundry.com
       PUBLIC_DOMAIN: cjlaundry.com
       API_DOMAIN: api.cjlaundry.com
+      REMOTE_BACKUP_ENV: /opt/cjl/production/shared/backup.env
 
     steps:
       - name: Checkout
@@ -45,19 +46,6 @@ jobs:
 
       - name: Resolve release SHA
         run: echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
-      - name: Resolve deployment fingerprints
-        shell: bash
-        env:
-          DEPLOY_RESET_TOKEN_SECRET: ${{ secrets.PRODUCTION_DEPLOY_RESET_TOKEN }}
-        run: |
-          if [[ -z "$DEPLOY_RESET_TOKEN_SECRET" ]]; then
-            echo "Missing required secret: PRODUCTION_DEPLOY_RESET_TOKEN" >&2
-            exit 1
-          fi
-
-          DEPLOY_RESET_FINGERPRINT="$(printf '%s' "$DEPLOY_RESET_TOKEN_SECRET" | sha256sum | awk '{print $1}')"
-          echo "DEPLOY_RESET_FINGERPRINT=${DEPLOY_RESET_FINGERPRINT}" >> "$GITHUB_ENV"
 
       - name: Validate Cloud WhatsApp secrets
         shell: bash
@@ -76,6 +64,26 @@ jobs:
             WHATSAPP_ACCESS_TOKEN \
             WHATSAPP_APP_SECRET \
             WHATSAPP_WEBHOOK_VERIFY_TOKEN; do
+            value="${!name}"
+            if [[ -z "${value// }" ]]; then
+              echo "Missing required secret: PRODUCTION_${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Validate R2 backup secrets
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.PRODUCTION_R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.PRODUCTION_R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.PRODUCTION_R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.PRODUCTION_R2_SECRET_ACCESS_KEY }}
+        run: |
+          for name in \
+            R2_ACCOUNT_ID \
+            R2_BUCKET \
+            R2_ACCESS_KEY_ID \
+            R2_SECRET_ACCESS_KEY; do
             value="${!name}"
             if [[ -z "${value// }" ]]; then
               echo "Missing required secret: PRODUCTION_${name}" >&2
@@ -148,11 +156,38 @@ jobs:
           cat runtime.env | ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
             "cat > '$REMOTE_RUNTIME_ENV'"
 
+      - name: Render backup env
+        run: |
+          cat > backup.env <<EOF
+          R2_ACCOUNT_ID=${{ secrets.PRODUCTION_R2_ACCOUNT_ID }}
+          R2_BUCKET=${{ secrets.PRODUCTION_R2_BUCKET }}
+          R2_ACCESS_KEY_ID=${{ secrets.PRODUCTION_R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY=${{ secrets.PRODUCTION_R2_SECRET_ACCESS_KEY }}
+          R2_PREFIX=production/mongodb
+          EOF
+
+      - name: Upload backup env
+        run: |
+          cat backup.env | ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "umask 077 && cat > '$REMOTE_BACKUP_ENV'"
+
+      - name: Run pre-deploy MongoDB backup
+        run: |
+          ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "bash '$REMOTE_BASE_DIR/releases/$RELEASE_SHA/deploy/scripts/backup-mongo-r2.sh' \
+             backup '$APP_ENV' '$REMOTE_BASE_DIR' '$REMOTE_RUNTIME_ENV' '$REMOTE_BACKUP_ENV' pre-deploy '$RELEASE_SHA'"
+
       - name: Deploy on VM
         run: |
           ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
             "bash '$REMOTE_BASE_DIR/releases/$RELEASE_SHA/deploy/scripts/remote-deploy.sh' \
-             '$APP_ENV' '$RELEASE_SHA' '$REMOTE_BASE_DIR' '$REMOTE_RUNTIME_ENV' '$DEPLOY_RESET_FINGERPRINT'"
+             '$APP_ENV' '$RELEASE_SHA' '$REMOTE_BASE_DIR' '$REMOTE_RUNTIME_ENV'"
+
+      - name: Ensure MongoDB backup timers
+        run: |
+          ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "bash '$REMOTE_BASE_DIR/releases/$RELEASE_SHA/deploy/scripts/ensure-backup-systemd.sh' \
+             '$APP_ENV' '$REMOTE_USER' '$REMOTE_BASE_DIR/releases/$RELEASE_SHA/deploy/scripts/install-backup-systemd.sh'"
 
       - name: Smoke-check production
         run: |
@@ -165,6 +200,12 @@ jobs:
       - name: Validate Cloud readiness payload
         run: |
           bash deploy/scripts/assert-ready-cloud.sh "https://$API_DOMAIN/ready" "cloud_api"
+
+      - name: Schedule delayed MongoDB backup
+        run: |
+          ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "bash '$REMOTE_BASE_DIR/releases/$RELEASE_SHA/deploy/scripts/backup-mongo-r2.sh' \
+             record-delayed '$REMOTE_BASE_DIR' '$RELEASE_SHA'"
 
       - name: Rollback production on failed smoke-check
         if: failure() && env.PREVIOUS_RELEASE != ''

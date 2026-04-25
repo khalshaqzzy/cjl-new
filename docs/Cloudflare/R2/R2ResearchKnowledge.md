@@ -1,8 +1,10 @@
 # Cloudflare R2 Backup Research Knowledge
 
-Document status: Research draft  
+Document status: Research draft; retention policy superseded by ADR 0029
 Created: 2026-04-24  
 Scope: Cloudflare R2 research for automated MongoDB backups from CJ Laundry VMs
+
+Supersession note, 2026-04-25: ADR 0029 is now the source of truth for the implemented production policy. Earlier "keep last 3" notes in this research file are historical research only. The implemented retention rule keeps all successful backups newer than 72 hours, the newest daily backup, and the two most recent commit-boundary daily backups.
 
 This document captures current research for a possible MongoDB backup system that uploads backup artifacts to Cloudflare R2. It is not a final architecture decision. Treat it as input for a later ADR/runbook.
 

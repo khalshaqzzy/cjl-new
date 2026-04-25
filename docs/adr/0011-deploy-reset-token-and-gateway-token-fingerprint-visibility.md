@@ -1,8 +1,10 @@
 # ADR 0011: Deploy Reset Token and Gateway Token Fingerprint Visibility
 
-Status: Accepted  
+Status: Superseded by ADR 0029 for deploy reset behavior
 Date: 2026-03-25  
 Scope: staged and production deploy workflow observability plus destructive reset behavior
+
+Supersession note: ADR 0029 removes the deploy reset-token path. Runtime env changes must no longer delete hosted persistent data.
 
 ## Context
 

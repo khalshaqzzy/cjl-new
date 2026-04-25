@@ -116,7 +116,11 @@ Shared secret groups per environment:
   - `*_SESSION_SECRET`
   - `*_ADMIN_BOOTSTRAP_USERNAME`
   - `*_ADMIN_BOOTSTRAP_PASSWORD`
-  - `*_DEPLOY_RESET_TOKEN`
+- Production R2 MongoDB backups:
+  - `PRODUCTION_R2_ACCOUNT_ID`
+  - `PRODUCTION_R2_BUCKET`
+  - `PRODUCTION_R2_ACCESS_KEY_ID`
+  - `PRODUCTION_R2_SECRET_ACCESS_KEY`
 - Cloud WhatsApp:
   - `*_WHATSAPP_BUSINESS_ID`
   - `*_WHATSAPP_WABA_ID`
@@ -268,15 +272,31 @@ Rule of thumb:
   - this is plaintext in GitHub secrets by design because startup hashes it into Mongo
   - rotate it only with an intentional operator plan because startup will reconcile it
 
-`*_DEPLOY_RESET_TOKEN`
+Production R2 backup secrets
 
-- what it is:
-  - secret whose fingerprint tells deploy whether persistent volumes should be treated as a fresh stack
-- how to get it:
-  - generate a long random value, for example `openssl rand -base64 48`
+- what they are:
+  - Cloudflare R2 S3-compatible credentials used only by production MongoDB backup automation
+- how to get them:
+  - follow `docs/Cloudflare/R2/R2Guide.md`
+  - create a private R2 bucket or choose the existing private production bucket
+  - create an R2 S3 API token with object read/write access scoped to that bucket
+  - save the account id, bucket name, access key id, and secret access key as production GitHub secrets
 - important:
-  - changing this value is effectively a destructive reset signal for the hosted stack
-  - do not rotate it unless the rollout intentionally wants a full persistent-data reset
+  - backups are production-only and use prefix `production/mongodb`
+  - backup archives are not client-side encrypted
+  - do not enable public bucket access or `r2.dev` access for MongoDB backups
+
+### 4.1.3 Production MongoDB backup config
+
+The production deploy workflow renders `/opt/cjl/production/shared/backup.env` from GitHub secrets:
+
+- `R2_ACCOUNT_ID`
+- `R2_BUCKET`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_PREFIX=production/mongodb`
+
+This file must be mode `0600` or equivalent and must not be committed.
 
 #### Cloud WhatsApp
 
@@ -577,14 +597,43 @@ Both deploy workflows:
 4. create the release directory on the target VM
 5. upload the release archive over SSH
 6. render and upload `runtime.env`
-7. run `deploy/scripts/remote-deploy.sh`
-8. run smoke checks against:
+7. production only: render and upload `backup.env`
+8. production only: run a blocking pre-deploy MongoDB R2 backup before VM image build
+9. run `deploy/scripts/remote-deploy.sh`
+10. run smoke checks against:
    - API `/health`
    - API `/ready`
    - admin site
    - public site
-9. validate `/ready` semantically with `deploy/scripts/assert-ready-cloud.sh`
-10. rollback to the previous release if the workflow fails after deploy and a previous release exists
+11. validate `/ready` semantically with `deploy/scripts/assert-ready-cloud.sh`
+12. production only: record a delayed post-deploy backup due 3 hours later, if the deployed SHA is still current
+13. rollback to the previous release if the workflow fails after deploy and a previous release exists
+
+The deploy scripts no longer support reset-token-driven persistent volume deletion. Runtime env changes must not delete `shared/mongo-data` under any circumstance.
+
+## 6.1 Production MongoDB R2 Backups
+
+Production backups are handled by `deploy/scripts/backup-mongo-r2.sh`.
+
+- backup artifact: full MongoDB instance `mongodump --archive --gzip --oplog`
+- upload target: private Cloudflare R2 bucket, prefix `production/mongodb`
+- encryption: no client-side encryption layer
+- daily schedule: systemd timer at `02:00 Asia/Jakarta`
+- pre-deploy schedule: blocking backup before production `remote-deploy.sh`
+- delayed schedule: state file recorded after successful production smoke/readiness checks; systemd polling runs it 3 hours later only if the SHA remains current
+
+Production deploy automatically checks and installs backup timers after `remote-deploy.sh` succeeds:
+
+```bash
+bash /opt/cjl/production/releases/<sha>/deploy/scripts/ensure-backup-systemd.sh \
+  production \
+  <deploy-user> \
+  /opt/cjl/production/releases/<sha>/deploy/scripts/install-backup-systemd.sh
+```
+
+The ensure script uses the deploy user's bootstrap-granted Docker access when root/sudo is unavailable, then verifies both timers are enabled and active. The installer copies stable scripts into `/opt/cjl/production/shared/bin`, so recurring timers do not depend on `/current` after installation.
+
+Retention runs only after a successful daily backup. It keeps all successful backups newer than 72 hours, the newest daily backup, and the two most recent daily backups that precede at least one pre-deploy backup before the next daily backup.
 
 ## 7. Staging Validation
 
@@ -686,6 +735,7 @@ Emergency rollback:
 - use `deploy/scripts/remote-rollback.sh` on the target VM
 
 Rollback restores code/runtime, not business data mutations already committed to MongoDB.
+Use MongoDB R2 backups for data restore drills or production data recovery; do not rely on deploy rollback for data recovery.
 
 ## 11. Troubleshooting
 
@@ -741,6 +791,9 @@ You are ready when all of the following are true:
 - staging and production SSH access works
 - staging and production DNS point to the correct VM
 - GitHub environments and secrets are filled
+- production R2 backup secrets are filled
+- production backup timers are installed after the backup-capable release is live
+- manual production backup and isolated restore drill have succeeded
 - staging deploy completes successfully
 - staging Cloud validation is complete
 - rollback path is proven

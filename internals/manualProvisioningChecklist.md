@@ -62,6 +62,11 @@ Purpose: short external checklist for provisioning staging and production before
   - `PRODUCTION_WHATSAPP_ACCESS_TOKEN`
   - `PRODUCTION_WHATSAPP_APP_SECRET`
   - `PRODUCTION_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+- add production R2 backup secrets:
+  - `PRODUCTION_R2_ACCOUNT_ID`
+  - `PRODUCTION_R2_BUCKET`
+  - `PRODUCTION_R2_ACCESS_KEY_ID`
+  - `PRODUCTION_R2_SECRET_ACCESS_KEY`
 
 ## Validation
 
@@ -76,3 +81,7 @@ Purpose: short external checklist for provisioning staging and production before
 - staging template-only composer state appears when CSW is closed
 - staging inbound media retrieval works from the admin inbox
 - staging webhook challenge verification and signed POST ingestion are validated before touching `main`
+- after the backup-capable production release deploys, confirm the workflow's `Ensure MongoDB backup timers` step succeeded
+- confirm timers are visible:
+  - `systemctl list-timers 'cjl-mongo-r2-*'`
+- run one manual production MongoDB R2 backup and one isolated restore drill before relying on production backups

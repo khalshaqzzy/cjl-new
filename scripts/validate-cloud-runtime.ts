@@ -76,6 +76,65 @@ for (const file of [
   }
 }
 
+{
+  const productionWorkflow = readFile(".github/workflows/deploy-production.yml")
+  for (const required of [
+    "Validate R2 backup secrets",
+    "Render backup env",
+    "Upload backup env",
+    "Run pre-deploy MongoDB backup",
+    "Ensure MongoDB backup timers",
+    "Schedule delayed MongoDB backup",
+    "PRODUCTION_R2_ACCOUNT_ID",
+    "PRODUCTION_R2_BUCKET",
+    "PRODUCTION_R2_ACCESS_KEY_ID",
+    "PRODUCTION_R2_SECRET_ACCESS_KEY",
+    "backup-mongo-r2.sh",
+    "ensure-backup-systemd.sh",
+    "install-backup-systemd.sh",
+    "record-delayed",
+  ]) {
+    assertIncludes(productionWorkflow, required, ".github/workflows/deploy-production.yml")
+  }
+
+  for (const forbidden of [
+    "PRODUCTION_DEPLOY_RESET_TOKEN",
+    "DEPLOY_RESET_FINGERPRINT",
+  ]) {
+    assertExcludes(productionWorkflow, forbidden, ".github/workflows/deploy-production.yml")
+  }
+}
+
+{
+  const stagingWorkflow = readFile(".github/workflows/deploy-staging.yml")
+  for (const forbidden of [
+    "STAGING_R2_ACCOUNT_ID",
+    "STAGING_R2_BUCKET",
+    "STAGING_R2_ACCESS_KEY_ID",
+    "STAGING_R2_SECRET_ACCESS_KEY",
+    "backup-mongo-r2.sh",
+    "schedule-delayed-backup.sh",
+    "STAGING_DEPLOY_RESET_TOKEN",
+    "DEPLOY_RESET_FINGERPRINT",
+  ]) {
+    assertExcludes(stagingWorkflow, forbidden, ".github/workflows/deploy-staging.yml")
+  }
+}
+
+{
+  const remoteDeploy = readFile("deploy/scripts/remote-deploy.sh")
+  for (const forbidden of [
+    "DEPLOY_RESET_FINGERPRINT",
+    "deploy-reset.fingerprint",
+    "full_reset_stack",
+    "docker_host_rm_rf",
+    "docker_host_rm_rf \"mongo-data\"",
+    "--volumes",
+  ]) {
+    assertExcludes(remoteDeploy, forbidden, "deploy/scripts/remote-deploy.sh")
+  }
+}
+
 for (const file of [
   "deploy/api/docker-compose.remote.yml",
   "docker-compose.yml",

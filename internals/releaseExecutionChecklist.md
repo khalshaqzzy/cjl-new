@@ -37,7 +37,7 @@ Purpose: operator-facing execution checklist for staging rollout, production rol
 - staging runtime secrets do not contain placeholder values
 - staging Cloud WhatsApp secrets are present and current
 - staging workflow should fail before deploy if any Cloud WhatsApp secret is blank
-- staging `STAGING_DEPLOY_RESET_TOKEN` is unchanged unless the rollout explicitly intends to wipe persistent data
+- staging deploy has no reset-token path; runtime env changes must not wipe persistent data
 
 ## 4. Execute Staging Deploy
 
@@ -135,7 +135,9 @@ Production is blocked unless all are true:
 - GitHub `production` environment secrets are current
 - production Cloud WhatsApp secrets are present and current
 - production workflow should fail before deploy if any Cloud WhatsApp secret is blank
-- production `PRODUCTION_DEPLOY_RESET_TOKEN` is unchanged unless the rollout explicitly intends to wipe persistent data
+- production deploy has no reset-token path; runtime env changes must not wipe persistent data
+- production R2 backup secrets are present before deploying a backup-capable release
+- production pre-deploy MongoDB backup is expected to block deploy if it fails
 - first-hour monitoring owner is assigned
 - backup rollback operator is assigned
 
