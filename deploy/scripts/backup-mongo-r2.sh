@@ -113,6 +113,17 @@ validate_r2_config() {
     exit 1
   fi
 
+  if [[ "${R2_ACCESS_KEY_ID}" == http://* || "${R2_ACCESS_KEY_ID}" == https://* || "${R2_ACCESS_KEY_ID}" == */* ]]; then
+    echo "R2_ACCESS_KEY_ID must be the R2 S3 access key ID or Cloudflare token id, not a URL or path." >&2
+    exit 1
+  fi
+
+  if [[ "${#R2_ACCESS_KEY_ID}" -ne 32 ]]; then
+    echo "R2_ACCESS_KEY_ID must be 32 characters. Cloudflare R2 rejects other lengths." >&2
+    echo "Use the token id, not the raw token value, as R2_ACCESS_KEY_ID." >&2
+    exit 1
+  fi
+
   if [[ "${R2_SECRET_ACCESS_KEY}" == http://* || "${R2_SECRET_ACCESS_KEY}" == https://* ]]; then
     echo "R2_SECRET_ACCESS_KEY must be the R2 S3 secret access key, not a URL." >&2
     exit 1

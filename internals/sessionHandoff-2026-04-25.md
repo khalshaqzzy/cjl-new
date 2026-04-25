@@ -79,7 +79,7 @@ Could not run through normal npm bin path in this local workspace:
 - the timer installer copies stable scripts into `/opt/cjl/production/shared/bin`, so recurring backups do not depend on `/opt/cjl/production/current` containing backup code after rollback.
 - timer installation is automatic through `deploy/scripts/ensure-backup-systemd.sh`; when root/sudo is unavailable, it uses Docker host namespace access based on the bootstrap-created deploy user's Docker group membership.
 - `docs/Cloudflare/R2/R2Guide.md` is the canonical operator guide for Cloudflare bucket/API token/GitHub secret setup.
-- `backup-mongo-r2.sh` validates common R2 secret shape mistakes and checks R2 bucket access before creating a `mongodump` archive; `HeadObject ... 400 BadRequest` usually means bucket/account ID/secret access key values were copied in the wrong shape.
+- `backup-mongo-r2.sh` validates common R2 secret shape mistakes and checks R2 bucket access before creating a `mongodump` archive; `HeadObject ... 400 BadRequest` or `Credential access key has length 53, should be 32` usually means bucket/account ID/access key/secret access key values were copied in the wrong shape.
 - ADR 0029 is the canonical architecture decision for production MongoDB R2 backups and no deploy reset.
 - ADR 0011 remains historical and is superseded for deploy reset behavior.
 
