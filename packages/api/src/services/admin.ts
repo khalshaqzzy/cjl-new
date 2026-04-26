@@ -25,7 +25,7 @@ import { sanitizeAdminWhatsappContacts } from "../lib/admin-whatsapp.js"
 import { calculateOrderPreview } from "../lib/calculator.js"
 import { formatCurrency } from "../lib/formatters.js"
 import { createId, createOpaqueToken, createOrderCode } from "../lib/ids.js"
-import { buildMaskedAlias, rebuildArchivedLeaderboard } from "../lib/leaderboard.js"
+import { rebuildArchivedLeaderboard } from "../lib/leaderboard.js"
 import { normalizeName, normalizePhone, normalizePhoneLabel } from "../lib/normalization.js"
 import { hashOpaqueToken, tokenLast4 } from "../lib/security.js"
 import { formatDateTime, formatRelativeLabel, formatWeightLabel, monthKeyFromIso, nowJakarta, toIso } from "../lib/time.js"
@@ -92,6 +92,118 @@ const isWithinWindow = (iso: string | undefined, window: DashboardWindow) => {
   const { start, end } = windowBounds(window)
   const value = DateTime.fromISO(iso).setZone(env.APP_TIMEZONE)
   return value >= start && value <= end
+}
+
+const operationalUnitMultipliers = new Map<string, number>([
+  ["washer", 1],
+  ["dryer", 1],
+  ["wash_dry_package", 2],
+  ["wash_dry_fold_package", 2],
+])
+
+const roundDashboardQuantity = (value: number) => Number(value.toFixed(2))
+
+const getOrderItemsSold = (order: OrderDocument) =>
+  roundDashboardQuantity(order.items.reduce((sum, item) => sum + item.quantity, 0))
+
+const getOrderOperationalUnits = (order: OrderDocument) =>
+  order.items.reduce((sum, item) => sum + item.quantity * (operationalUnitMultipliers.get(item.serviceCode) ?? 0), 0)
+
+const buildAverageDailyRevenue = (
+  orders: OrderDocument[],
+  window: Extract<DashboardWindow, "weekly" | "monthly">
+): AdminDashboardResponse["periodAverages"]["week"] => {
+  const reference = nowJakarta()
+  const { start } = windowBounds(window)
+  const elapsedDays = Math.max(
+    1,
+    Math.floor(reference.startOf("day").diff(start.startOf("day"), "days").days) + 1
+  )
+  const netSales = orders
+    .filter((order) => order.status !== "Voided" && isWithinWindow(order.createdAt, window))
+    .reduce((sum, order) => sum + order.total, 0)
+  const averageDailyRevenue = Math.round(netSales / elapsedDays)
+
+  return {
+    netSales,
+    elapsedDays,
+    averageDailyRevenue,
+    averageDailyRevenueLabel: formatCurrency(averageDailyRevenue),
+  }
+}
+
+const buildDashboardChart = (
+  window: DashboardWindow,
+  orders: OrderDocument[]
+): AdminDashboardResponse["chart"] => {
+  const { start, end } = windowBounds(window)
+  const bucket = window === "daily" ? "hour" : "day"
+  const buckets = new Map<string, AdminDashboardResponse["chart"]["series"][number]>()
+
+  if (window === "daily") {
+    for (let hour = 0; hour < 24; hour += 1) {
+      const cursor = start.plus({ hours: hour })
+      const key = cursor.toFormat("HH")
+      buckets.set(key, {
+        key,
+        label: key,
+        netSales: 0,
+        itemsSold: 0,
+        itemsByService: [],
+        operationalUnits: 0,
+      })
+    }
+  } else {
+    const dayCount = Math.floor(end.startOf("day").diff(start.startOf("day"), "days").days) + 1
+    for (let day = 0; day < dayCount; day += 1) {
+      const cursor = start.plus({ days: day })
+      const key = cursor.toISODate() ?? cursor.toFormat("yyyy-MM-dd")
+      buckets.set(key, {
+        key,
+        label: window === "weekly" ? cursor.toFormat("d/LL") : cursor.toFormat("d"),
+        netSales: 0,
+        itemsSold: 0,
+        itemsByService: [],
+        operationalUnits: 0,
+      })
+    }
+  }
+
+  for (const order of orders) {
+    if (order.status === "Voided" || !isWithinWindow(order.createdAt, window)) {
+      continue
+    }
+
+    const createdAt = DateTime.fromISO(order.createdAt).setZone(env.APP_TIMEZONE)
+    const key = window === "daily"
+      ? createdAt.toFormat("HH")
+      : createdAt.toISODate() ?? createdAt.toFormat("yyyy-MM-dd")
+    const current = buckets.get(key)
+    if (!current) {
+      continue
+    }
+
+    current.netSales += order.total
+    current.itemsSold = roundDashboardQuantity(current.itemsSold + getOrderItemsSold(order))
+    current.operationalUnits = roundDashboardQuantity(current.operationalUnits + getOrderOperationalUnits(order))
+    for (const item of order.items) {
+      const currentService = current.itemsByService.find((service) => service.serviceCode === item.serviceCode)
+      if (currentService) {
+        currentService.quantity = roundDashboardQuantity(currentService.quantity + item.quantity)
+      } else {
+        current.itemsByService.push({
+          serviceCode: item.serviceCode,
+          label: item.serviceLabel,
+          quantity: roundDashboardQuantity(item.quantity),
+        })
+      }
+    }
+  }
+
+  return {
+    bucket,
+    series: [...buckets.values()],
+  }
 }
 
 const phoneDigits = (phone: string) => normalizePhone(phone).replace(/\D/g, "")
@@ -204,7 +316,8 @@ const buildOrderReceiptSnapshot = async (
 }
 
 const buildDashboardMetrics = (
-  summary: AdminDashboardResponse["summary"]
+  summary: AdminDashboardResponse["summary"],
+  periodAverages: AdminDashboardResponse["periodAverages"]
 ): AdminDashboardResponse["metrics"] => [
   {
     id: "net-sales",
@@ -214,35 +327,36 @@ const buildDashboardMetrics = (
     tone: "positive"
   },
   {
-    id: "gross-sales",
-    label: "Penjualan Kotor",
-    value: formatCurrency(summary.grossSales),
+    id: "avg-weekly-daily-revenue",
+    label: "Avg/Hari Minggu Ini",
+    value: periodAverages.week.averageDailyRevenueLabel,
+    deltaLabel: `${periodAverages.week.elapsedDays} hari berjalan`,
     tone: "neutral"
+  },
+  {
+    id: "avg-monthly-daily-revenue",
+    label: "Avg/Hari Bulan Ini",
+    value: periodAverages.month.averageDailyRevenueLabel,
+    deltaLabel: `${periodAverages.month.elapsedDays} hari berjalan`,
+    tone: "neutral"
+  },
+  {
+    id: "items-sold",
+    label: "Items Terjual",
+    value: String(summary.totalItemsSold),
+    tone: "positive"
+  },
+  {
+    id: "operational-units",
+    label: "Unit Operasional",
+    value: String(summary.operationalUnits),
+    tone: "positive"
   },
   {
     id: "active-orders",
     label: "Order Aktif",
     value: String(summary.activeOrders),
     tone: "neutral"
-  },
-  {
-    id: "completed-orders",
-    label: "Order Selesai",
-    value: String(summary.completedOrders),
-    tone: "positive"
-  },
-  {
-    id: "new-customers",
-    label: "Customer Baru",
-    value: String(summary.newCustomers),
-    tone: "positive"
-  },
-  {
-    id: "points-earned",
-    label: "Poin Diberikan",
-    value: String(summary.pointsEarned),
-    deltaLabel: summary.pointsRedeemed > 0 ? `${summary.pointsRedeemed} redeem` : undefined,
-    tone: "positive"
   }
 ]
 
@@ -266,6 +380,11 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
   const newCustomers = customers.filter((customer) => isWithinWindow(customer.createdAt, window)).length
   const manualPointEntries = pointLedger.filter((entry) => entry.tone === "adjustment" && isWithinWindow(entry.createdAt, window))
   const customerPointBalanceMap = new Map(customers.map((customer) => [customer._id, customer.currentPoints]))
+  const periodAverages: AdminDashboardResponse["periodAverages"] = {
+    week: buildAverageDailyRevenue(orders, "weekly"),
+    month: buildAverageDailyRevenue(orders, "monthly"),
+  }
+  const chart = buildDashboardChart(window, orders)
 
   const topServiceUsageMap = new Map<
     AdminDashboardResponse["summary"]["topServiceUsage"][number]["serviceCode"],
@@ -278,7 +397,7 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
         label: item.serviceLabel,
         usageCount: 0
       }
-      current.usageCount += item.quantity
+      current.usageCount = roundDashboardQuantity(current.usageCount + item.quantity)
       topServiceUsageMap.set(item.serviceCode, current)
     }
   }
@@ -291,7 +410,8 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
   for (const order of confirmedOrders) {
     const current = topCustomerMap.get(order.customerId) ?? {
       customerId: order.customerId,
-      maskedName: buildMaskedAlias(order.customerName),
+      maskedName: order.customerName,
+      customerName: order.customerName,
       confirmedOrders: 0,
       earnedStamps: 0,
       currentPoints: customerPointBalanceMap.get(order.customerId)
@@ -310,6 +430,8 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
     activeOrders: activeOrders.length,
     completedOrders: completedOrders.length,
     totalWeightKg: Number(confirmedOrders.reduce((sum, order) => sum + order.weightKg, 0).toFixed(2)),
+    totalItemsSold: roundDashboardQuantity(confirmedOrders.reduce((sum, order) => sum + getOrderItemsSold(order), 0)),
+    operationalUnits: roundDashboardQuantity(confirmedOrders.reduce((sum, order) => sum + getOrderOperationalUnits(order), 0)),
     averageOrderValue: confirmedOrders.length > 0
       ? Math.round(confirmedOrders.reduce((sum, order) => sum + order.total, 0) / confirmedOrders.length)
       : 0,
@@ -319,19 +441,20 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
     manualPointsAdded: manualPointEntries.reduce((sum, entry) => sum + Math.max(entry.delta, 0), 0),
     topServiceUsage: [...topServiceUsageMap.values()]
       .sort((left, right) => right.usageCount - left.usageCount || left.label.localeCompare(right.label))
-      .slice(0, 5)
   }
 
   return {
-    metrics: buildDashboardMetrics(summary),
+    metrics: buildDashboardMetrics(summary, periodAverages),
+    periodAverages,
     summary,
+    chart,
     topCustomers: [...topCustomerMap.values()]
       .sort((left, right) =>
         right.confirmedOrders - left.confirmedOrders ||
         right.earnedStamps - left.earnedStamps ||
-        left.maskedName.localeCompare(right.maskedName)
+        left.customerName.localeCompare(right.customerName)
       )
-      .slice(0, 5),
+      .slice(0, 30),
     activeOrders: activeOrders
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .slice(0, 8)

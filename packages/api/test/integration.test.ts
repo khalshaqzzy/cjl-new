@@ -2434,6 +2434,9 @@ test("backend covers POS-only services, laundry filters, notification terminal s
 
   const yesterdayIso = DateTime.now().setZone("Asia/Jakarta").minus({ days: 1 }).toUTC().toISO()
   assert.ok(yesterdayIso)
+  const yesterdayChartKey = DateTime.fromISO(yesterdayIso!).setZone("Asia/Jakarta").toISODate()
+  const yesterdayMonthlyLabel = DateTime.fromISO(yesterdayIso!).setZone("Asia/Jakarta").toFormat("d")
+  assert.ok(yesterdayChartKey)
   await getDatabase().collection("orders").updateOne(
     { _id: firstOrderId },
     { $set: { createdAt: yesterdayIso } }
@@ -2485,7 +2488,7 @@ test("backend covers POS-only services, laundry filters, notification terminal s
 
   await getDatabase().collection("orders").updateOne(
     { _id: secondOrderId },
-    { $set: { createdAt: yesterdayIso } }
+    { $set: { createdAt: yesterdayIso, subtotal: 999_999_999, total: 999_999_999 } }
   )
 
   result = await requestJson("/v1/admin/orders/laundry?scope=today&sort=newest", {
@@ -2624,4 +2627,48 @@ test("backend covers POS-only services, laundry filters, notification terminal s
     (notification: { deliveryStatus: string }) => notification.deliveryStatus === "failed"
   )
   assert.ok(failedNotifications.length >= 13)
+
+  result = await requestJson("/v1/admin/dashboard?window=monthly", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(typeof result.payload.summary.totalItemsSold, "number")
+  assert.equal(typeof result.payload.summary.operationalUnits, "number")
+  assert.equal(typeof result.payload.periodAverages.week.averageDailyRevenue, "number")
+  assert.equal(typeof result.payload.periodAverages.month.averageDailyRevenue, "number")
+  assert.equal(result.payload.periodAverages.week.elapsedDays >= 1, true)
+  assert.equal(result.payload.periodAverages.month.elapsedDays >= result.payload.periodAverages.week.elapsedDays, true)
+  assert.equal(result.payload.chart.bucket, "day")
+  assert.ok(result.payload.summary.totalItemsSold >= 6)
+  assert.ok(result.payload.summary.operationalUnits >= 2)
+  assert.ok(result.payload.metrics.some((metric: { id: string }) => metric.id === "items-sold"))
+  assert.ok(result.payload.metrics.some((metric: { id: string }) => metric.id === "operational-units"))
+  assert.ok(result.payload.metrics.some((metric: { id: string }) => metric.id === "avg-weekly-daily-revenue"))
+  assert.ok(result.payload.metrics.some((metric: { id: string }) => metric.id === "avg-monthly-daily-revenue"))
+
+  const monthlyBucket = result.payload.chart.series.find((bucket: { key: string }) => bucket.key === yesterdayChartKey)
+  assert.ok(monthlyBucket)
+  assert.equal(monthlyBucket.label, yesterdayMonthlyLabel)
+  assert.ok(monthlyBucket.netSales >= 43000)
+  assert.ok(monthlyBucket.itemsSold >= 6)
+  assert.ok(
+    monthlyBucket.itemsByService.some((item: { serviceCode: string; quantity: number }) =>
+      item.serviceCode === "wash_dry_package" && item.quantity >= 1
+    )
+  )
+  assert.ok(monthlyBucket.operationalUnits >= 2)
+  assert.equal(monthlyBucket.netSales < 999_999_999, true)
+
+  result = await requestJson("/v1/admin/dashboard?window=weekly", {
+    headers: { Cookie: adminCookie! }
+  })
+  assert.equal(result.payload.chart.bucket, "day")
+  const weeklyBucket = result.payload.chart.series.find((bucket: { key: string }) => bucket.key === yesterdayChartKey)
+  assert.ok(weeklyBucket)
+  assert.ok(weeklyBucket.itemsSold >= 6)
+  assert.ok(
+    weeklyBucket.itemsByService.some((item: { serviceCode: string; quantity: number }) =>
+      item.serviceCode === "wash_dry_package" && item.quantity >= 1
+    )
+  )
+  assert.ok(weeklyBucket.operationalUnits >= 2)
 })

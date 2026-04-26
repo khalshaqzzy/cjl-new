@@ -544,6 +544,20 @@ export const adminDashboardResponseSchema = z.object({
       tone: z.enum(["neutral", "positive", "warning"]),
     }),
   ),
+  periodAverages: z.object({
+    week: z.object({
+      netSales: z.number().int(),
+      elapsedDays: z.number().int(),
+      averageDailyRevenue: z.number().int(),
+      averageDailyRevenueLabel: z.string(),
+    }),
+    month: z.object({
+      netSales: z.number().int(),
+      elapsedDays: z.number().int(),
+      averageDailyRevenue: z.number().int(),
+      averageDailyRevenueLabel: z.string(),
+    }),
+  }),
   summary: z.object({
     grossSales: z.number().int(),
     netSales: z.number().int(),
@@ -552,6 +566,8 @@ export const adminDashboardResponseSchema = z.object({
     activeOrders: z.number().int(),
     completedOrders: z.number().int(),
     totalWeightKg: z.number(),
+    totalItemsSold: z.number(),
+    operationalUnits: z.number(),
     averageOrderValue: z.number(),
     newCustomers: z.number().int(),
     pointsEarned: z.number().int(),
@@ -561,18 +577,38 @@ export const adminDashboardResponseSchema = z.object({
       z.object({
         serviceCode: serviceCodeSchema,
         label: z.string(),
-        usageCount: z.number().int(),
+        usageCount: z.number(),
       }),
     ),
   }),
+  chart: z.object({
+    bucket: z.enum(["hour", "day"]),
+    series: z.array(
+        z.object({
+          key: z.string(),
+          label: z.string(),
+          netSales: z.number().int(),
+          itemsSold: z.number(),
+          itemsByService: z.array(
+            z.object({
+              serviceCode: serviceCodeSchema,
+              label: z.string(),
+              quantity: z.number(),
+            }),
+          ),
+          operationalUnits: z.number(),
+        }),
+      ),
+  }),
   topCustomers: z.array(
-    z.object({
-      customerId: z.string(),
-      maskedName: z.string(),
-      confirmedOrders: z.number().int(),
-      earnedStamps: z.number().int(),
-      currentPoints: z.number().int().optional(),
-    }),
+      z.object({
+        customerId: z.string(),
+        maskedName: z.string(),
+        customerName: z.string(),
+        confirmedOrders: z.number().int(),
+        earnedStamps: z.number().int(),
+        currentPoints: z.number().int().optional(),
+      }),
   ),
   activeOrders: z.array(activeOrderCardSchema),
   notifications: z.array(notificationRecordSchema),
