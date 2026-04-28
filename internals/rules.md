@@ -199,7 +199,33 @@ New files should have:
 - creation date
 - enough context for a future session to use the file without rereading unrelated files first
 
-## 8. Content Rules
+## 8. Commit Message Rules
+
+Use a conventional prefix for new commit messages. The subject must start with a lowercase type followed by a colon and a space.
+
+Preferred types:
+
+- `feat:` for user-visible features or new capabilities
+- `fix:` for bug fixes, regressions, security fixes, and broken behavior
+- `chore:` for maintenance, dependency updates, tooling, repo hygiene, or generated updates
+- `docs:` for documentation-only changes
+- `test:` for test-only changes
+- `refactor:` for behavior-preserving code restructuring
+- `perf:` for performance improvements
+- `ci:` for GitHub Actions, deploy pipeline, and automation changes
+- `build:` for build system, packaging, Dockerfile, or artifact changes
+
+Subject rules:
+
+- write in imperative mood, for example `fix: sort dashboard customers by earned points`
+- keep the subject concise and specific, ideally 72 characters or fewer
+- do not end the subject with a period
+- use a body when the reason, migration impact, or operational caveat is not obvious from the subject
+- prefer one logical change per commit; split unrelated runtime, docs, and deployment changes when practical
+
+If a change spans multiple categories, choose the prefix that best describes the user-visible or operational effect. For example, a code change with tests should usually be `feat:` or `fix:`, not `test:`.
+
+## 9. Content Rules
 
 When updating or adding files in `internals/`:
 
@@ -216,7 +242,35 @@ When updating or adding ADRs:
 - capture tradeoffs and operational caveats, not just happy-path outcomes
 - note follow-up work if the decision intentionally defers later improvements
 
-## 9. Required Updates After Major Sessions
+## 10. Verification Rules
+
+Before declaring an implementation, dependency, deployment, or security-sensitive change complete, verify against the same gates used by the GitHub CI workflows, not only the commands directly related to the edited file.
+
+Use `.github/workflows/ci.yml`, `.github/workflows/codeql.yml`, `.github/workflows/dependency-review.yml`, and root `package.json` as the canonical source for the current verification list. If those files change, update this section in the same session.
+
+Local verification for code changes should include, in this order:
+
+1. `npm run lint`
+2. `npm run typecheck`
+3. `npm run validate:cloud-runtime`
+4. `npm run audit:prod`
+5. `npm test`
+6. `npm run build`
+
+CI also runs `docker compose config` and `docker compose build`, but these are not required for local verification because they will run in the pipeline.
+
+Security and supply-chain CI gates must also be accounted for, but are also not required for local verification:
+
+- CI runs Gitleaks through `gitleaks/gitleaks-action@v2`.
+- CI runs Trivy filesystem scan through `aquasecurity/trivy-action` with `scan-type=fs`, `ignore-unfixed=true`, and severities `HIGH,CRITICAL`.
+- CodeQL runs on `javascript-typescript` after `npm ci` and `npm run build`.
+- Dependency Review runs on pull requests through `actions/dependency-review-action@v4`.
+
+For small documentation-only changes that do not affect runtime code, dependency metadata, deploy behavior, or security posture, a lighter verification pass is acceptable. Still report what was run and why the full CI-equivalent suite was not necessary.
+
+Do not describe work as fully verified unless every applicable command above passed or every skipped gate is explicitly called out with a reason.
+
+## 11. Required Updates After Major Sessions
 
 After a major implementation or deployment-prep session, usually do all of the following:
 

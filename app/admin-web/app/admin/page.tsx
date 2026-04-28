@@ -654,9 +654,9 @@ export default function DashboardPage() {
                           <div key={customer.customerId} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-bg-subtle px-3 py-2">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium text-text-body">{index + 1}. {customer.customerName}</p>
-                              <p className="truncate text-xs text-text-muted">{customer.confirmedOrders} order - {customer.earnedStamps} poin</p>
+                              <p className="truncate text-xs text-text-muted">{customer.earnedStamps} poin periode - {customer.confirmedOrders} order</p>
                             </div>
-                            <span className="shrink-0 text-sm font-semibold text-text-strong tabular-nums">{customer.currentPoints ?? 0}</span>
+                            <span className="shrink-0 text-sm font-semibold text-text-strong tabular-nums">{customer.earnedStamps}</span>
                           </div>
                         ))
                       ) : (

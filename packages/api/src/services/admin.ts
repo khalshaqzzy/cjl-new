@@ -450,8 +450,8 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
     chart,
     topCustomers: [...topCustomerMap.values()]
       .sort((left, right) =>
-        right.confirmedOrders - left.confirmedOrders ||
         right.earnedStamps - left.earnedStamps ||
+        right.confirmedOrders - left.confirmedOrders ||
         left.customerName.localeCompare(right.customerName)
       )
       .slice(0, 30),

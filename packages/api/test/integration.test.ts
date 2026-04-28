@@ -2628,6 +2628,111 @@ test("backend covers POS-only services, laundry filters, notification terminal s
   )
   assert.ok(failedNotifications.length >= 13)
 
+  const highPointCustomerId = `dashboard_high_points_${uniqueSuffix}`
+  const highOrderCustomerId = `dashboard_many_orders_${uniqueSuffix}`
+  const highPointCustomerName = "DASHBOARD HIGH POINTS CUSTOMER"
+  const highOrderCustomerName = "DASHBOARD MANY ORDERS CUSTOMER"
+  const dashboardSortCreatedAt = yesterdayIso
+  const makeDashboardSortOrder = ({
+    id,
+    code,
+    customerId: orderCustomerId,
+    customerName: orderCustomerName,
+    earnedStamps,
+  }: {
+    id: string
+    code: string
+    customerId: string
+    customerName: string
+    earnedStamps: number
+  }) => ({
+    _id: id,
+    orderCode: code,
+    customerId: orderCustomerId,
+    customerName: orderCustomerName,
+    customerPhone: "081299900001",
+    weightKg: 1,
+    items: [
+      {
+        serviceCode: "washer" as const,
+        serviceLabel: "Washer",
+        quantity: 1,
+        unitPrice: 10000,
+        pricingModel: "fixed" as const,
+        lineTotal: 10000,
+      }
+    ],
+    subtotal: 10000,
+    discount: 0,
+    total: 10000,
+    redeemedPoints: 0,
+    earnedStamps,
+    resultingPointBalance: earnedStamps,
+    receiptSnapshot: {
+      orderCode: code,
+      customerName: orderCustomerName,
+      serviceSummary: "1x Washer",
+      totalLabel: "Rp10.000",
+      createdAtLabel: "created",
+      laundryName: "CJ Laundry",
+      laundryPhone: "081234567890",
+    },
+    status: "Done" as const,
+    createdAt: dashboardSortCreatedAt,
+    activityAt: dashboardSortCreatedAt,
+    completedAt: dashboardSortCreatedAt,
+  })
+
+  await getDatabase().collection("customers").insertMany([
+    {
+      _id: highPointCustomerId,
+      name: highPointCustomerName,
+      normalizedName: "dashboard high points customer",
+      phone: "081299900001",
+      normalizedPhone: "+6281299900001",
+      phoneDigits: "6281299900001",
+      publicNameVisible: false,
+      currentPoints: 5,
+      createdAt: dashboardSortCreatedAt,
+      updatedAt: dashboardSortCreatedAt,
+    },
+    {
+      _id: highOrderCustomerId,
+      name: highOrderCustomerName,
+      normalizedName: "dashboard many orders customer",
+      phone: "081299900002",
+      normalizedPhone: "+6281299900002",
+      phoneDigits: "6281299900002",
+      publicNameVisible: false,
+      currentPoints: 2,
+      createdAt: dashboardSortCreatedAt,
+      updatedAt: dashboardSortCreatedAt,
+    },
+  ])
+  await getDatabase().collection("orders").insertMany([
+    makeDashboardSortOrder({
+      id: `dashboard_high_points_order_${uniqueSuffix}`,
+      code: `CJ-DASH-HIGH-${uniqueSuffix}`,
+      customerId: highPointCustomerId,
+      customerName: highPointCustomerName,
+      earnedStamps: 5,
+    }),
+    makeDashboardSortOrder({
+      id: `dashboard_many_orders_1_${uniqueSuffix}`,
+      code: `CJ-DASH-MANY-1-${uniqueSuffix}`,
+      customerId: highOrderCustomerId,
+      customerName: highOrderCustomerName,
+      earnedStamps: 1,
+    }),
+    makeDashboardSortOrder({
+      id: `dashboard_many_orders_2_${uniqueSuffix}`,
+      code: `CJ-DASH-MANY-2-${uniqueSuffix}`,
+      customerId: highOrderCustomerId,
+      customerName: highOrderCustomerName,
+      earnedStamps: 1,
+    }),
+  ])
+
   result = await requestJson("/v1/admin/dashboard?window=monthly", {
     headers: { Cookie: adminCookie! }
   })
@@ -2644,6 +2749,15 @@ test("backend covers POS-only services, laundry filters, notification terminal s
   assert.ok(result.payload.metrics.some((metric: { id: string }) => metric.id === "operational-units"))
   assert.ok(result.payload.metrics.some((metric: { id: string }) => metric.id === "avg-weekly-daily-revenue"))
   assert.ok(result.payload.metrics.some((metric: { id: string }) => metric.id === "avg-monthly-daily-revenue"))
+  const highPointCustomerIndex = result.payload.topCustomers.findIndex(
+    (customer: { customerId: string }) => customer.customerId === highPointCustomerId
+  )
+  const highOrderCustomerIndex = result.payload.topCustomers.findIndex(
+    (customer: { customerId: string }) => customer.customerId === highOrderCustomerId
+  )
+  assert.notEqual(highPointCustomerIndex, -1)
+  assert.notEqual(highOrderCustomerIndex, -1)
+  assert.equal(highPointCustomerIndex < highOrderCustomerIndex, true)
 
   const monthlyBucket = result.payload.chart.series.find((bucket: { key: string }) => bucket.key === yesterdayChartKey)
   assert.ok(monthlyBucket)
