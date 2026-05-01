@@ -2432,14 +2432,15 @@ test("backend covers POS-only services, laundry filters, notification terminal s
   })
   assert.equal(result.payload.status, "Done")
 
-  const yesterdayIso = DateTime.now().setZone("Asia/Jakarta").minus({ days: 1 }).toUTC().toISO()
-  assert.ok(yesterdayIso)
-  const yesterdayChartKey = DateTime.fromISO(yesterdayIso!).setZone("Asia/Jakarta").toISODate()
-  const yesterdayMonthlyLabel = DateTime.fromISO(yesterdayIso!).setZone("Asia/Jakarta").toFormat("d")
-  assert.ok(yesterdayChartKey)
+  const dashboardFixtureDate = DateTime.now().setZone("Asia/Jakarta")
+  const dashboardFixtureIso = dashboardFixtureDate.toUTC().toISO()
+  assert.ok(dashboardFixtureIso)
+  const dashboardFixtureChartKey = dashboardFixtureDate.toISODate()
+  const dashboardFixtureMonthlyLabel = dashboardFixtureDate.toFormat("d")
+  assert.ok(dashboardFixtureChartKey)
   await getDatabase().collection("orders").updateOne(
     { _id: firstOrderId },
-    { $set: { createdAt: yesterdayIso } }
+    { $set: { createdAt: dashboardFixtureIso } }
   )
 
   const cancelledPayload = {
@@ -2488,7 +2489,7 @@ test("backend covers POS-only services, laundry filters, notification terminal s
 
   await getDatabase().collection("orders").updateOne(
     { _id: secondOrderId },
-    { $set: { createdAt: yesterdayIso, subtotal: 999_999_999, total: 999_999_999 } }
+    { $set: { createdAt: dashboardFixtureIso, subtotal: 999_999_999, total: 999_999_999 } }
   )
 
   result = await requestJson("/v1/admin/orders/laundry?scope=today&sort=newest", {
@@ -2632,7 +2633,7 @@ test("backend covers POS-only services, laundry filters, notification terminal s
   const highOrderCustomerId = `dashboard_many_orders_${uniqueSuffix}`
   const highPointCustomerName = "DASHBOARD HIGH POINTS CUSTOMER"
   const highOrderCustomerName = "DASHBOARD MANY ORDERS CUSTOMER"
-  const dashboardSortCreatedAt = yesterdayIso
+  const dashboardSortCreatedAt = dashboardFixtureIso
   const makeDashboardSortOrder = ({
     id,
     code,
@@ -2738,10 +2739,14 @@ test("backend covers POS-only services, laundry filters, notification terminal s
   })
   assert.equal(typeof result.payload.summary.totalItemsSold, "number")
   assert.equal(typeof result.payload.summary.operationalUnits, "number")
-  assert.equal(typeof result.payload.periodAverages.week.averageDailyRevenue, "number")
-  assert.equal(typeof result.payload.periodAverages.month.averageDailyRevenue, "number")
-  assert.equal(result.payload.periodAverages.week.elapsedDays >= 1, true)
-  assert.equal(result.payload.periodAverages.month.elapsedDays >= result.payload.periodAverages.week.elapsedDays, true)
+  const weeklyAverage = result.payload.periodAverages.week
+  const monthlyAverage = result.payload.periodAverages.month
+  assert.equal(typeof weeklyAverage.averageDailyRevenue, "number")
+  assert.equal(typeof monthlyAverage.averageDailyRevenue, "number")
+  assert.equal(weeklyAverage.elapsedDays >= 1 && weeklyAverage.elapsedDays <= 7, true)
+  assert.equal(monthlyAverage.elapsedDays >= 1 && monthlyAverage.elapsedDays <= 31, true)
+  assert.equal(weeklyAverage.averageDailyRevenue, Math.round(weeklyAverage.netSales / weeklyAverage.elapsedDays))
+  assert.equal(monthlyAverage.averageDailyRevenue, Math.round(monthlyAverage.netSales / monthlyAverage.elapsedDays))
   assert.equal(result.payload.chart.bucket, "day")
   assert.ok(result.payload.summary.totalItemsSold >= 6)
   assert.ok(result.payload.summary.operationalUnits >= 2)
@@ -2759,9 +2764,9 @@ test("backend covers POS-only services, laundry filters, notification terminal s
   assert.notEqual(highOrderCustomerIndex, -1)
   assert.equal(highPointCustomerIndex < highOrderCustomerIndex, true)
 
-  const monthlyBucket = result.payload.chart.series.find((bucket: { key: string }) => bucket.key === yesterdayChartKey)
+  const monthlyBucket = result.payload.chart.series.find((bucket: { key: string }) => bucket.key === dashboardFixtureChartKey)
   assert.ok(monthlyBucket)
-  assert.equal(monthlyBucket.label, yesterdayMonthlyLabel)
+  assert.equal(monthlyBucket.label, dashboardFixtureMonthlyLabel)
   assert.ok(monthlyBucket.netSales >= 43000)
   assert.ok(monthlyBucket.itemsSold >= 6)
   assert.ok(
@@ -2776,7 +2781,7 @@ test("backend covers POS-only services, laundry filters, notification terminal s
     headers: { Cookie: adminCookie! }
   })
   assert.equal(result.payload.chart.bucket, "day")
-  const weeklyBucket = result.payload.chart.series.find((bucket: { key: string }) => bucket.key === yesterdayChartKey)
+  const weeklyBucket = result.payload.chart.series.find((bucket: { key: string }) => bucket.key === dashboardFixtureChartKey)
   assert.ok(weeklyBucket)
   assert.ok(weeklyBucket.itemsSold >= 6)
   assert.ok(
