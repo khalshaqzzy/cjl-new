@@ -1,7 +1,7 @@
 # Manual Provisioning Checklist
 
 Document status: Active  
-Last updated: 2026-04-02  
+Last updated: 2026-05-06  
 Purpose: short external checklist for provisioning staging and production before the first Cloud-era deploy
 
 ## Local Preparation
@@ -47,6 +47,8 @@ Purpose: short external checklist for provisioning staging and production before
 - add staging `known_hosts`
 - add production `known_hosts`
 - add all staging Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
+- add staging Firebase machine control secret:
+  - `STAGING_FIREBASE_DATABASE_URL`
 - add staging Cloud WhatsApp secrets:
   - `STAGING_WHATSAPP_BUSINESS_ID`
   - `STAGING_WHATSAPP_WABA_ID`
@@ -55,6 +57,8 @@ Purpose: short external checklist for provisioning staging and production before
   - `STAGING_WHATSAPP_APP_SECRET`
   - `STAGING_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
 - add all production Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
+- add production Firebase machine control secret:
+  - `PRODUCTION_FIREBASE_DATABASE_URL`
 - add production Cloud WhatsApp secrets:
   - `PRODUCTION_WHATSAPP_BUSINESS_ID`
   - `PRODUCTION_WHATSAPP_WABA_ID`

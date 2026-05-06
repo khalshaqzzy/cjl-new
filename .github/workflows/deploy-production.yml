@@ -71,6 +71,16 @@ jobs:
             fi
           done
 
+      - name: Validate Firebase machine control secret
+        shell: bash
+        env:
+          FIREBASE_DATABASE_URL: ${{ secrets.PRODUCTION_FIREBASE_DATABASE_URL }}
+        run: |
+          if [[ -z "${FIREBASE_DATABASE_URL// }" ]]; then
+            echo "Missing required secret: PRODUCTION_FIREBASE_DATABASE_URL" >&2
+            exit 1
+          fi
+
       - name: Validate R2 backup secrets
         shell: bash
         env:
@@ -138,6 +148,7 @@ jobs:
           SESSION_SECRET=${{ secrets.PRODUCTION_SESSION_SECRET }}
           ADMIN_BOOTSTRAP_USERNAME=${{ secrets.PRODUCTION_ADMIN_BOOTSTRAP_USERNAME }}
           ADMIN_BOOTSTRAP_PASSWORD=${{ secrets.PRODUCTION_ADMIN_BOOTSTRAP_PASSWORD }}
+          FIREBASE_DATABASE_URL=${{ secrets.PRODUCTION_FIREBASE_DATABASE_URL }}
           WHATSAPP_PROVIDER=cloud_api
           WHATSAPP_GRAPH_API_VERSION=v25.0
           WHATSAPP_GRAPH_API_BASE_URL=https://graph.facebook.com

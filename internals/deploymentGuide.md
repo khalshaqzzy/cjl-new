@@ -116,6 +116,8 @@ Shared secret groups per environment:
   - `*_SESSION_SECRET`
   - `*_ADMIN_BOOTSTRAP_USERNAME`
   - `*_ADMIN_BOOTSTRAP_PASSWORD`
+- Firebase machine control:
+  - `*_FIREBASE_DATABASE_URL`
 - Production R2 MongoDB backups:
   - `PRODUCTION_R2_ACCOUNT_ID`
   - `PRODUCTION_R2_BUCKET`
@@ -271,6 +273,22 @@ Rule of thumb:
 - important:
   - this is plaintext in GitHub secrets by design because startup hashes it into Mongo
   - rotate it only with an intentional operator plan because startup will reconcile it
+
+#### Firebase machine control
+
+`*_FIREBASE_DATABASE_URL`
+
+- what it is:
+  - Firebase Realtime Database URL used by the admin machine-control backend
+- how to get it:
+  - open the Firebase project used by the physical washer/dryer controller
+  - copy the Realtime Database URL, for example `https://<project>-default-rtdb.<region>.firebasedatabase.app`
+  - save it as `STAGING_FIREBASE_DATABASE_URL` and `PRODUCTION_FIREBASE_DATABASE_URL`
+- important:
+  - the runtime env name is `FIREBASE_DATABASE_URL`, but GitHub secrets must use the environment-prefixed names
+  - the API only reads/writes `Mesin/A1-E1`, `Mesin/A2-E2`, and `Mesin/A3-E3`
+  - machine command writes use Firebase ETag conditional requests and fail closed if the target key is missing or changes before write
+  - no Firebase SDK, service account, API key, database secret, or auth token is currently used
 
 Production R2 backup secrets
 

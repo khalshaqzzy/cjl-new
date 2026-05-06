@@ -10,6 +10,7 @@ import { ZodError } from "zod"
 import {
   adminLaundryScopeSchema,
   adminLaundrySortSchema,
+  adminMachineCommandInputSchema,
   adminLoginInputSchema,
   confirmOrderInputSchema,
   createCustomerInputSchema,
@@ -71,6 +72,10 @@ import {
   voidOrder,
   downloadNotificationReceipt
 } from "./services/admin.js"
+import {
+  commandMachine,
+  listMachines,
+} from "./services/machines.js"
 import {
   getAvailableLeaderboardMonths,
   getDirectOrderStatus,
@@ -656,6 +661,23 @@ export const createApp = () => {
 
   app.get("/v1/admin/orders/:id", requireAdmin, asyncRoute(async (req, res) => {
     res.json(await getOrderById(getParam(req.params.id)))
+  }))
+
+  app.get("/v1/admin/machines", requireAdmin, asyncRoute(async (_req, res) => {
+    res.json(await listMachines())
+  }))
+
+  app.post("/v1/admin/machines/:id/command", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const machineId = getParam(req.params.id)
+    const body = adminMachineCommandInputSchema.parse(req.body)
+    const result = await commandMachine(machineId, body.targetStatus)
+    logger.info({
+      event: "machine.command.sent",
+      machineId,
+      commandPath: result.command.path,
+      targetStatus: result.command.targetStatus,
+    })
+    res.json(result)
   }))
 
   app.post("/v1/admin/orders/:id/done", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {

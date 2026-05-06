@@ -70,6 +70,16 @@ jobs:
             fi
           done
 
+      - name: Validate Firebase machine control secret
+        shell: bash
+        env:
+          FIREBASE_DATABASE_URL: ${{ secrets.STAGING_FIREBASE_DATABASE_URL }}
+        run: |
+          if [[ -z "${FIREBASE_DATABASE_URL// }" ]]; then
+            echo "Missing required secret: STAGING_FIREBASE_DATABASE_URL" >&2
+            exit 1
+          fi
+
       - name: Start SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -117,6 +127,7 @@ jobs:
           SESSION_SECRET=${{ secrets.STAGING_SESSION_SECRET }}
           ADMIN_BOOTSTRAP_USERNAME=${{ secrets.STAGING_ADMIN_BOOTSTRAP_USERNAME }}
           ADMIN_BOOTSTRAP_PASSWORD=${{ secrets.STAGING_ADMIN_BOOTSTRAP_PASSWORD }}
+          FIREBASE_DATABASE_URL=${{ secrets.STAGING_FIREBASE_DATABASE_URL }}
           WHATSAPP_PROVIDER=cloud_api
           WHATSAPP_GRAPH_API_VERSION=v25.0
           WHATSAPP_GRAPH_API_BASE_URL=https://graph.facebook.com

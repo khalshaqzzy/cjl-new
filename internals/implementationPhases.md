@@ -1,7 +1,7 @@
 # Implementation Phases
 
 Document status: Active  
-Last updated: 2026-04-06  
+Last updated: 2026-05-06  
 Purpose: compact repo-level implementation status snapshot
 
 ## Current Repo Status
@@ -33,6 +33,7 @@ The repo now has:
   - hardened `ScrollArea` viewport wrapper contract so the Radix scroll-content wrapper cannot widen the timeline beyond the mobile viewport
   - row-based outbound/inbound bubble alignment so right-edge placement is anchored to the viewport width instead of an accidentally widened content wrapper
 - failed-notification recovery through backend-owned resend with receipt download, `Mark as Done`, and `Ignore`
+- admin-only machine control for 5 dryers and 5 washers through backend-owned Firebase Realtime Database REST calls
 - startup seed/backfill that now also canonicalizes legacy WhatsApp data for Cloud-era reads while preserving legacy history
 - startup WhatsApp compatibility backfill now uses a runtime migration watermark and incremental cursor-based passes after the first baseline run
 - root CI that validates lint, typecheck, backend tests, E2E, build, compose, and Cloud runtime parity
@@ -57,6 +58,7 @@ Status: complete in repo terms
 - admin WhatsApp detail/layout now uses flat full-shell surfaces with fixed header/composer framing and subtree-aware WhatsApp nav highlighting
 - mobile thread detail keeps the bottom nav visible while the timeline remains the only intended scroll region
 - mobile WhatsApp list/detail now explicitly harden against right-edge overflow from long previews, badges, order codes, notification IDs, media labels, and scroll-wrapper width leaks
+- admin `Lainnya` now includes `Kontrol Mesin`, backed by `/v1/admin/machines` and `/v1/admin/machines/:id/command`
 
 ### Phase 4: Public Surface Integration
 

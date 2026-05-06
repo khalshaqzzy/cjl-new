@@ -31,6 +31,7 @@ Purpose: final gate checklist before the first production push after Cloud-only 
 - `RELEASE_SHA` is rendered into hosted runtime env on deploy
 - `LOG_LEVEL` is explicitly set in hosted runtime env
 - staging and production both include:
+  - `FIREBASE_DATABASE_URL`
   - `WHATSAPP_PROVIDER=cloud_api`
   - `WHATSAPP_GRAPH_API_VERSION`
   - `WHATSAPP_GRAPH_API_BASE_URL`
@@ -41,6 +42,8 @@ Purpose: final gate checklist before the first production push after Cloud-only 
   - `WHATSAPP_APP_SECRET`
   - `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
   - `WHATSAPP_WEBHOOK_PATH`
+- production includes Firebase machine-control secret:
+  - `PRODUCTION_FIREBASE_DATABASE_URL`
 - production includes R2 backup secrets:
   - `PRODUCTION_R2_ACCOUNT_ID`
   - `PRODUCTION_R2_BUCKET`

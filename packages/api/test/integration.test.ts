@@ -8,10 +8,12 @@ import { MongoMemoryReplSet } from "mongodb-memory-server"
 
 const baseUrl = "http://127.0.0.1:4105"
 const graphApiBaseUrl = "http://127.0.0.1:4115"
+const firebaseDatabaseUrl = "http://127.0.0.1:4116"
 
 let mongo: MongoMemoryReplSet
 let server: Server
 let gatewayServer: Server
+let firebaseServer: Server
 let getDatabase: (typeof import("../src/db.ts"))["getDatabase"]
 let disconnectDatabase: (typeof import("../src/db.ts"))["disconnectDatabase"]
 let stopBackgroundWork: (() => Promise<void>) | undefined
@@ -38,6 +40,108 @@ const cloudApiControls = {
       components?: Array<Record<string, unknown>>
     }
   },
+}
+
+const firebaseControls = {
+  mesin: {
+    A1: "0",
+    B1: "1",
+    C1: "0",
+    D1: "1",
+    E1: "0",
+    A2: "0",
+    B2: "0",
+    C2: "0",
+    D2: "0",
+    E2: "0",
+    A3: "0",
+    B3: "1",
+    C3: "0",
+    D3: "1",
+    E3: "0",
+  } as Record<string, string>,
+  patchPayloads: [] as Array<Record<string, string>>,
+  putRequests: [] as Array<{ key: string; value: string; ifMatch?: string }>,
+  deleteBeforePutKey: null as string | null,
+}
+
+const firebaseEtag = (key: string, value: string) => `"${key}:${value}"`
+
+const startFirebaseServer = async () => {
+  firebaseServer = createServer(async (req, res) => {
+    const sendJson = (statusCode: number, payload: unknown) => {
+      res.statusCode = statusCode
+      res.setHeader("Content-Type", "application/json")
+      res.end(JSON.stringify(payload))
+    }
+
+    if (req.method === "GET" && req.url === "/Mesin.json") {
+      sendJson(200, firebaseControls.mesin)
+      return
+    }
+
+    const machinePathMatch = req.url?.match(/^\/Mesin\/([^/]+)\.json$/)
+    if (req.method === "GET" && machinePathMatch) {
+      const key = decodeURIComponent(machinePathMatch[1])
+      const value = firebaseControls.mesin[key]
+      if (req.headers["x-firebase-etag"] === "true" && value !== undefined) {
+        res.setHeader("ETag", firebaseEtag(key, value))
+      }
+      sendJson(200, value ?? null)
+      return
+    }
+
+    if (req.method === "PUT" && machinePathMatch) {
+      const key = decodeURIComponent(machinePathMatch[1])
+      let requestBody = ""
+      req.on("data", (chunk) => {
+        requestBody += chunk.toString()
+      })
+
+      req.on("end", () => {
+        const value = JSON.parse(requestBody || "null") as string
+        const ifMatch = typeof req.headers["if-match"] === "string" ? req.headers["if-match"] : undefined
+        firebaseControls.putRequests.push({ key, value, ifMatch })
+
+        if (firebaseControls.deleteBeforePutKey === key) {
+          delete firebaseControls.mesin[key]
+          firebaseControls.deleteBeforePutKey = null
+        }
+
+        const currentValue = firebaseControls.mesin[key]
+        if (currentValue === undefined || ifMatch !== firebaseEtag(key, currentValue)) {
+          sendJson(412, { message: "Precondition Failed" })
+          return
+        }
+
+        firebaseControls.mesin[key] = value
+        res.setHeader("ETag", firebaseEtag(key, value))
+        sendJson(200, value)
+      })
+      return
+    }
+
+    if (req.method === "PATCH" && req.url === "/Mesin.json") {
+      let requestBody = ""
+      req.on("data", (chunk) => {
+        requestBody += chunk.toString()
+      })
+
+      req.on("end", () => {
+        const payload = JSON.parse(requestBody || "{}") as Record<string, string>
+        firebaseControls.patchPayloads.push(payload)
+        Object.assign(firebaseControls.mesin, payload)
+        sendJson(200, payload)
+      })
+      return
+    }
+
+    sendJson(404, { message: "Not found" })
+  })
+
+  await new Promise<void>((resolve) => {
+    firebaseServer.listen(4116, () => resolve())
+  })
 }
 
 const startGatewayServer = async () => {
@@ -230,6 +334,7 @@ test.before(async () => {
   })
 
   await startGatewayServer()
+  await startFirebaseServer()
 
   process.env.PORT = "4105"
   process.env.APP_ENV = "test"
@@ -242,6 +347,7 @@ test.before(async () => {
   process.env.ADMIN_ORIGIN = "http://127.0.0.1:3101"
   process.env.PUBLIC_ORIGIN = "http://127.0.0.1:3100"
   process.env.API_ORIGIN = "http://127.0.0.1:4100"
+  process.env.FIREBASE_DATABASE_URL = firebaseDatabaseUrl
   process.env.WHATSAPP_PROVIDER = "cloud_api"
   process.env.WHATSAPP_GRAPH_API_VERSION = "v25.0"
   process.env.WHATSAPP_GRAPH_API_BASE_URL = graphApiBaseUrl
@@ -300,7 +406,125 @@ test.after(async () => {
       })
     })
   }
+  if (firebaseServer) {
+    firebaseServer.closeAllConnections?.()
+    await new Promise<void>((resolve, reject) => {
+      firebaseServer.close((error) => {
+        if (error) {
+          reject(error)
+          return
+        }
+
+        resolve()
+      })
+    })
+  }
   await mongo.stop()
+})
+
+test("admin machine control reads statuses and sends Firebase commands", async () => {
+  firebaseControls.mesin = {
+    A1: "0",
+    B1: "1",
+    C1: "0",
+    D1: "1",
+    E1: "0",
+    A2: "0",
+    B2: "0",
+    C2: "0",
+    D2: "0",
+    E2: "0",
+    A3: "0",
+    B3: "1",
+    C3: "0",
+    D3: "1",
+    E3: "0",
+  }
+  firebaseControls.patchPayloads = []
+  firebaseControls.putRequests = []
+  firebaseControls.deleteBeforePutKey = null
+
+  let result = await requestJson("/v1/admin/machines", { expectedStatus: 401 })
+  assert.equal(result.payload.message, "Unauthorized")
+
+  result = await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "admin123" })
+  })
+  const adminCookie = result.response.headers.get("set-cookie")
+  assert.ok(adminCookie)
+
+  result = await requestJson("/v1/admin/machines", {
+    headers: { Cookie: adminCookie }
+  })
+  assert.equal(result.payload.items.length, 10)
+  assert.equal(result.payload.items.find((machine: { machineId: string }) => machine.machineId === "dryer-2").status, "1")
+  assert.equal(result.payload.items.find((machine: { machineId: string }) => machine.machineId === "washer-2").statusPath, "B3")
+  assert.equal(result.payload.items.find((machine: { machineId: string }) => machine.machineId === "washer-2").status, "1")
+
+  result = await requestJson("/v1/admin/machines/dryer-1/command", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie,
+    },
+    body: JSON.stringify({ targetStatus: "1" })
+  })
+  assert.equal(result.payload.ok, true)
+  assert.deepEqual(firebaseControls.putRequests.at(-1), { key: "A1", value: "1", ifMatch: firebaseEtag("A1", "0") })
+  assert.equal(firebaseControls.mesin.A1, "1")
+
+  result = await requestJson("/v1/admin/machines/washer-1/command", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie,
+    },
+    body: JSON.stringify({ targetStatus: "1" })
+  })
+  assert.equal(result.payload.command.path, "A2")
+  assert.deepEqual(firebaseControls.putRequests.at(-1), { key: "A2", value: "1", ifMatch: firebaseEtag("A2", "0") })
+  assert.equal(result.payload.machine.statusPath, "A3")
+  assert.equal(result.payload.machine.status, "0")
+
+  result = await requestJson("/v1/admin/machines/washer-2/command", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie,
+    },
+    body: JSON.stringify({ targetStatus: "0" })
+  })
+  assert.equal(result.payload.command.path, "B3")
+  assert.deepEqual(firebaseControls.putRequests.at(-1), { key: "B3", value: "0", ifMatch: firebaseEtag("B3", "1") })
+  assert.equal(firebaseControls.mesin.B3, "0")
+
+  delete firebaseControls.mesin.C2
+  result = await requestJson("/v1/admin/machines/washer-3/command", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie,
+    },
+    body: JSON.stringify({ targetStatus: "1" }),
+    expectedStatus: 404,
+  })
+  assert.equal(result.payload.message, "Path mesin C2 tidak ditemukan")
+  assert.notEqual(firebaseControls.putRequests.at(-1)?.key, "C2")
+
+  firebaseControls.deleteBeforePutKey = "D2"
+  result = await requestJson("/v1/admin/machines/washer-4/command", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: adminCookie,
+    },
+    body: JSON.stringify({ targetStatus: "1" }),
+    expectedStatus: 409,
+  })
+  assert.equal(result.payload.message, "Path mesin D2 berubah sebelum update; status tidak diubah")
+  assert.equal(firebaseControls.mesin.D2, undefined)
 })
 
 test("backend integration flow covers auth, transactions, idempotency, outbox states, throttling, and archived leaderboard rebuilds", async () => {

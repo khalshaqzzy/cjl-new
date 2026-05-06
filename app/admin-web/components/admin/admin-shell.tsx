@@ -12,6 +12,7 @@ import {
   Bell,
   Smartphone,
   Settings,
+  Power,
   LogOut,
   Menu,
   ChevronRight,
@@ -39,6 +40,7 @@ const navItems = [
 ]
 
 const moreItems = [
+  { href: "/admin/mesin", label: "Kontrol Mesin", icon: Power },
   { href: "/admin/notifikasi", label: "Notifikasi", icon: Bell },
   { href: "/admin/settings", label: "Pengaturan", icon: Settings },
 ]

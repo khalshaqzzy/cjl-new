@@ -81,6 +81,8 @@ export const whatsappMediaDownloadStatusSchema = z.enum([
   "downloaded",
   "failed",
 ])
+export const machineTypeSchema = z.enum(["washer", "dryer"])
+export const machineStatusSchema = z.enum(["0", "1", "unknown"])
 
 export const serviceSettingSchema = z.object({
   serviceCode: serviceCodeSchema,
@@ -339,6 +341,34 @@ export const whatsappMessageItemSchema = z.object({
   orderCode: z.string().optional(),
   customerId: z.string().optional(),
   customerName: z.string().optional(),
+})
+
+export const adminMachineSchema = z.object({
+  machineId: z.string(),
+  type: machineTypeSchema,
+  number: z.number().int().min(1).max(5),
+  label: z.string(),
+  status: machineStatusSchema,
+  statusPath: z.string(),
+  onCommandPath: z.string(),
+  offCommandPath: z.string(),
+})
+
+export const adminMachineListResponseSchema = z.object({
+  items: z.array(adminMachineSchema),
+})
+
+export const adminMachineCommandInputSchema = z.object({
+  targetStatus: z.enum(["0", "1"]),
+})
+
+export const adminMachineCommandResponseSchema = z.object({
+  ok: z.literal(true),
+  machine: adminMachineSchema,
+  command: z.object({
+    path: z.string(),
+    targetStatus: z.enum(["0", "1"]),
+  }),
 })
 
 export const whatsappInternalSessionStateChangedEventSchema = z.object({
@@ -711,9 +741,15 @@ export type WhatsappMessageDirection = z.infer<typeof whatsappMessageDirectionSc
 export type WhatsappComposerMode = z.infer<typeof whatsappComposerModeSchema>
 export type WhatsappMessageSource = z.infer<typeof whatsappMessageSourceSchema>
 export type WhatsappMediaDownloadStatus = z.infer<typeof whatsappMediaDownloadStatusSchema>
+export type MachineType = z.infer<typeof machineTypeSchema>
+export type MachineStatus = z.infer<typeof machineStatusSchema>
 export type WhatsappConnectionStatus = z.infer<typeof whatsappConnectionStatusSchema>
 export type WhatsappChatSummary = z.infer<typeof whatsappChatSummarySchema>
 export type WhatsappMessageItem = z.infer<typeof whatsappMessageItemSchema>
+export type AdminMachine = z.infer<typeof adminMachineSchema>
+export type AdminMachineListResponse = z.infer<typeof adminMachineListResponseSchema>
+export type AdminMachineCommandInput = z.infer<typeof adminMachineCommandInputSchema>
+export type AdminMachineCommandResponse = z.infer<typeof adminMachineCommandResponseSchema>
 export type LeaderboardRow = z.infer<typeof leaderboardRowSchema>
 export type MonthlySummary = z.infer<typeof monthlySummarySchema>
 export type PublicDashboardResponse = z.infer<typeof publicDashboardResponseSchema>

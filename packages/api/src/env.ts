@@ -59,6 +59,7 @@ const envSchema = z.object({
   API_ORIGIN: z.string().default("http://localhost:4000"),
   RELEASE_SHA: z.string().default("dev"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  FIREBASE_DATABASE_URL: z.string().optional(),
   WHATSAPP_PROVIDER: z.enum(["cloud_api", "disabled"]).default("disabled"),
   WHATSAPP_GRAPH_API_VERSION: z.string().default("v25.0"),
   WHATSAPP_GRAPH_API_BASE_URL: z.string().default("https://graph.facebook.com"),

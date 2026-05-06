@@ -2,6 +2,8 @@
 
 import type {
   AdminLaundryListResponse,
+  AdminMachineCommandResponse,
+  AdminMachineListResponse,
   CreateCustomerResponse,
   AdminDashboardResponse,
   AdminLaundryScope,
@@ -202,6 +204,12 @@ export const adminApi = {
       body: JSON.stringify({ reason, notifyCustomer })
     }),
   listNotifications: () => apiFetch<NotificationRecord[]>("/v1/admin/notifications"),
+  listMachines: () => apiFetch<AdminMachineListResponse>("/v1/admin/machines"),
+  commandMachine: (machineId: string, targetStatus: "0" | "1") =>
+    apiFetch<AdminMachineCommandResponse>(`/v1/admin/machines/${encodeURIComponent(machineId)}/command`, {
+      method: "POST",
+      body: JSON.stringify({ targetStatus })
+    }),
   resendNotification: (notificationId: string) =>
     apiFetch<NotificationRecord>(`/v1/admin/notifications/${notificationId}/resend`, { method: "POST" }),
   manualResolveNotification: (notificationId: string, note: string) =>
