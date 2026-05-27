@@ -527,6 +527,289 @@ test("admin machine control reads statuses and sends Firebase commands", async (
   assert.equal(firebaseControls.mesin.D2, undefined)
 })
 
+test("admin role model supports one employee account and owner-only controls", async () => {
+  await getDatabase().collection("admins").deleteOne({ _id: "employee-primary" })
+
+  let result = await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "admin123" })
+  })
+  assert.equal(result.payload.ok, true)
+  const ownerCookie = result.response.headers.get("set-cookie")
+  assert.ok(ownerCookie)
+
+  result = await requestJson("/v1/admin/auth/session", {
+    headers: { Cookie: ownerCookie }
+  })
+  assert.equal(result.payload.authenticated, true)
+  assert.equal(result.payload.role, "owner")
+  assert.equal(result.payload.username, "admin")
+
+  await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "employee", password: "employee123" }),
+    expectedStatus: 401,
+  })
+
+  await requestJson("/v1/admin/staff/employee", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({ username: "employee", isActive: true }),
+    expectedStatus: 422,
+  })
+
+  result = await requestJson("/v1/admin/staff/employee", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({ username: "employee", password: "employee123", isActive: true })
+  })
+  assert.equal(result.payload.exists, true)
+  assert.equal(result.payload.username, "employee")
+  assert.equal(result.payload.isActive, true)
+
+  result = await requestJson("/v1/admin/staff/employee/login-link", {
+    headers: { Cookie: ownerCookie }
+  })
+  assert.equal(result.payload.loginLink.exists, false)
+  assert.equal(result.payload.loginLink.isActive, false)
+
+  result = await requestJson("/v1/admin/staff/employee/login-link", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.loginLink.exists, true)
+  assert.equal(result.payload.loginLink.isActive, true)
+  assert.match(result.payload.reusableLogin.url, /\/employee-login\?token=/)
+  const firstEmployeeLoginToken = new URL(result.payload.reusableLogin.url).searchParams.get("token")
+  assert.ok(firstEmployeeLoginToken)
+
+  const employeeStoredForLink = await getDatabase().collection("admins").findOne({ _id: "employee-primary" })
+  assert.ok(employeeStoredForLink?.employeeLoginLink?.tokenHash)
+  assert.notEqual(employeeStoredForLink.employeeLoginLink.tokenHash, firstEmployeeLoginToken)
+  assert.equal(employeeStoredForLink.employeeLoginLink.token, undefined)
+
+  result = await requestJson("/v1/admin/auth/employee-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: firstEmployeeLoginToken })
+  })
+  assert.equal(result.payload.ok, true)
+  const firstEmployeeQrCookie = result.response.headers.get("set-cookie")
+  assert.ok(firstEmployeeQrCookie)
+
+  result = await requestJson("/v1/admin/auth/employee-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: firstEmployeeLoginToken })
+  })
+  assert.equal(result.payload.ok, true)
+  const secondEmployeeQrCookie = result.response.headers.get("set-cookie")
+  assert.ok(secondEmployeeQrCookie)
+
+  result = await requestJson("/v1/admin/auth/session", {
+    headers: { Cookie: secondEmployeeQrCookie }
+  })
+  assert.equal(result.payload.authenticated, true)
+  assert.equal(result.payload.role, "employee")
+
+  result = await requestJson("/v1/admin/staff/employee/login-link/disable", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.loginLink.isActive, false)
+  await requestJson("/v1/admin/auth/employee-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: firstEmployeeLoginToken }),
+    expectedStatus: 401,
+  })
+  result = await requestJson("/v1/admin/dashboard?window=daily", {
+    headers: { Cookie: firstEmployeeQrCookie }
+  })
+  assert.equal(result.payload.chart.bucket, "hour")
+
+  result = await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "employee", password: "employee123" })
+  })
+  const employeeCookie = result.response.headers.get("set-cookie")
+  assert.ok(employeeCookie)
+
+  result = await requestJson("/v1/admin/auth/session", {
+    headers: { Cookie: employeeCookie }
+  })
+  assert.equal(result.payload.authenticated, true)
+  assert.equal(result.payload.role, "employee")
+  assert.equal(result.payload.username, "employee")
+
+  await requestJson("/v1/admin/settings", {
+    headers: { Cookie: employeeCookie },
+    expectedStatus: 403,
+  })
+  result = await requestJson("/v1/admin/services", {
+    headers: { Cookie: employeeCookie },
+  })
+  assert.equal(Array.isArray(result.payload.services), true)
+  assert.equal(result.payload.services.length > 0, true)
+  assert.equal(result.payload.services.every((service: { isActive: boolean }) => service.isActive), true)
+  await requestJson("/v1/admin/staff/employee", {
+    headers: { Cookie: employeeCookie },
+    expectedStatus: 403,
+  })
+  await requestJson("/v1/admin/auth/logout-other-sessions", {
+    method: "POST",
+    headers: { Cookie: employeeCookie },
+    body: JSON.stringify({}),
+    expectedStatus: 403,
+  })
+  await requestJson("/v1/admin/machines", {
+    headers: { Cookie: employeeCookie },
+    expectedStatus: 403,
+  })
+
+  result = await requestJson("/v1/admin/customers", {
+    headers: { Cookie: employeeCookie }
+  })
+  assert.equal(Array.isArray(result.payload), true)
+  result = await requestJson("/v1/admin/dashboard?window=daily", {
+    headers: { Cookie: employeeCookie }
+  })
+  assert.equal(result.payload.chart.bucket, "hour")
+  await requestJson("/v1/admin/dashboard?window=weekly", {
+    headers: { Cookie: employeeCookie },
+    expectedStatus: 403,
+  })
+  await requestJson("/v1/admin/dashboard?window=monthly", {
+    headers: { Cookie: employeeCookie },
+    expectedStatus: 403,
+  })
+  result = await requestJson("/v1/admin/orders/laundry?scope=active&sort=oldest", {
+    headers: { Cookie: employeeCookie }
+  })
+  assert.equal(Array.isArray(result.payload.items), true)
+  result = await requestJson("/v1/admin/orders/laundry?scope=today&sort=newest", {
+    headers: { Cookie: employeeCookie }
+  })
+  assert.equal(Array.isArray(result.payload.items), true)
+  await requestJson("/v1/admin/orders/laundry?scope=history&sort=newest", {
+    headers: { Cookie: employeeCookie },
+    expectedStatus: 403,
+  })
+
+  result = await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "employee", password: "employee123" })
+  })
+  const secondEmployeeCookie = result.response.headers.get("set-cookie")
+  assert.ok(secondEmployeeCookie)
+
+  result = await requestJson("/v1/admin/staff/employee/login-link", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({})
+  })
+  const passwordRotationEmployeeLoginToken = new URL(result.payload.reusableLogin.url).searchParams.get("token")
+  assert.ok(passwordRotationEmployeeLoginToken)
+
+  result = await requestJson("/v1/admin/staff/employee", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({ username: "employee", password: "employee456", isActive: true })
+  })
+  assert.equal(result.payload.isActive, true)
+
+  await requestJson("/v1/admin/dashboard?window=daily", {
+    headers: { Cookie: secondEmployeeCookie },
+    expectedStatus: 401,
+  })
+  await requestJson("/v1/admin/auth/employee-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: passwordRotationEmployeeLoginToken }),
+    expectedStatus: 401,
+  })
+  await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "employee", password: "employee123" }),
+    expectedStatus: 401,
+  })
+  result = await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "employee", password: "employee456" })
+  })
+  const activeEmployeeCookie = result.response.headers.get("set-cookie")
+  assert.ok(activeEmployeeCookie)
+
+  result = await requestJson("/v1/admin/staff/employee", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({ username: "employee", isActive: false })
+  })
+  assert.equal(result.payload.isActive, false)
+  await requestJson("/v1/admin/dashboard?window=daily", {
+    headers: { Cookie: activeEmployeeCookie },
+    expectedStatus: 401,
+  })
+  await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "employee", password: "employee456" }),
+    expectedStatus: 401,
+  })
+
+  result = await requestJson("/v1/admin/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "admin123" })
+  })
+  const secondOwnerCookie = result.response.headers.get("set-cookie")
+  assert.ok(secondOwnerCookie)
+
+  result = await requestJson("/v1/admin/auth/logout-other-sessions", {
+    method: "POST",
+    headers: { Cookie: ownerCookie },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.ok, true)
+  result = await requestJson("/v1/admin/auth/session", {
+    headers: { Cookie: ownerCookie }
+  })
+  assert.equal(result.payload.authenticated, true)
+  await requestJson("/v1/admin/dashboard?window=daily", {
+    headers: { Cookie: secondOwnerCookie },
+    expectedStatus: 401,
+  })
+})
+
 test("backend integration flow covers auth, transactions, idempotency, outbox states, throttling, and archived leaderboard rebuilds", async () => {
   let result = await requestJson("/v1/admin/dashboard", { expectedStatus: 401 })
   assert.equal(result.payload.message, "Unauthorized")

@@ -4,6 +4,8 @@ import type {
   AdminLaundryListResponse,
   AdminMachineCommandResponse,
   AdminMachineListResponse,
+  AdminServicesResponse,
+  AdminSessionResponse,
   CreateCustomerResponse,
   AdminDashboardResponse,
   AdminLaundryScope,
@@ -11,6 +13,9 @@ import type {
   CustomerMagicLinkResponse,
   ConfirmOrderInput,
   CustomerSearchResult,
+  EmployeeAccount,
+  EmployeeAccountInput,
+  EmployeeLoginLinkResponse,
   NotificationRecord,
   OkResponse,
   OrderHistoryItem,
@@ -23,6 +28,8 @@ import type {
 } from "@cjl/contracts"
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"
+const csrfTokenPath = "/v1/admin/csrf-token"
+let csrfToken: string | null = null
 
 export class ApiError extends Error {
   readonly status: number
@@ -40,20 +47,50 @@ export class ApiError extends Error {
 
 const resolveIdempotencyKey = (key?: string) => key ?? crypto.randomUUID()
 
-const apiFetch = async <T>(path: string, init?: RequestInit) => {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
+const isUnsafeMethod = (method: string) => !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())
+
+const fetchCsrfToken = async () => {
+  const response = await fetch(`${apiBaseUrl}${csrfTokenPath}`, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
+    },
   })
+
+  if (!response.ok) {
+    return null
+  }
+
+  const payload = (await response.json().catch(() => null)) as { csrfToken?: string | null } | null
+  csrfToken = response.headers.get("x-csrf-token") ?? payload?.csrfToken ?? null
+  return csrfToken
+}
+
+const apiFetch = async <T>(path: string, init?: RequestInit) => {
+  const method = init?.method ?? "GET"
+  const headers = new Headers(init?.headers)
+  headers.set("Content-Type", "application/json")
+  if (isUnsafeMethod(method)) {
+    const token = csrfToken ?? await fetchCsrfToken()
+    if (token) {
+      headers.set("X-CSRF-Token", token)
+    }
+  }
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    credentials: "include",
+    headers
+  })
+  csrfToken = response.headers.get("x-csrf-token") ?? csrfToken
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as
       | { message?: string; error?: { code?: string; requestId?: string } }
       | null
+    if (payload?.error?.code === "csrf_token_invalid") {
+      csrfToken = null
+    }
     throw new ApiError(
       payload?.message ?? "Request gagal",
       response.status,
@@ -97,13 +134,17 @@ const apiFetchBlob = async (path: string, init?: RequestInit) => {
 }
 
 export const adminApi = {
-  getSession: () => apiFetch<{ authenticated: boolean }>("/v1/admin/auth/session"),
+  getSession: () => apiFetch<AdminSessionResponse>("/v1/admin/auth/session"),
   login: (username: string, password: string) =>
     apiFetch<{ ok: true }>("/v1/admin/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password })
     }),
   logout: () => apiFetch<{ ok: true }>("/v1/admin/auth/logout", { method: "POST" }),
+  logoutOtherSessions: () => apiFetch<{ ok: true }>("/v1/admin/auth/logout-other-sessions", {
+    method: "POST",
+    body: JSON.stringify({})
+  }),
   getDashboard: (window: "daily" | "weekly" | "monthly") =>
     apiFetch<AdminDashboardResponse>(`/v1/admin/dashboard?window=${window}`),
   listCustomers: (search = "") =>
@@ -236,11 +277,34 @@ export const adminApi = {
     apiFetchBlob(`/v1/admin/notifications/${notificationId}/receipt`),
   getNotificationMessage: (notificationId: string) =>
     apiFetch<{ message: string }>(`/v1/admin/notifications/${notificationId}/message`),
+  getServices: () => apiFetch<AdminServicesResponse>("/v1/admin/services"),
   getSettings: () => apiFetch<SettingsResponse>("/v1/admin/settings"),
   updateSettings: (payload: SettingsResponse) =>
     apiFetch<SettingsResponse>("/v1/admin/settings", {
       method: "PUT",
       body: JSON.stringify(payload)
+    }),
+  getEmployeeAccount: () => apiFetch<EmployeeAccount>("/v1/admin/staff/employee"),
+  updateEmployeeAccount: (payload: EmployeeAccountInput) =>
+    apiFetch<EmployeeAccount>("/v1/admin/staff/employee", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    }),
+  getEmployeeLoginLink: () => apiFetch<EmployeeLoginLinkResponse>("/v1/admin/staff/employee/login-link"),
+  generateEmployeeLoginLink: () =>
+    apiFetch<EmployeeLoginLinkResponse>("/v1/admin/staff/employee/login-link", {
+      method: "POST",
+      body: JSON.stringify({})
+    }),
+  disableEmployeeLoginLink: () =>
+    apiFetch<EmployeeLoginLinkResponse>("/v1/admin/staff/employee/login-link/disable", {
+      method: "POST",
+      body: JSON.stringify({})
+    }),
+  redeemEmployeeLoginLink: (token: string) =>
+    apiFetch<OkResponse>("/v1/admin/auth/employee-link/redeem", {
+      method: "POST",
+      body: JSON.stringify({ token })
     }),
   getWhatsappStatus: () => apiFetch<WhatsappConnectionStatus>("/v1/admin/whatsapp/status"),
   listWhatsappChats: () => apiFetch<WhatsappChatSummary[]>("/v1/admin/whatsapp/chats"),

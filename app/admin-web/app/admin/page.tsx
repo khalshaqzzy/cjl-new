@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
+import type { AdminRole } from "@cjl/contracts"
 import type { LucideIcon } from "lucide-react"
 import {
   Area,
@@ -245,11 +246,34 @@ export default function DashboardPage() {
   const [timeFilter, setTimeFilter] = useState<DashboardWindow>("daily")
   const [chartMetric, setChartMetric] = useState<ChartMetric>("netSales")
   const [selectedItemService, setSelectedItemService] = useState<string>("")
+  const [adminRole, setAdminRole] = useState<AdminRole>("owner")
+  const [isRoleChecked, setIsRoleChecked] = useState(false)
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
 
   useEffect(() => {
+    adminApi.getSession()
+      .then((payload) => {
+        setAdminRole(payload.role ?? "owner")
+        if (payload.role === "employee") {
+          setTimeFilter("daily")
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setIsRoleChecked(true))
+  }, [])
+
+  useEffect(() => {
+    if (!isRoleChecked) {
+      return
+    }
+
+    if (adminRole === "employee" && timeFilter !== "daily") {
+      setTimeFilter("daily")
+      return
+    }
+
     setIsLoading(true)
     adminApi.getDashboard(timeFilter)
       .then((payload) => {
@@ -258,7 +282,7 @@ export default function DashboardPage() {
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat dashboard"))
       .finally(() => setIsLoading(false))
-  }, [timeFilter])
+  }, [adminRole, isRoleChecked, timeFilter])
 
   const activeOrders = dashboard?.activeOrders ?? []
   const notifications = dashboard?.notifications ?? []
@@ -328,6 +352,9 @@ export default function DashboardPage() {
 
   const today = new Date()
   const periodLabel = timeFilters.find((filter) => filter.key === timeFilter)?.label ?? ""
+  const visibleTimeFilters = adminRole === "employee"
+    ? timeFilters.filter((filter) => filter.key === "daily")
+    : timeFilters
   const isTodayView = timeFilter === "daily"
   const periodAverage = timeFilter === "monthly"
     ? dashboard?.periodAverages.month
@@ -423,7 +450,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-line-base bg-bg-surface p-1 shadow-card sm:flex sm:w-auto">
-              {timeFilters.map((filter) => (
+              {visibleTimeFilters.map((filter) => (
                 <button
                   key={filter.key}
                   type="button"
@@ -677,7 +704,9 @@ export default function DashboardPage() {
               <QuickActionTile href="/admin/pos" icon={ShoppingCart} label="Buat Order" description="Order laundry baru" />
               <QuickActionTile href="/admin/pelanggan" icon={Users} label="Cari Customer" description="Lihat data pelanggan" />
               <QuickActionTile href="/admin/notifikasi" icon={Bell} label="Notifikasi" description="Status pengiriman WA" />
-              <QuickActionTile href="/admin/settings" icon={Settings} label="Edit Harga" description="Atur harga layanan" />
+              {adminRole !== "employee" && (
+                <QuickActionTile href="/admin/settings" icon={Settings} label="Edit Harga" description="Atur harga layanan" />
+              )}
             </div>
           </div>
 

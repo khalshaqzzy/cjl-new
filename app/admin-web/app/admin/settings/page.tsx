@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import type { AdminWhatsappContact, ServiceSetting } from "@cjl/contracts"
+import { useRouter } from "next/navigation"
+import type { AdminWhatsappContact, EmployeeLoginLinkStatus, ServiceSetting } from "@cjl/contracts"
 import { AdminShell } from "@/components/admin/admin-shell"
+import { CustomerLoginLinkSheet } from "@/components/admin/customer-login-link-sheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -19,6 +21,7 @@ import {
   Package,
   Phone,
   Plus,
+  QrCode,
   Save,
   Shirt,
   ShoppingBag,
@@ -28,6 +31,11 @@ import {
   Waves,
   Wind,
   Droplets,
+  KeyRound,
+  LogOut,
+  ShieldCheck,
+  Unlink,
+  UserCog,
 } from "lucide-react"
 
 const serviceIcons: Record<string, typeof Shirt> = {
@@ -113,6 +121,7 @@ type InitialState = {
 }
 
 export default function SettingsPage() {
+  const router = useRouter()
   const [laundryName, setLaundryName] = useState("")
   const [laundryPhone, setLaundryPhone] = useState("")
   const [publicContactPhone, setPublicContactPhone] = useState("")
@@ -128,33 +137,64 @@ export default function SettingsPage() {
   const [loadError, setLoadError] = useState("")
   const [saveError, setSaveError] = useState("")
   const [saveSuccess, setSaveSuccess] = useState("")
+  const [employeeExists, setEmployeeExists] = useState(false)
+  const [employeeUsername, setEmployeeUsername] = useState("")
+  const [employeePassword, setEmployeePassword] = useState("")
+  const [employeeIsActive, setEmployeeIsActive] = useState(true)
+  const [employeeLoginLink, setEmployeeLoginLink] = useState<EmployeeLoginLinkStatus>({
+    exists: false,
+    isActive: false,
+  })
+  const [employeeLoginUrl, setEmployeeLoginUrl] = useState("")
+  const [isEmployeeQrSheetOpen, setIsEmployeeQrSheetOpen] = useState(false)
+  const [isSavingEmployee, setIsSavingEmployee] = useState(false)
+  const [isGeneratingEmployeeLoginLink, setIsGeneratingEmployeeLoginLink] = useState(false)
+  const [isDisablingEmployeeLoginLink, setIsDisablingEmployeeLoginLink] = useState(false)
+  const [employeeMessage, setEmployeeMessage] = useState("")
+  const [employeeError, setEmployeeError] = useState("")
+  const [isLoggingOutOtherSessions, setIsLoggingOutOtherSessions] = useState(false)
 
   useEffect(() => {
-    adminApi.getSettings()
-      .then((payload) => {
-        setLaundryName(payload.business.laundryName)
-        setLaundryPhone(payload.business.laundryPhone)
-        setPublicContactPhone(payload.business.publicContactPhone)
-        setPublicWhatsapp(payload.business.publicWhatsapp)
-        setAdminWhatsappContacts(payload.business.adminWhatsappContacts)
-        setLaundryAddress(payload.business.address)
-        setOperatingHours(payload.business.operatingHours)
-        setServices(payload.services)
+    adminApi.getSession()
+      .then(async (session) => {
+        if (session.role === "employee") {
+          router.replace("/admin")
+          return
+        }
+
+        const [settings, employee, employeeLoginLinkResponse] = await Promise.all([
+          adminApi.getSettings(),
+          adminApi.getEmployeeAccount(),
+          adminApi.getEmployeeLoginLink(),
+        ])
+
+        setLaundryName(settings.business.laundryName)
+        setLaundryPhone(settings.business.laundryPhone)
+        setPublicContactPhone(settings.business.publicContactPhone)
+        setPublicWhatsapp(settings.business.publicWhatsapp)
+        setAdminWhatsappContacts(settings.business.adminWhatsappContacts)
+        setLaundryAddress(settings.business.address)
+        setOperatingHours(settings.business.operatingHours)
+        setServices(settings.services)
         setInitialState({
-          laundryName: payload.business.laundryName,
-          laundryPhone: payload.business.laundryPhone,
-          publicContactPhone: payload.business.publicContactPhone,
-          publicWhatsapp: payload.business.publicWhatsapp,
-          adminWhatsappContacts: payload.business.adminWhatsappContacts,
-          laundryAddress: payload.business.address,
-          operatingHours: payload.business.operatingHours,
-          services: payload.services,
+          laundryName: settings.business.laundryName,
+          laundryPhone: settings.business.laundryPhone,
+          publicContactPhone: settings.business.publicContactPhone,
+          publicWhatsapp: settings.business.publicWhatsapp,
+          adminWhatsappContacts: settings.business.adminWhatsappContacts,
+          laundryAddress: settings.business.address,
+          operatingHours: settings.business.operatingHours,
+          services: settings.services,
         })
+        setEmployeeExists(employee.exists)
+        setEmployeeUsername(employee.username)
+        setEmployeeIsActive(employee.exists ? employee.isActive : true)
+        setEmployeeLoginLink(employeeLoginLinkResponse.loginLink)
         setLoadError("")
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat pengaturan"))
       .finally(() => setIsLoading(false))
-  }, [])
+  }, [router])
 
   const markDirty = () => {
     setHasChanges(true)
@@ -308,6 +348,95 @@ export default function SettingsPage() {
     setHasChanges(false)
   }
 
+  const handleSaveEmployee = async () => {
+    if (!employeeUsername.trim()) {
+      setEmployeeError("Username karyawan wajib diisi.")
+      setEmployeeMessage("")
+      return
+    }
+
+    if (!employeeExists && !employeePassword.trim()) {
+      setEmployeeError("Password wajib diisi saat membuat akun karyawan.")
+      setEmployeeMessage("")
+      return
+    }
+
+    setIsSavingEmployee(true)
+    setEmployeeError("")
+    setEmployeeMessage("")
+    try {
+      const employee = await adminApi.updateEmployeeAccount({
+        username: employeeUsername.trim(),
+        password: employeePassword.trim() || undefined,
+        isActive: employeeIsActive,
+      })
+      setEmployeeExists(employee.exists)
+      setEmployeeUsername(employee.username)
+      setEmployeePassword("")
+      setEmployeeIsActive(employee.isActive)
+      const employeeLoginLinkResponse = await adminApi.getEmployeeLoginLink()
+      setEmployeeLoginLink(employeeLoginLinkResponse.loginLink)
+      if (!employeeLoginLinkResponse.loginLink.isActive) {
+        setEmployeeLoginUrl("")
+      }
+      setEmployeeMessage("Akun karyawan berhasil disimpan.")
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Gagal menyimpan akun karyawan")
+    } finally {
+      setIsSavingEmployee(false)
+    }
+  }
+
+  const handleGenerateEmployeeLoginLink = async () => {
+    setIsGeneratingEmployeeLoginLink(true)
+    setEmployeeError("")
+    setEmployeeMessage("")
+
+    try {
+      const response = await adminApi.generateEmployeeLoginLink()
+      setEmployeeLoginLink(response.loginLink)
+      setEmployeeLoginUrl(response.reusableLogin?.url ?? "")
+      setIsEmployeeQrSheetOpen(Boolean(response.reusableLogin?.url))
+      setEmployeeMessage("QR login karyawan berhasil dibuat.")
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Gagal membuat QR login karyawan")
+    } finally {
+      setIsGeneratingEmployeeLoginLink(false)
+    }
+  }
+
+  const handleDisableEmployeeLoginLink = async () => {
+    setIsDisablingEmployeeLoginLink(true)
+    setEmployeeError("")
+    setEmployeeMessage("")
+
+    try {
+      const response = await adminApi.disableEmployeeLoginLink()
+      setEmployeeLoginLink(response.loginLink)
+      setEmployeeLoginUrl("")
+      setIsEmployeeQrSheetOpen(false)
+      setEmployeeMessage("Link QR login karyawan berhasil dinonaktifkan.")
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Gagal menonaktifkan QR login karyawan")
+    } finally {
+      setIsDisablingEmployeeLoginLink(false)
+    }
+  }
+
+  const handleLogoutOtherSessions = async () => {
+    setIsLoggingOutOtherSessions(true)
+    setEmployeeError("")
+    setEmployeeMessage("")
+    try {
+      await adminApi.logoutOtherSessions()
+      setEmployeeMessage("Semua sesi lain untuk akun ini berhasil dikeluarkan.")
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Gagal mengeluarkan sesi lain")
+    } finally {
+      setIsLoggingOutOtherSessions(false)
+    }
+  }
+
   return (
     <AdminShell title="Pengaturan" subtitle="Profil bisnis, nomor admin, dan harga layanan">
       <div className="space-y-8 px-4 py-6 pb-32 lg:px-6">
@@ -335,6 +464,185 @@ export default function SettingsPage() {
             {saveSuccess}
           </div>
         )}
+
+        {(employeeError || employeeMessage) && (
+          <div
+            className={cn(
+              "rounded-xl border px-4 py-3 text-sm",
+              employeeError
+                ? "border-danger/20 bg-danger-bg text-danger"
+                : "border-success/20 bg-success-bg text-success"
+            )}
+          >
+            {employeeError || employeeMessage}
+          </div>
+        )}
+
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 border-b border-line-base pb-1">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-info/10">
+              <UserCog className="h-3.5 w-3.5 text-info" />
+            </div>
+            <h2 className="text-sm font-semibold text-text-strong">Akun Karyawan</h2>
+          </div>
+
+          <Card className="rounded-xl border-line-base bg-bg-surface shadow-card">
+            <CardContent className="space-y-4 p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-text-strong">
+                    {employeeExists ? "Akun karyawan tersedia" : "Akun karyawan belum dibuat"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-text-muted">
+                    Maksimal satu akun karyawan untuk akses operasional tanpa Settings dan Kontrol Mesin.
+                  </p>
+                </div>
+                <Badge className={cn("w-fit rounded-full border-0 px-2.5 py-0.5 text-xs", employeeIsActive && employeeExists ? "bg-success-bg text-success" : "bg-bg-subtle text-text-muted")}>
+                  {employeeExists ? employeeIsActive ? "Aktif" : "Nonaktif" : "Belum setup"}
+                </Badge>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-text-muted">Username</label>
+                  <Input
+                    value={employeeUsername}
+                    onChange={(event) => {
+                      setEmployeeUsername(event.target.value)
+                      setEmployeeError("")
+                      setEmployeeMessage("")
+                    }}
+                    placeholder="username karyawan"
+                    className="h-11 rounded-lg border-line-base"
+                    data-testid="settings-employee-username"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-text-muted">
+                    {employeeExists ? "Password baru (opsional)" : "Password"}
+                  </label>
+                  <Input
+                    type="password"
+                    value={employeePassword}
+                    onChange={(event) => {
+                      setEmployeePassword(event.target.value)
+                      setEmployeeError("")
+                      setEmployeeMessage("")
+                    }}
+                    placeholder={employeeExists ? "Kosongkan jika tidak diganti" : "password karyawan"}
+                    className="h-11 rounded-lg border-line-base"
+                    data-testid="settings-employee-password"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-line-base bg-bg-subtle px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white">
+                    <ShieldCheck className="h-4 w-4 text-rose-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-text-body">Aktifkan akun karyawan</p>
+                    <p className="text-xs text-text-muted">Nonaktif akan menolak login dan mencabut sesi karyawan.</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={employeeIsActive}
+                  onCheckedChange={(checked) => {
+                    setEmployeeIsActive(checked)
+                    setEmployeeError("")
+                    setEmployeeMessage("")
+                  }}
+                  data-testid="settings-employee-active"
+                />
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-line-base bg-bg-subtle px-4 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white">
+                      <QrCode className="h-4 w-4 text-rose-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-text-body">QR login karyawan</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-text-muted">
+                        Link bisa dipakai berkali-kali sampai dinonaktifkan, akun nonaktif, atau username/password diubah.
+                      </p>
+                      {employeeLoginLink.isActive && employeeLoginLink.tokenLast4 ? (
+                        <p className="mt-2 text-xs text-text-muted">
+                          Token aktif berakhir <span className="font-semibold text-text-body">{employeeLoginLink.tokenLast4}</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <Badge
+                    className={cn(
+                      "w-fit shrink-0 rounded-full border-0 px-2.5 py-0.5 text-xs",
+                      employeeLoginLink.isActive
+                        ? "bg-success-bg text-success"
+                        : "bg-bg-surface text-text-muted"
+                    )}
+                    data-testid="settings-employee-login-link-status"
+                  >
+                    {employeeLoginLink.isActive ? "QR aktif" : "QR nonaktif"}
+                  </Badge>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-lg bg-white"
+                    onClick={handleGenerateEmployeeLoginLink}
+                    disabled={!employeeExists || !employeeIsActive || isGeneratingEmployeeLoginLink}
+                    data-testid="settings-employee-login-link-generate"
+                  >
+                    {isGeneratingEmployeeLoginLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
+                    Generate QR Login
+                  </Button>
+                  {employeeLoginLink.isActive ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-lg bg-white text-danger hover:text-danger"
+                      onClick={handleDisableEmployeeLoginLink}
+                      disabled={isDisablingEmployeeLoginLink}
+                      data-testid="settings-employee-login-link-disable"
+                    >
+                      {isDisablingEmployeeLoginLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Unlink className="mr-2 h-4 w-4" />}
+                      Nonaktifkan Link
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  className="rounded-lg bg-rose-600 font-semibold text-white hover:bg-rose-500"
+                  onClick={handleSaveEmployee}
+                  disabled={isSavingEmployee}
+                  data-testid="settings-employee-save"
+                >
+                  {isSavingEmployee ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                  Simpan Akun Karyawan
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-lg"
+                  onClick={handleLogoutOtherSessions}
+                  disabled={isLoggingOutOtherSessions}
+                  data-testid="settings-logout-other-sessions"
+                >
+                  {isLoggingOutOtherSessions ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
+                  Log out from all devices
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
 
         <section className="space-y-4">
           <div className="flex items-center gap-2 border-b border-line-base pb-1">
@@ -550,6 +858,17 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      <CustomerLoginLinkSheet
+        open={isEmployeeQrSheetOpen}
+        onOpenChange={setIsEmployeeQrSheetOpen}
+        loginUrl={employeeLoginUrl}
+        title="QR Login Karyawan"
+        description="Karyawan bisa scan QR ini untuk langsung masuk ke admin dengan akses operasional."
+        linkLabel="Link Login Karyawan"
+        notice="Link ini reusable untuk banyak login. Membuka link di perangkat owner akan mengganti sesi aktif menjadi sesi karyawan."
+        qrAlt="QR login karyawan"
+      />
     </AdminShell>
   )
 }

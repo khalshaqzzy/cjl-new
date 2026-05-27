@@ -21,6 +21,9 @@ type CustomerLoginLinkSheetProps = {
   customerName?: string
   title?: string
   description?: string
+  linkLabel?: string
+  notice?: string
+  qrAlt?: string
   continueAction?: {
     label: string
     onClick: () => void
@@ -35,6 +38,9 @@ export function CustomerLoginLinkSheet({
   customerName,
   title = "QR Login Customer",
   description = "Pelanggan bisa scan QR ini atau membuka link sekali pakai untuk langsung masuk ke portal.",
+  linkLabel = "Link Sekali Pakai",
+  notice = "Link ini hanya berlaku satu kali per token. Token lain yang belum dipakai tetap dapat digunakan.",
+  qrAlt = "QR login customer",
   continueAction,
 }: CustomerLoginLinkSheetProps) {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("")
@@ -105,7 +111,7 @@ export function CustomerLoginLinkSheet({
               ) : qrCodeDataUrl ? (
                 <Image
                   src={qrCodeDataUrl}
-                  alt="QR login customer"
+                  alt={qrAlt}
                   width={280}
                   height={280}
                   unoptimized
@@ -121,12 +127,12 @@ export function CustomerLoginLinkSheet({
           </div>
 
           <div className="rounded-2xl border border-line-base bg-white p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Link Sekali Pakai</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{linkLabel}</p>
             <p className="mt-2 break-all text-sm leading-relaxed text-text-body">{loginUrl}</p>
           </div>
 
           <div className="rounded-2xl border border-info/20 bg-info/5 px-4 py-3 text-xs leading-relaxed text-info">
-            Link ini hanya berlaku satu kali per token. Token lain yang belum dipakai tetap dapat digunakan.
+            {notice}
           </div>
         </div>
 

@@ -16,6 +16,7 @@ export const serviceCodeSchema = z.enum([
 
 export const pricingModelSchema = z.enum(["fixed", "per_kg"])
 export const dashboardWindowSchema = z.enum(["daily", "weekly", "monthly"])
+export const adminRoleSchema = z.enum(["owner", "employee"])
 export const orderStatusSchema = z.enum(["Active", "Done", "Voided"])
 export const publicOrderStatusSchema = z.enum(["Active", "Done", "Cancelled"])
 export const notificationEventTypeSchema = z.enum([
@@ -113,6 +114,45 @@ export const settingsResponseSchema = z.object({
   business: businessProfileSchema,
   services: z.array(serviceSettingSchema),
 }).strict()
+
+export const adminServicesResponseSchema = z.object({
+  services: z.array(serviceSettingSchema),
+}).strict()
+
+export const adminSessionResponseSchema = z.object({
+  authenticated: z.boolean(),
+  role: adminRoleSchema.optional(),
+  username: z.string().optional(),
+})
+
+export const employeeAccountSchema = z.object({
+  exists: z.boolean(),
+  username: z.string(),
+  isActive: z.boolean(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+})
+
+export const employeeLoginLinkStatusSchema = z.object({
+  exists: z.boolean(),
+  isActive: z.boolean(),
+  tokenLast4: z.string().optional(),
+  createdAt: z.string().optional(),
+  disabledAt: z.string().optional(),
+})
+
+export const employeeLoginLinkResponseSchema = z.object({
+  loginLink: employeeLoginLinkStatusSchema,
+  reusableLogin: z.object({
+    url: z.string().min(1),
+  }).optional(),
+})
+
+export const employeeAccountInputSchema = z.object({
+  username: z.string().trim().min(1),
+  password: z.string().optional(),
+  isActive: z.boolean(),
+})
 
 export const customerSearchResultSchema = z.object({
   customerId: z.string(),
@@ -692,6 +732,10 @@ export const customerMagicLinkRedeemInputSchema = z.object({
   token: z.string().min(1),
 })
 
+export const employeeLoginLinkRedeemInputSchema = z.object({
+  token: z.string().min(1),
+})
+
 export const adminLoginInputSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
@@ -708,6 +752,7 @@ export const okResponseSchema = z.object({
 export type ServiceCode = z.infer<typeof serviceCodeSchema>
 export type PricingModel = z.infer<typeof pricingModelSchema>
 export type DashboardWindow = z.infer<typeof dashboardWindowSchema>
+export type AdminRole = z.infer<typeof adminRoleSchema>
 export type OrderStatus = z.infer<typeof orderStatusSchema>
 export type PublicOrderStatus = z.infer<typeof publicOrderStatusSchema>
 export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>
@@ -723,6 +768,12 @@ export type WhatsappProviderStatus = z.infer<typeof whatsappProviderStatusSchema
 export type ServiceSetting = z.infer<typeof serviceSettingSchema>
 export type AdminWhatsappContact = z.infer<typeof adminWhatsappContactSchema>
 export type SettingsResponse = z.infer<typeof settingsResponseSchema>
+export type AdminServicesResponse = z.infer<typeof adminServicesResponseSchema>
+export type AdminSessionResponse = z.infer<typeof adminSessionResponseSchema>
+export type EmployeeAccount = z.infer<typeof employeeAccountSchema>
+export type EmployeeLoginLinkStatus = z.infer<typeof employeeLoginLinkStatusSchema>
+export type EmployeeLoginLinkResponse = z.infer<typeof employeeLoginLinkResponseSchema>
+export type EmployeeAccountInput = z.infer<typeof employeeAccountInputSchema>
 export type CustomerSearchResult = z.infer<typeof customerSearchResultSchema>
 export type CustomerProfile = z.infer<typeof customerProfileSchema>
 export type OneTimeLogin = z.infer<typeof oneTimeLoginSchema>
@@ -765,6 +816,7 @@ export type ConfirmOrderInput = z.infer<typeof confirmOrderInputSchema>
 export type VoidOrderInput = z.infer<typeof voidOrderInputSchema>
 export type CustomerLoginInput = z.infer<typeof customerLoginInputSchema>
 export type CustomerMagicLinkRedeemInput = z.infer<typeof customerMagicLinkRedeemInputSchema>
+export type EmployeeLoginLinkRedeemInput = z.infer<typeof employeeLoginLinkRedeemInputSchema>
 export type AdminLoginInput = z.infer<typeof adminLoginInputSchema>
 export type CustomerNameVisibilityInput = z.infer<typeof customerNameVisibilityInputSchema>
 export type WhatsappInternalEvent = z.infer<typeof whatsappInternalEventSchema>

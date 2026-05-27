@@ -271,7 +271,19 @@ export type AdminDocument = {
   _id: string
   username: string
   passwordHash: string
+  role: "owner" | "employee"
+  isActive: boolean
+  credentialVersion?: number
+  employeeLoginLink?: {
+    tokenHash: string
+    tokenLast4: string
+    credentialVersion: number
+    createdAt: string
+    disabledAt?: string
+    disabledReason?: string
+  }
   createdAt: string
+  updatedAt?: string
 }
 
 export type CustomerMagicLinkDocument = {

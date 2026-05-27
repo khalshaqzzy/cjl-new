@@ -38,7 +38,7 @@ Seluruh aplikasi v1 di-deploy sebagai satu monolith pada VM per environment. Run
 ### 2.3 Non-goals for v1
 
 - Multi-branch / multi-outlet.
-- Multi-admin role management.
+- Multi-admin role management beyond one owner and one employee account.
 - Pickup / delivery workflow.
 - Partial payment, unpaid order, atau payment gateway.
 - Customer self-registration dari public site.
@@ -49,7 +49,7 @@ Seluruh aplikasi v1 di-deploy sebagai satu monolith pada VM per environment. Run
 
 ## 3. Confirmed Decisions
 
-- Admin auth memakai satu akun admin dengan `username + password`.
+- Admin auth memakai satu akun owner dengan `username + password` dan dapat memiliki maksimal satu akun `karyawan` yang dibuat dari Settings tanpa env tambahan.
 - Customer login memakai `nomor HP + nama`, tanpa password dan tanpa OTP.
 - Duplicate nama customer diperbolehkan.
 - Satu nomor HP hanya boleh dipakai oleh satu customer.
@@ -95,9 +95,9 @@ Customer login `nomor + nama` diterima untuk v1 demi friction serendah mungkin. 
 
 ## 5. Users and Roles
 
-### 5.1 Admin
+### 5.1 Admin Owner
 
-Satu operator internal CJ Laundry yang:
+Operator utama internal CJ Laundry yang:
 
 - login ke admin app,
 - registrasi customer,
@@ -106,9 +106,22 @@ Satu operator internal CJ Laundry yang:
 - melihat histori dan poin customer,
 - menambah poin manual,
 - mengubah harga katalog,
+- mengelola satu akun karyawan,
+- mengeluarkan sesi lain untuk akun owner aktif,
 - melihat dashboard.
 
-### 5.2 Customer
+### 5.2 Karyawan
+
+Akun operasional internal yang dibuat oleh owner dari Settings dan memakai login page/domain admin yang sama.
+
+Karyawan dapat memakai surface operasional admin seperti POS, pelanggan, WhatsApp, notifikasi, dan laundry terbatas, tetapi:
+
+- tidak memiliki akses ke Settings,
+- tidak memiliki akses ke Kontrol Mesin,
+- dashboard hanya menampilkan data hari ini,
+- laundry hanya menampilkan `Aktif` dan `Hari Ini`, tanpa `History`.
+
+### 5.3 Customer
 
 Customer laundry yang:
 
@@ -118,7 +131,7 @@ Customer laundry yang:
 - melihat stamp, riwayat order, status order aktif, redemption history, dan monthly summary,
 - melihat leaderboard publik.
 
-### 5.3 System integrations
+### 5.4 System integrations
 
 - WhatsApp bot session pada VM.
 - MongoDB sebagai data store utama yang berjalan di Docker Compose pada VM environment terkait.
@@ -154,6 +167,8 @@ Customer laundry yang:
 - Customer detail / history tab
 - Manual point adjustment
 - Settings for service prices and business profile
+- Owner-only employee account management and session revocation
+- Owner-only machine control; employee accounts cannot access `/admin/mesin`
 
 ### 7.2 Public surface
 
@@ -444,12 +459,20 @@ Content goals:
 
 ### 12.1 Admin authentication
 
-- Single admin account for v1.
+- Admin auth has one owner account for v1, seeded from configured admin credentials.
+- Owner may create and maintain exactly one employee account from admin Settings.
+- Employee login uses the same admin login page and domain as owner login.
+- Employee account setup requires username and password on first creation; password can be changed later from Settings.
+- Employee account can be activated or deactivated by owner. Deactivated employee accounts cannot log in and existing employee sessions must stop working.
+- Owner can generate one active reusable QR/link for employee login from Settings. The link may be used for multiple employee logins until it is disabled, the employee username/password changes, or the employee account is deactivated.
+- Employee QR login tokens must be stored hash-only. The full URL is only shown immediately after generation, so owner must generate a new QR if the URL is no longer visible.
+- Owner can log out all other sessions for the currently logged-in owner account while keeping the current session active.
 - Password stored as secure one-way hash.
 - Session stored server-side or as signed secure HTTP-only cookie.
 - Logout supported.
 - Brute-force rate limiting required.
 - Admin pages must not be accessible without valid session.
+- Owner-only pages and actions must reject employee sessions server-side, not only hide client navigation.
 
 ### 12.2 Customer registration
 
@@ -481,6 +504,7 @@ Content goals:
   - optional cancelled visibility behind a default-off toggle,
   - server-side pagination or cursor-based continuation so the admin UI does not need to read the full order collection on every history visit.
 - Admin operational list queries may use a lifecycle-aware activity timestamp so `Hari Ini` and `History` can be driven by the latest relevant order event (`created`, `done`, or `cancelled`) instead of repeated multi-field date scans.
+- Employee sessions may only access `Aktif` and `Hari Ini`; `History` must be hidden in the admin web and rejected by the API.
 
 ### 12.4 Order builder
 
@@ -554,6 +578,10 @@ Settings must support:
 - service active/inactive state,
 - WhatsApp message templates or configurable message blocks.
 - Welcome WA templates must support an `{{autoLoginUrl}}` placeholder.
+- Owner-only management of the single employee account.
+- Owner-only generation and disabling of the reusable employee QR login link.
+- Owner-only logout of other sessions for the active owner account.
+- Employee sessions must not access Settings.
 
 ### 12.9 Dashboard
 
@@ -562,6 +590,7 @@ Dashboard must support:
 - daily metrics,
 - weekly metrics,
 - monthly metrics.
+- Employee sessions may only access the daily dashboard and must not access weekly or monthly dashboard windows.
 
 Minimum dashboard metrics:
 

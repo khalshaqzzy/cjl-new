@@ -62,7 +62,7 @@ const serviceIcons: Record<string, typeof Shirt> = {
 }
 
 const createServicePickerItem = (
-  service: Awaited<ReturnType<typeof adminApi.getSettings>>["services"][number]
+  service: Awaited<ReturnType<typeof adminApi.getServices>>["services"][number]
 ): ServicePickerItemVM => ({
   serviceCode: service.serviceCode,
   label: service.displayName,
@@ -776,9 +776,9 @@ export default function POSPage() {
   const payload = useMemo(() => selectedCustomer ? buildOrderPayload(selectedCustomer.customerId, weightKg, services, redeemCount) : null, [redeemCount, selectedCustomer, services, weightKg])
 
   useEffect(() => {
-    adminApi.getSettings()
-      .then((settings) => {
-        const nextServices = settings.services.filter((service) => service.isActive).map(createServicePickerItem)
+    adminApi.getServices()
+      .then((payload) => {
+        const nextServices = payload.services.map(createServicePickerItem)
         setBaseServices(nextServices)
         setServices(nextServices)
       })
