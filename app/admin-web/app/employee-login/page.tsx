@@ -14,7 +14,7 @@ function EmployeeLoginContent() {
   const searchParams = useSearchParams()
   const token = searchParams.get("token") ?? ""
   const [state, setState] = useState<State>("loading")
-  const [message, setMessage] = useState("Sedang memproses login karyawan...")
+  const [message, setMessage] = useState("Sedang memproses login...")
   const redeemRef = useRef<{ token: string; request: ReturnType<typeof adminApi.redeemEmployeeLoginLink> } | null>(null)
 
   useEffect(() => {
@@ -39,7 +39,7 @@ function EmployeeLoginContent() {
         }
 
         setState("success")
-        setMessage("Login karyawan berhasil. Anda akan diarahkan ke dashboard...")
+        setMessage("Login berhasil. Anda akan diarahkan ke dashboard...")
         window.setTimeout(() => {
           router.replace("/admin")
         }, 600)
@@ -50,7 +50,7 @@ function EmployeeLoginContent() {
         }
 
         setState("invalid")
-        setMessage(error instanceof Error ? error.message : "Link login karyawan tidak valid.")
+        setMessage(error instanceof Error ? error.message : "Link login tidak valid.")
       })
 
     return () => {
@@ -103,7 +103,7 @@ export default function EmployeeLoginPage() {
         <div className="flex min-h-screen items-center justify-center bg-bg-canvas px-4 py-12">
           <div className="flex items-center gap-2 rounded-2xl border border-line-base bg-bg-surface px-5 py-4 text-sm text-text-muted shadow-card">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Menyiapkan halaman login karyawan...
+            Menyiapkan halaman login ...
           </div>
         </div>
       }
