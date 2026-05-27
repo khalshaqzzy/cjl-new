@@ -12,6 +12,8 @@ import type {
   CustomerProfile,
   CustomerMagicLinkResponse,
   DashboardWindow,
+  EmployeeAccount,
+  EmployeeAccountInput,
   NotificationRecord,
   OrderPreviewResponse,
   SettingsResponse,
@@ -363,10 +365,91 @@ const buildDashboardMetrics = (
 export const findAdminByUsername = async (username: string) =>
   db().collection<AdminDocument>("admins").findOne({ username })
 
+export const findAdminById = async (adminId: string) =>
+  db().collection<AdminDocument>("admins").findOne({ _id: adminId })
+
 export const verifyAdminPassword = async (admin: AdminDocument, password: string) =>
   bcrypt.compare(password, admin.passwordHash)
 
-export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminDashboardResponse> => {
+export const mapEmployeeAccount = (employee: AdminDocument | null): EmployeeAccount => ({
+  exists: Boolean(employee),
+  username: employee?.username ?? "",
+  isActive: employee?.isActive ?? false,
+  ...(employee?.createdAt ? { createdAt: employee.createdAt } : {}),
+  ...(employee?.updatedAt ? { updatedAt: employee.updatedAt } : {}),
+})
+
+export const getEmployeeAccount = async (): Promise<EmployeeAccount> =>
+  mapEmployeeAccount(await db().collection<AdminDocument>("admins").findOne({ _id: "employee-primary" }))
+
+export const upsertEmployeeAccount = async (
+  input: EmployeeAccountInput
+): Promise<{ account: EmployeeAccount; shouldRevokeSessions: boolean }> => {
+  const username = input.username.trim()
+  const password = input.password?.trim() ?? ""
+  const adminCollection = db().collection<AdminDocument>("admins")
+  const [existingEmployee, duplicateUser] = await Promise.all([
+    adminCollection.findOne({ _id: "employee-primary" }),
+    adminCollection.findOne({ username, _id: { $ne: "employee-primary" } }),
+  ])
+
+  if (duplicateUser) {
+    throw new ConflictError("Username sudah digunakan akun lain")
+  }
+
+  if (!existingEmployee && !password) {
+    throw new ValidationError("Password karyawan wajib diisi saat membuat akun")
+  }
+
+  const now = new Date().toISOString()
+  const passwordChanged = Boolean(password)
+  const disablingExistingEmployee = Boolean(existingEmployee?.isActive && !input.isActive)
+
+  if (!existingEmployee) {
+    const employee: AdminDocument = {
+      _id: "employee-primary",
+      username,
+      passwordHash: await bcrypt.hash(password, 10),
+      role: "employee",
+      isActive: input.isActive,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await adminCollection.insertOne(employee)
+    await saveAuditLog("admin.employee.created", "admin", employee._id, {
+      username,
+      isActive: input.isActive,
+    })
+  } else {
+    await adminCollection.updateOne(
+      { _id: "employee-primary" },
+      {
+        $set: {
+          username,
+          role: "employee",
+          isActive: input.isActive,
+          updatedAt: now,
+          ...(passwordChanged ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
+        },
+      }
+    )
+    await saveAuditLog("admin.employee.updated", "admin", "employee-primary", {
+      username,
+      isActive: input.isActive,
+      passwordChanged,
+    })
+  }
+
+  return {
+    account: await getEmployeeAccount(),
+    shouldRevokeSessions: passwordChanged || disablingExistingEmployee,
+  }
+}
+
+export const getAdminDashboard = async (
+  window: DashboardWindow,
+  options: { activeOrdersScope?: "all" | "today"; notificationsScope?: "all" | "today" } = {}
+): Promise<AdminDashboardResponse> => {
   const [orders, notifications, customers, pointLedger] = await Promise.all([
     db().collection<OrderDocument>("orders").find({}).toArray(),
     db().collection<NotificationDocument>("notifications").find({}).sort({ createdAt: -1 }).toArray(),
@@ -376,7 +459,13 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
 
   const confirmedOrders = orders.filter((order) => order.status !== "Voided" && isWithinWindow(order.createdAt, window))
   const completedOrders = orders.filter((order) => order.status === "Done" && isWithinWindow(order.completedAt, window))
-  const activeOrders = orders.filter((order) => order.status === "Active")
+  const activeOrders = orders.filter((order) =>
+    order.status === "Active" &&
+    (options.activeOrdersScope === "today" ? isWithinWindow(order.createdAt, "daily") : true)
+  )
+  const visibleNotifications = options.notificationsScope === "today"
+    ? notifications.filter((notification) => isWithinWindow(notification.createdAt, "daily"))
+    : notifications
   const newCustomers = customers.filter((customer) => isWithinWindow(customer.createdAt, window)).length
   const manualPointEntries = pointLedger.filter((entry) => entry.tone === "adjustment" && isWithinWindow(entry.createdAt, window))
   const customerPointBalanceMap = new Map(customers.map((customer) => [customer._id, customer.currentPoints]))
@@ -471,7 +560,7 @@ export const getAdminDashboard = async (window: DashboardWindow): Promise<AdminD
         redeemedPoints: order.redeemedPoints,
         status: "Active"
       })),
-    notifications: notifications.map(mapNotification)
+    notifications: visibleNotifications.map(mapNotification)
   }
 }
 

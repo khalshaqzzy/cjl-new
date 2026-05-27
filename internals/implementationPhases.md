@@ -1,7 +1,7 @@
 # Implementation Phases
 
 Document status: Active  
-Last updated: 2026-05-06  
+Last updated: 2026-05-27  
 Purpose: compact repo-level implementation status snapshot
 
 ## Current Repo Status
@@ -34,6 +34,7 @@ The repo now has:
   - row-based outbound/inbound bubble alignment so right-edge placement is anchored to the viewport width instead of an accidentally widened content wrapper
 - failed-notification recovery through backend-owned resend with receipt download, `Mark as Done`, and `Ignore`
 - admin-only machine control for 5 dryers and 5 washers through backend-owned Firebase Realtime Database REST calls
+- owner/employee admin role model with one owner-managed employee account, owner-only Settings and machine control, daily-only employee dashboard, and employee laundry limited to `Aktif` plus `Hari Ini`
 - startup seed/backfill that now also canonicalizes legacy WhatsApp data for Cloud-era reads while preserving legacy history
 - startup WhatsApp compatibility backfill now uses a runtime migration watermark and incremental cursor-based passes after the first baseline run
 - root CI that validates lint, typecheck, backend tests, E2E, build, compose, and Cloud runtime parity
@@ -59,6 +60,7 @@ Status: complete in repo terms
 - mobile thread detail keeps the bottom nav visible while the timeline remains the only intended scroll region
 - mobile WhatsApp list/detail now explicitly harden against right-edge overflow from long previews, badges, order codes, notification IDs, media labels, and scroll-wrapper width leaks
 - admin `Lainnya` now includes `Kontrol Mesin`, backed by `/v1/admin/machines` and `/v1/admin/machines/:id/command`
+- admin auth now supports a single owner-managed employee account; employee navigation hides Settings and Kontrol Mesin, and backend guards enforce the same role scope
 
 ### Phase 4: Public Surface Integration
 

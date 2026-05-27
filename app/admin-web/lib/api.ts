@@ -4,6 +4,7 @@ import type {
   AdminLaundryListResponse,
   AdminMachineCommandResponse,
   AdminMachineListResponse,
+  AdminSessionResponse,
   CreateCustomerResponse,
   AdminDashboardResponse,
   AdminLaundryScope,
@@ -11,6 +12,8 @@ import type {
   CustomerMagicLinkResponse,
   ConfirmOrderInput,
   CustomerSearchResult,
+  EmployeeAccount,
+  EmployeeAccountInput,
   NotificationRecord,
   OkResponse,
   OrderHistoryItem,
@@ -97,13 +100,17 @@ const apiFetchBlob = async (path: string, init?: RequestInit) => {
 }
 
 export const adminApi = {
-  getSession: () => apiFetch<{ authenticated: boolean }>("/v1/admin/auth/session"),
+  getSession: () => apiFetch<AdminSessionResponse>("/v1/admin/auth/session"),
   login: (username: string, password: string) =>
     apiFetch<{ ok: true }>("/v1/admin/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password })
     }),
   logout: () => apiFetch<{ ok: true }>("/v1/admin/auth/logout", { method: "POST" }),
+  logoutOtherSessions: () => apiFetch<{ ok: true }>("/v1/admin/auth/logout-other-sessions", {
+    method: "POST",
+    body: JSON.stringify({})
+  }),
   getDashboard: (window: "daily" | "weekly" | "monthly") =>
     apiFetch<AdminDashboardResponse>(`/v1/admin/dashboard?window=${window}`),
   listCustomers: (search = "") =>
@@ -239,6 +246,12 @@ export const adminApi = {
   getSettings: () => apiFetch<SettingsResponse>("/v1/admin/settings"),
   updateSettings: (payload: SettingsResponse) =>
     apiFetch<SettingsResponse>("/v1/admin/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    }),
+  getEmployeeAccount: () => apiFetch<EmployeeAccount>("/v1/admin/staff/employee"),
+  updateEmployeeAccount: (payload: EmployeeAccountInput) =>
+    apiFetch<EmployeeAccount>("/v1/admin/staff/employee", {
       method: "PUT",
       body: JSON.stringify(payload)
     }),

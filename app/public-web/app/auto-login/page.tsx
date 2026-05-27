@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
@@ -15,6 +15,7 @@ function AutoLoginContent() {
   const token = searchParams.get("token") ?? ""
   const [state, setState] = useState<State>("loading")
   const [message, setMessage] = useState("Sedang menyiapkan login otomatis Anda...")
+  const redeemRef = useRef<{ token: string; request: ReturnType<typeof publicApi.redeemMagicLink> } | null>(null)
 
   useEffect(() => {
     if (!token) {
@@ -24,8 +25,14 @@ function AutoLoginContent() {
     }
 
     let active = true
+    if (redeemRef.current?.token !== token) {
+      redeemRef.current = {
+        token,
+        request: publicApi.redeemMagicLink(token)
+      }
+    }
 
-    publicApi.redeemMagicLink(token)
+    redeemRef.current.request
       .then(() => {
         if (!active) {
           return

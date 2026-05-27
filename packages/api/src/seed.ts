@@ -686,18 +686,26 @@ export const ensureSeedData = async () => {
       _id: "admin-primary",
       username: configuredAdmin.username,
       passwordHash,
-      createdAt: new Date().toISOString()
+      role: "owner",
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     })
   } else {
     const usernameChanged = currentAdmin.username !== configuredAdmin.username
     const passwordChanged = !(await bcrypt.compare(configuredAdmin.password, currentAdmin.passwordHash))
+    const roleChanged = currentAdmin.role !== "owner"
+    const activeChanged = currentAdmin.isActive !== true
 
-    if (usernameChanged || passwordChanged) {
+    if (usernameChanged || passwordChanged || roleChanged || activeChanged) {
       await adminCollection.updateOne(
         { _id: "admin-primary" },
         {
           $set: {
             username: configuredAdmin.username,
+            role: "owner",
+            isActive: true,
+            updatedAt: new Date().toISOString(),
             ...(passwordChanged
               ? { passwordHash: await bcrypt.hash(configuredAdmin.password, 10) }
               : {}),

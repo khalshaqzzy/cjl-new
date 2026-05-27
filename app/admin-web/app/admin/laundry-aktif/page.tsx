@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import type { AdminRole } from "@cjl/contracts"
 import type { AdminLaundryOrder, AdminLaundryScope, AdminLaundrySort } from "@cjl/contracts"
 import { AdminShell } from "@/components/admin/admin-shell"
 import { Badge } from "@/components/ui/badge"
@@ -384,6 +385,8 @@ function ConfirmDoneSheet({
 
 export default function LaundryAktifPage() {
   const [activeTab, setActiveTab] = useState<AdminLaundryScope>("active")
+  const [adminRole, setAdminRole] = useState<AdminRole>("owner")
+  const [isRoleChecked, setIsRoleChecked] = useState(false)
   const [orders, setOrders] = useState<AdminLaundryOrder[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -398,6 +401,18 @@ export default function LaundryAktifPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [loadError, setLoadError] = useState("")
   const doneKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    adminApi.getSession()
+      .then((payload) => {
+        setAdminRole(payload.role ?? "owner")
+        if (payload.role === "employee" && activeTab === "history") {
+          setActiveTab("active")
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setIsRoleChecked(true))
+  }, [activeTab])
 
   const loadOrders = ({ append = false, cursor }: { append?: boolean; cursor?: string } = {}) => {
     if (append) {
@@ -431,8 +446,17 @@ export default function LaundryAktifPage() {
   }
 
   useEffect(() => {
+    if (!isRoleChecked) {
+      return
+    }
+
+    if (adminRole === "employee" && activeTab === "history") {
+      setActiveTab("active")
+      return
+    }
+
     void loadOrders()
-  }, [activeTab, historyStatus, includeCancelled, searchQuery, sortBy])
+  }, [activeTab, adminRole, historyStatus, includeCancelled, isRoleChecked, searchQuery, sortBy])
 
   useEffect(() => {
     if (activeTab === "active") {
@@ -450,6 +474,9 @@ export default function LaundryAktifPage() {
 
     return { active, done, cancelled }
   }, [orders])
+  const visibleTabs: AdminLaundryScope[] = adminRole === "employee"
+    ? ["active", "today"]
+    : ["active", "today", "history"]
 
   const handleMarkDone = async () => {
     if (!selectedOrder) {
@@ -493,9 +520,11 @@ export default function LaundryAktifPage() {
       <div className="px-4 py-5 lg:px-6 space-y-4">
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as AdminLaundryScope)}>
           <TabsList className="w-full justify-start overflow-x-auto bg-bg-soft rounded-2xl p-1 h-auto">
-            <TabsTrigger value="active" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">Aktif</TabsTrigger>
-            <TabsTrigger value="today" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">Hari Ini</TabsTrigger>
-            <TabsTrigger value="history" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">History</TabsTrigger>
+            {visibleTabs.map((tab) => (
+              <TabsTrigger key={tab} value={tab} className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                {tab === "active" ? "Aktif" : tab === "today" ? "Hari Ini" : "History"}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </Tabs>
 

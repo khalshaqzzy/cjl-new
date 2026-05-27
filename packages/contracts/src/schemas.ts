@@ -16,6 +16,7 @@ export const serviceCodeSchema = z.enum([
 
 export const pricingModelSchema = z.enum(["fixed", "per_kg"])
 export const dashboardWindowSchema = z.enum(["daily", "weekly", "monthly"])
+export const adminRoleSchema = z.enum(["owner", "employee"])
 export const orderStatusSchema = z.enum(["Active", "Done", "Voided"])
 export const publicOrderStatusSchema = z.enum(["Active", "Done", "Cancelled"])
 export const notificationEventTypeSchema = z.enum([
@@ -113,6 +114,25 @@ export const settingsResponseSchema = z.object({
   business: businessProfileSchema,
   services: z.array(serviceSettingSchema),
 }).strict()
+
+export const adminSessionResponseSchema = z.object({
+  authenticated: z.boolean(),
+  role: adminRoleSchema.optional(),
+  username: z.string().optional(),
+})
+
+  exists: z.boolean(),
+  username: z.string(),
+  isActive: z.boolean(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+})
+
+export const employeeAccountInputSchema = z.object({
+  username: z.string().trim().min(1),
+  password: z.string().optional(),
+  isActive: z.boolean(),
+})
 
 export const customerSearchResultSchema = z.object({
   customerId: z.string(),
@@ -708,6 +728,7 @@ export const okResponseSchema = z.object({
 export type ServiceCode = z.infer<typeof serviceCodeSchema>
 export type PricingModel = z.infer<typeof pricingModelSchema>
 export type DashboardWindow = z.infer<typeof dashboardWindowSchema>
+export type AdminRole = z.infer<typeof adminRoleSchema>
 export type OrderStatus = z.infer<typeof orderStatusSchema>
 export type PublicOrderStatus = z.infer<typeof publicOrderStatusSchema>
 export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>
@@ -723,6 +744,9 @@ export type WhatsappProviderStatus = z.infer<typeof whatsappProviderStatusSchema
 export type ServiceSetting = z.infer<typeof serviceSettingSchema>
 export type AdminWhatsappContact = z.infer<typeof adminWhatsappContactSchema>
 export type SettingsResponse = z.infer<typeof settingsResponseSchema>
+export type AdminSessionResponse = z.infer<typeof adminSessionResponseSchema>
+export type EmployeeAccount = z.infer<typeof employeeAccountSchema>
+export type EmployeeAccountInput = z.infer<typeof employeeAccountInputSchema>
 export type CustomerSearchResult = z.infer<typeof customerSearchResultSchema>
 export type CustomerProfile = z.infer<typeof customerProfileSchema>
 export type OneTimeLogin = z.infer<typeof oneTimeLoginSchema>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
+import type { AdminRole } from "@cjl/contracts"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -126,6 +127,7 @@ export function AdminShell({
   const isMobile = useIsMobile()
   const [moreOpen, setMoreOpen] = useState(false)
   const [isSessionChecked, setIsSessionChecked] = useState(false)
+  const [adminRole, setAdminRole] = useState<AdminRole>("owner")
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const failedNotificationsPrimedRef = useRef(false)
   const compactMobileChrome = hideMobileNav && isMobile
@@ -141,6 +143,7 @@ export function AdminShell({
           return
         }
 
+        setAdminRole(payload.role ?? "owner")
         setIsSessionChecked(true)
       })
       .catch(() => {
@@ -230,6 +233,10 @@ export function AdminShell({
     }
   }
 
+  const visibleMoreItems = adminRole === "employee"
+    ? moreItems.filter((item) => item.href !== "/admin/mesin" && item.href !== "/admin/settings")
+    : moreItems
+
   return (
     <div className="min-h-screen bg-bg-canvas lg:flex">
       {/* Desktop Sidebar */}
@@ -240,7 +247,9 @@ export function AdminShell({
             <Shirt className="h-4 w-4 text-white" />
           </div>
           <span className="font-semibold text-sm text-text-strong tracking-tight">CJ Laundry</span>
-          <span className="ml-auto text-[10px] font-medium bg-bg-subtle text-text-muted px-1.5 py-0.5 rounded">Admin</span>
+          <span className="ml-auto rounded bg-bg-subtle px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
+            {adminRole === "employee" ? "Karyawan" : "Admin"}
+          </span>
         </div>
 
         {/* Nav */}
@@ -255,7 +264,7 @@ export function AdminShell({
           <p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
             Lainnya
           </p>
-          {moreItems.map((item) => (
+          {visibleMoreItems.map((item) => (
             <SideNavItem key={item.href} {...item} isActive={pathname === item.href} />
           ))}
         </nav>
@@ -317,7 +326,7 @@ export function AdminShell({
                   <SheetTitle className="text-sm font-semibold text-text-strong">Menu Lainnya</SheetTitle>
                 </SheetHeader>
                 <nav className="p-3 space-y-0.5">
-                  {moreItems.map((item) => (
+                  {visibleMoreItems.map((item) => (
                     <SideNavItem
                       key={item.href}
                       {...item}

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import type { AdminMachine } from "@cjl/contracts"
 import { toast } from "sonner"
 import { AdminShell } from "@/components/admin/admin-shell"
@@ -115,6 +116,7 @@ function MachineCard({
 }
 
 export default function MachineControlPage() {
+  const router = useRouter()
   const [machines, setMachines] = useState<AdminMachine[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -146,8 +148,19 @@ export default function MachineControlPage() {
   }
 
   useEffect(() => {
-    void loadMachines("initial")
-  }, [])
+    adminApi.getSession()
+      .then((session) => {
+        if (session.role === "employee") {
+          router.replace("/admin")
+          return
+        }
+
+        void loadMachines("initial")
+      })
+      .catch(() => {
+        void loadMachines("initial")
+      })
+  }, [router])
 
   const handleCommand = async (machine: AdminMachine, targetStatus: "0" | "1") => {
     const actionLabel = targetStatus === "1" ? "menyalakan" : "mematikan"

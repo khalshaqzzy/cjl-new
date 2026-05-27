@@ -18,6 +18,7 @@ import {
   customerMagicLinkRedeemInputSchema,
   customerLoginInputSchema,
   dashboardWindowSchema,
+  employeeAccountInputSchema,
   manualPointAdjustmentInputSchema,
   settingsResponseSchema,
   updateCustomerInputSchema,
@@ -47,8 +48,10 @@ import {
   createRequestFingerprint,
   createCustomer,
   failIdempotencyRequest,
+  findAdminById,
   findAdminByUsername,
   generateCustomerMagicLink,
+  getEmployeeAccount,
   getAdminDashboard,
   getCustomerDetail,
   getNotificationPreparedMessage,
@@ -67,6 +70,7 @@ import {
   resendNotification,
   updateCustomerIdentity,
   updateSettings,
+  upsertEmployeeAccount,
   verifyAdminPassword,
   waitForCompletedIdempotencyRequest,
   voidOrder,
@@ -113,6 +117,8 @@ const allowedOrigins = new Set([env.ADMIN_ORIGIN, env.PUBLIC_ORIGIN])
 declare module "express-session" {
   interface SessionData {
     adminUserId?: string
+    adminRole?: "owner" | "employee"
+    adminUsername?: string
     customerUserId?: string
     customerProfile?: {
       customerId: string
@@ -121,6 +127,10 @@ declare module "express-session" {
       publicNameVisible: boolean
     }
   }
+}
+
+type AdminRequest = express.Request & {
+  adminUser?: AdminDocument
 }
 
 const ADMIN_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7
@@ -190,15 +200,40 @@ const requireTrustedOrigin = (surface: "admin" | "public") =>
   }
 
 const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  void (async () => {
   if (!req.session.adminUserId) {
     sendErrorResponse(res, 401, "Unauthorized", "authentication_required")
     return
   }
+
+  const admin = await findAdminById(req.session.adminUserId)
+  if (!admin || admin.isActive === false) {
+    req.session.destroy(() => undefined)
+    sendErrorResponse(res, 401, "Unauthorized", "authentication_required")
+    return
+  }
+
+  const adminRequest = req as AdminRequest
+  adminRequest.adminUser = admin
+  req.session.adminRole = admin.role
+  req.session.adminUsername = admin.username
+  applyAdminSessionLifetime(req)
+  req.session.touch()
   updateRequestContext({
     actorType: "admin",
-    actorId: req.session.adminUserId,
+    actorId: admin._id,
     actorSource: "session",
   })
+  next()
+  })().catch(next)
+}
+
+const requireOwner = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if ((req as AdminRequest).adminUser?.role !== "owner") {
+    sendErrorResponse(res, 403, "Forbidden", "authorization_failed")
+    return
+  }
+
   next()
 }
 
@@ -265,6 +300,40 @@ const withIdempotency = async <T>(
     await failIdempotencyRequest(scope, key)
     throw error
   }
+}
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+const destroyAdminSessions = async (
+  store: session.Store,
+  adminUserId: string,
+  keepSessionId?: string
+) => {
+  const memorySessions = (store as { sessions?: Record<string, string> }).sessions
+  if (memorySessions) {
+    for (const [sessionId, rawSession] of Object.entries(memorySessions)) {
+      if (sessionId === keepSessionId) {
+        continue
+      }
+
+      try {
+        const parsed = JSON.parse(rawSession) as { adminUserId?: string }
+        if (parsed.adminUserId === adminUserId) {
+          await new Promise<void>((resolve, reject) => {
+            store.destroy(sessionId, (error) => error ? reject(error) : resolve())
+          })
+        }
+      } catch {
+        // Ignore malformed in-memory sessions; express-session will handle them on access.
+      }
+    }
+    return
+  }
+
+  await mongoClient.db().collection<{ _id: string; session: string }>("sessions").deleteMany({
+    ...(keepSessionId ? { _id: { $ne: keepSessionId } } : {}),
+    session: { $regex: `"adminUserId":"${escapeRegex(adminUserId)}"` },
+  })
 }
 
 export const createApp = () => {
@@ -531,7 +600,7 @@ export const createApp = () => {
   app.post("/v1/admin/auth/login", adminLimiter, asyncRoute(async (req, res) => {
     const body = adminLoginInputSchema.parse(req.body)
     const admin = await findAdminByUsername(body.username)
-    if (!admin || !(await verifyAdminPassword(admin, body.password))) {
+    if (!admin || admin.isActive === false || !(await verifyAdminPassword(admin, body.password))) {
       logger.warn({
         event: "admin.auth.login.failed",
         username: body.username,
@@ -540,6 +609,8 @@ export const createApp = () => {
       return
     }
     req.session.adminUserId = admin._id
+    req.session.adminRole = admin.role
+    req.session.adminUsername = admin.username
     req.session.customerUserId = undefined
     req.session.customerProfile = undefined
     applyAdminSessionLifetime(req)
@@ -559,13 +630,46 @@ export const createApp = () => {
     req.session.destroy(() => res.json({ ok: true }))
   }))
 
-  app.get("/v1/admin/auth/session", (req, res) => {
-    res.json({ authenticated: Boolean(req.session.adminUserId) })
-  })
+  app.post("/v1/admin/auth/logout-other-sessions", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    await destroyAdminSessions(req.sessionStore, req.session.adminUserId!, req.sessionID)
+    logger.info({
+      event: "admin.auth.logout_other_sessions",
+      actorId: req.session.adminUserId,
+    })
+    res.json({ ok: true })
+  }))
+
+  app.get("/v1/admin/auth/session", asyncRoute(async (req, res) => {
+    if (!req.session.adminUserId) {
+      res.json({ authenticated: false })
+      return
+    }
+
+    const admin = await findAdminById(req.session.adminUserId)
+    if (!admin || admin.isActive === false) {
+      req.session.destroy(() => undefined)
+      res.json({ authenticated: false })
+      return
+    }
+
+    req.session.adminRole = admin.role
+    req.session.adminUsername = admin.username
+    res.json({ authenticated: true, role: admin.role, username: admin.username })
+  }))
 
   app.get("/v1/admin/dashboard", requireAdmin, asyncRoute(async (req, res) => {
     const window = dashboardWindowSchema.parse(req.query.window ?? "daily")
-    res.json(await getAdminDashboard(window))
+    const adminRole = (req as AdminRequest).adminUser?.role
+    if (adminRole === "employee" && window !== "daily") {
+      sendErrorResponse(res, 403, "Forbidden", "authorization_failed")
+      return
+    }
+    res.json(await getAdminDashboard(
+      window,
+      adminRole === "employee"
+        ? { activeOrdersScope: "today", notificationsScope: "today" }
+        : undefined
+    ))
   }))
 
   app.get("/v1/admin/customers", requireAdmin, asyncRoute(async (req, res) => {
@@ -645,6 +749,10 @@ export const createApp = () => {
 
   app.get("/v1/admin/orders/laundry", requireAdmin, asyncRoute(async (req, res) => {
     const scope = adminLaundryScopeSchema.parse(req.query.scope ?? "active")
+    if ((req as AdminRequest).adminUser?.role === "employee" && scope === "history") {
+      sendErrorResponse(res, 403, "Forbidden", "authorization_failed")
+      return
+    }
     const sort = adminLaundrySortSchema.parse(req.query.sort ?? (scope === "active" ? "oldest" : "newest"))
     const search = typeof req.query.search === "string" ? req.query.search : undefined
     const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined
@@ -663,11 +771,11 @@ export const createApp = () => {
     res.json(await getOrderById(getParam(req.params.id)))
   }))
 
-  app.get("/v1/admin/machines", requireAdmin, asyncRoute(async (_req, res) => {
+  app.get("/v1/admin/machines", requireAdmin, requireOwner, asyncRoute(async (_req, res) => {
     res.json(await listMachines())
   }))
 
-  app.post("/v1/admin/machines/:id/command", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+  app.post("/v1/admin/machines/:id/command", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const machineId = getParam(req.params.id)
     const body = adminMachineCommandInputSchema.parse(req.body)
     const result = await commandMachine(machineId, body.targetStatus)
@@ -768,11 +876,11 @@ export const createApp = () => {
     res.json({ message: await getNotificationPreparedMessage(getParam(req.params.id)) })
   }))
 
-  app.get("/v1/admin/settings", requireAdmin, asyncRoute(async (_req, res) => {
+  app.get("/v1/admin/settings", requireAdmin, requireOwner, asyncRoute(async (_req, res) => {
     res.json(await getSettings())
   }))
 
-  app.put("/v1/admin/settings", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+  app.put("/v1/admin/settings", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = settingsResponseSchema.parse(req.body)
     const result = await updateSettings(body)
     logger.info({
@@ -808,6 +916,24 @@ export const createApp = () => {
       providerMessageId: result.providerMessageId,
     })
     res.json(result)
+  }))
+
+  app.get("/v1/admin/staff/employee", requireAdmin, requireOwner, asyncRoute(async (_req, res) => {
+    res.json(await getEmployeeAccount())
+  }))
+
+  app.put("/v1/admin/staff/employee", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const body = employeeAccountInputSchema.parse(req.body)
+    const result = await upsertEmployeeAccount(body)
+    if (result.shouldRevokeSessions) {
+      await destroyAdminSessions(req.sessionStore, "employee-primary")
+    }
+    logger.info({
+      event: "admin.employee.saved",
+      isActive: result.account.isActive,
+      sessionsRevoked: result.shouldRevokeSessions,
+    })
+    res.json(result.account)
   }))
 
   app.post("/v1/admin/whatsapp/chats/:chatId/read", requireAdmin, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
@@ -859,6 +985,8 @@ export const createApp = () => {
     req.session.customerUserId = customer.customerId
     req.session.customerProfile = customer
     req.session.adminUserId = undefined
+    req.session.adminRole = undefined
+    req.session.adminUsername = undefined
     applyCustomerSessionLifetime(req)
     updateRequestContext({
       actorType: "customer",
@@ -884,6 +1012,8 @@ export const createApp = () => {
     req.session.customerUserId = redeemed.session.customerId
     req.session.customerProfile = redeemed.session
     req.session.adminUserId = undefined
+    req.session.adminRole = undefined
+    req.session.adminUsername = undefined
     applyCustomerSessionLifetime(req)
 
     await new Promise<void>((resolve, reject) => {
