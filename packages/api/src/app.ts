@@ -56,6 +56,7 @@ import {
   getEmployeeAccount,
   getEmployeeLoginLink,
   getAdminDashboard,
+  getAdminServices,
   getCustomerDetail,
   getNotificationPreparedMessage,
   getOrderById,
@@ -307,8 +308,6 @@ const withIdempotency = async <T>(
   }
 }
 
-const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-
 const destroyAdminSessions = async (
   store: session.Store,
   adminUserId: string,
@@ -335,10 +334,30 @@ const destroyAdminSessions = async (
     return
   }
 
-  await mongoClient.db().collection<{ _id: string; session: string }>("sessions").deleteMany({
-    ...(keepSessionId ? { _id: { $ne: keepSessionId } } : {}),
-    session: { $regex: `"adminUserId":"${escapeRegex(adminUserId)}"` },
-  })
+  const persistedSessions = await mongoClient.db().collection<{ _id: string; session: string }>("sessions")
+    .find({
+      ...(keepSessionId ? { _id: { $ne: keepSessionId } } : {}),
+    })
+    .project<{ _id: string; session: string }>({ _id: 1, session: 1 })
+    .toArray()
+
+  const sessionIdsToDestroy: string[] = []
+  for (const record of persistedSessions) {
+    try {
+      const parsed = JSON.parse(record.session) as { adminUserId?: string }
+      if (parsed.adminUserId === adminUserId) {
+        sessionIdsToDestroy.push(record._id)
+      }
+    } catch {
+      // Ignore malformed persisted sessions; express-session will handle them on access.
+    }
+  }
+
+  if (sessionIdsToDestroy.length > 0) {
+    await mongoClient.db().collection<{ _id: string; session: string }>("sessions").deleteMany({
+      _id: { $in: sessionIdsToDestroy },
+    })
+  }
 }
 
 export const createApp = () => {
@@ -527,6 +546,11 @@ export const createApp = () => {
     "employee-login-link",
     20,
     "Terlalu banyak percobaan login QR karyawan"
+  )
+  const employeeLoginLinkManagementLimiter = buildLimiter(
+    "employee-login-link-management",
+    20,
+    "Terlalu banyak perubahan QR login karyawan"
   )
   app.get("/health", (_req, res) => {
     res.json({ ok: true, releaseSha: env.RELEASE_SHA })
@@ -928,6 +952,10 @@ export const createApp = () => {
     res.json(await getSettings())
   }))
 
+  app.get("/v1/admin/services", requireAdmin, asyncRoute(async (_req, res) => {
+    res.json(await getAdminServices())
+  }))
+
   app.put("/v1/admin/settings", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = settingsResponseSchema.parse(req.body)
     const result = await updateSettings(body)
@@ -974,7 +1002,7 @@ export const createApp = () => {
     res.json(await getEmployeeLoginLink())
   }))
 
-  app.post("/v1/admin/staff/employee/login-link", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (_req, res) => {
+  app.post("/v1/admin/staff/employee/login-link", requireAdmin, requireOwner, employeeLoginLinkManagementLimiter, requireTrustedOrigin("admin"), asyncRoute(async (_req, res) => {
     const result = await generateEmployeeLoginLink()
     logger.info({
       event: "admin.employee.login_link.generated",
@@ -983,7 +1011,7 @@ export const createApp = () => {
     res.json(result)
   }))
 
-  app.post("/v1/admin/staff/employee/login-link/disable", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (_req, res) => {
+  app.post("/v1/admin/staff/employee/login-link/disable", requireAdmin, requireOwner, employeeLoginLinkManagementLimiter, requireTrustedOrigin("admin"), asyncRoute(async (_req, res) => {
     const result = await disableEmployeeLoginLink()
     logger.info({
       event: "admin.employee.login_link.disabled",

@@ -404,15 +404,10 @@ export default function LaundryAktifPage() {
 
   useEffect(() => {
     adminApi.getSession()
-      .then((payload) => {
-        setAdminRole(payload.role ?? "owner")
-        if (payload.role === "employee" && activeTab === "history") {
-          setActiveTab("active")
-        }
-      })
+      .then((payload) => setAdminRole(payload.role ?? "owner"))
       .catch(() => undefined)
       .finally(() => setIsRoleChecked(true))
-  }, [activeTab])
+  }, [])
 
   const loadOrders = ({ append = false, cursor }: { append?: boolean; cursor?: string } = {}) => {
     if (append) {

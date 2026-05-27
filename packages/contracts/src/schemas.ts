@@ -115,6 +115,10 @@ export const settingsResponseSchema = z.object({
   services: z.array(serviceSettingSchema),
 }).strict()
 
+export const adminServicesResponseSchema = z.object({
+  services: z.array(serviceSettingSchema),
+}).strict()
+
 export const adminSessionResponseSchema = z.object({
   authenticated: z.boolean(),
   role: adminRoleSchema.optional(),
@@ -764,6 +768,7 @@ export type WhatsappProviderStatus = z.infer<typeof whatsappProviderStatusSchema
 export type ServiceSetting = z.infer<typeof serviceSettingSchema>
 export type AdminWhatsappContact = z.infer<typeof adminWhatsappContactSchema>
 export type SettingsResponse = z.infer<typeof settingsResponseSchema>
+export type AdminServicesResponse = z.infer<typeof adminServicesResponseSchema>
 export type AdminSessionResponse = z.infer<typeof adminSessionResponseSchema>
 export type EmployeeAccount = z.infer<typeof employeeAccountSchema>
 export type EmployeeLoginLinkStatus = z.infer<typeof employeeLoginLinkStatusSchema>

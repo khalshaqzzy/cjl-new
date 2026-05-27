@@ -4,6 +4,7 @@ import type {
   AdminLaundryListResponse,
   AdminMachineCommandResponse,
   AdminMachineListResponse,
+  AdminServicesResponse,
   AdminSessionResponse,
   CreateCustomerResponse,
   AdminDashboardResponse,
@@ -244,6 +245,7 @@ export const adminApi = {
     apiFetchBlob(`/v1/admin/notifications/${notificationId}/receipt`),
   getNotificationMessage: (notificationId: string) =>
     apiFetch<{ message: string }>(`/v1/admin/notifications/${notificationId}/message`),
+  getServices: () => apiFetch<AdminServicesResponse>("/v1/admin/services"),
   getSettings: () => apiFetch<SettingsResponse>("/v1/admin/settings"),
   updateSettings: (payload: SettingsResponse) =>
     apiFetch<SettingsResponse>("/v1/admin/settings", {

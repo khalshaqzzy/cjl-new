@@ -663,6 +663,12 @@ test("admin role model supports one employee account and owner-only controls", a
     headers: { Cookie: employeeCookie },
     expectedStatus: 403,
   })
+  result = await requestJson("/v1/admin/services", {
+    headers: { Cookie: employeeCookie },
+  })
+  assert.equal(Array.isArray(result.payload.services), true)
+  assert.equal(result.payload.services.length > 0, true)
+  assert.equal(result.payload.services.every((service: { isActive: boolean }) => service.isActive), true)
   await requestJson("/v1/admin/staff/employee", {
     headers: { Cookie: employeeCookie },
     expectedStatus: 403,

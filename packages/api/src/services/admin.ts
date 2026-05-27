@@ -6,6 +6,7 @@ import type {
   AdminLaundryScope,
   AdminLaundrySort,
   AdminDashboardResponse,
+  AdminServicesResponse,
   ConfirmOrderInput,
   CreateCustomerInput,
   CreateCustomerResponse,
@@ -1592,6 +1593,13 @@ export const getSettings = async (): Promise<SettingsResponse> => {
   return {
     business: settings.business,
     services: settings.services,
+  }
+}
+
+export const getAdminServices = async (): Promise<AdminServicesResponse> => {
+  const settings = await getSettingsDocument()
+  return {
+    services: settings.services.filter((service) => service.isActive),
   }
 }
 
