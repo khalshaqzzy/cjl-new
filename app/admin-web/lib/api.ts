@@ -28,6 +28,8 @@ import type {
 } from "@cjl/contracts"
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"
+const csrfTokenPath = "/v1/admin/csrf-token"
+let csrfToken: string | null = null
 
 export class ApiError extends Error {
   readonly status: number
@@ -45,20 +47,50 @@ export class ApiError extends Error {
 
 const resolveIdempotencyKey = (key?: string) => key ?? crypto.randomUUID()
 
-const apiFetch = async <T>(path: string, init?: RequestInit) => {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
+const isUnsafeMethod = (method: string) => !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())
+
+const fetchCsrfToken = async () => {
+  const response = await fetch(`${apiBaseUrl}${csrfTokenPath}`, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
+    },
   })
+
+  if (!response.ok) {
+    return null
+  }
+
+  const payload = (await response.json().catch(() => null)) as { csrfToken?: string | null } | null
+  csrfToken = response.headers.get("x-csrf-token") ?? payload?.csrfToken ?? null
+  return csrfToken
+}
+
+const apiFetch = async <T>(path: string, init?: RequestInit) => {
+  const method = init?.method ?? "GET"
+  const headers = new Headers(init?.headers)
+  headers.set("Content-Type", "application/json")
+  if (isUnsafeMethod(method)) {
+    const token = csrfToken ?? await fetchCsrfToken()
+    if (token) {
+      headers.set("X-CSRF-Token", token)
+    }
+  }
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    credentials: "include",
+    headers
+  })
+  csrfToken = response.headers.get("x-csrf-token") ?? csrfToken
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as
       | { message?: string; error?: { code?: string; requestId?: string } }
       | null
+    if (payload?.error?.code === "csrf_token_invalid") {
+      csrfToken = null
+    }
     throw new ApiError(
       payload?.message ?? "Request gagal",
       response.status,

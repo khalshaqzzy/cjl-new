@@ -5,6 +5,7 @@ import session from "express-session"
 import rateLimit from "express-rate-limit"
 import MongoStore from "connect-mongo"
 import helmet from "helmet"
+import lusca from "lusca"
 import { MongoServerError } from "mongodb"
 import { ZodError } from "zod"
 import {
@@ -151,6 +152,11 @@ const applyCustomerSessionLifetime = (req: express.Request) => {
 }
 
 const getRequestId = (res: express.Response) => String(res.getHeader("X-Request-Id") ?? "")
+
+const getCsrfToken = (req: express.Request) => {
+  const requestWithCsrf = req as express.Request & { csrfToken?: () => string }
+  return requestWithCsrf.csrfToken?.()
+}
 
 const sendErrorResponse = (
   res: express.Response,
@@ -418,6 +424,18 @@ export const createApp = () => {
 
     withRequestContext(context, next)
   })
+
+  const metaWhatsappWebhookLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: 120,
+    store: new MongoRateLimitStore(),
+    keyGenerator: (req) => `meta-whatsapp-webhook:${req.ip}`,
+    handler: (_req, res) => {
+      const error = new RateLimitError("Terlalu banyak request webhook WhatsApp")
+      sendErrorResponse(res, error.statusCode, error.message, error.code)
+    }
+  })
+
   app.get(env.WHATSAPP_WEBHOOK_PATH, asyncRoute(async (req, res) => {
     const challenge = resolveMetaWhatsappWebhookChallenge(req.query as Record<string, unknown>)
     if (!challenge) {
@@ -429,6 +447,7 @@ export const createApp = () => {
   }))
   app.post(
     env.WHATSAPP_WEBHOOK_PATH,
+    metaWhatsappWebhookLimiter,
     express.raw({ type: "application/json", limit: "5mb" }),
     asyncRoute(async (req, res) => {
       const rawBody =
@@ -460,7 +479,14 @@ export const createApp = () => {
   )
   app.use(express.json({ limit: "1mb" }))
   app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
     hsts: env.APP_ENV === "production"
       ? {
@@ -489,7 +515,8 @@ export const createApp = () => {
 
         callback(new AuthorizationError("Origin tidak diizinkan", "origin_not_allowed"))
       },
-      credentials: true
+      credentials: true,
+      exposedHeaders: ["X-CSRF-Token", "X-Request-Id", "Content-Disposition"]
     })
   )
   app.use(
@@ -508,6 +535,19 @@ export const createApp = () => {
       ...(sessionStore ? { store: sessionStore } : {})
     })
   )
+  if (env.APP_ENV !== "test") {
+    app.use(lusca.csrf({
+      header: "x-csrf-token",
+      cookie: {
+        name: "cjl.csrf",
+        options: {
+          httpOnly: false,
+          sameSite: "lax",
+          secure: env.SESSION_COOKIE_SECURE,
+        },
+      },
+    }))
+  }
 
   const buildLimiter = (
     keyPrefix: string,
@@ -551,6 +591,11 @@ export const createApp = () => {
     "employee-login-link-management",
     20,
     "Terlalu banyak perubahan QR login karyawan"
+  )
+  const ownerMutationLimiter = buildLimiter(
+    "admin-owner-mutation",
+    30,
+    "Terlalu banyak perubahan admin"
   )
   app.get("/health", (_req, res) => {
     res.json({ ok: true, releaseSha: env.RELEASE_SHA })
@@ -631,6 +676,14 @@ export const createApp = () => {
     }
   }))
 
+  app.get("/v1/admin/csrf-token", (req, res) => {
+    res.json({ csrfToken: getCsrfToken(req) ?? null })
+  })
+
+  app.get("/v1/public/csrf-token", (req, res) => {
+    res.json({ csrfToken: getCsrfToken(req) ?? null })
+  })
+
   app.post("/v1/admin/auth/login", adminLimiter, asyncRoute(async (req, res) => {
     const body = adminLoginInputSchema.parse(req.body)
     const admin = await findAdminByUsername(body.username)
@@ -702,7 +755,7 @@ export const createApp = () => {
     req.session.destroy(() => res.json({ ok: true }))
   }))
 
-  app.post("/v1/admin/auth/logout-other-sessions", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+  app.post("/v1/admin/auth/logout-other-sessions", requireAdmin, requireOwner, ownerMutationLimiter, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     await destroyAdminSessions(req.sessionStore, req.session.adminUserId!, req.sessionID)
     logger.info({
       event: "admin.auth.logout_other_sessions",
@@ -1020,7 +1073,7 @@ export const createApp = () => {
     res.json(result)
   }))
 
-  app.put("/v1/admin/staff/employee", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+  app.put("/v1/admin/staff/employee", requireAdmin, requireOwner, ownerMutationLimiter, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
     const body = employeeAccountInputSchema.parse(req.body)
     const result = await upsertEmployeeAccount(body)
     if (result.shouldRevokeSessions) {
@@ -1244,6 +1297,17 @@ export const createApp = () => {
         error: serializeError(error),
       })
       sendErrorResponse(res, conflictError.statusCode, conflictError.message, conflictError.code)
+      return
+    }
+
+    if (error instanceof Error && error.message.startsWith("CSRF token")) {
+      logger.warn({
+        event: "http.request.failed",
+        requestId,
+        code: "csrf_token_invalid",
+        error: serializeError(error),
+      })
+      sendErrorResponse(res, 403, "CSRF token tidak valid", "csrf_token_invalid")
       return
     }
 
