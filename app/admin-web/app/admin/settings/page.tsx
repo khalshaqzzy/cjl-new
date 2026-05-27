@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import type { AdminWhatsappContact, ServiceSetting } from "@cjl/contracts"
+import type { AdminWhatsappContact, EmployeeLoginLinkStatus, ServiceSetting } from "@cjl/contracts"
 import { AdminShell } from "@/components/admin/admin-shell"
+import { CustomerLoginLinkSheet } from "@/components/admin/customer-login-link-sheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -20,6 +21,7 @@ import {
   Package,
   Phone,
   Plus,
+  QrCode,
   Save,
   Shirt,
   ShoppingBag,
@@ -32,6 +34,7 @@ import {
   KeyRound,
   LogOut,
   ShieldCheck,
+  Unlink,
   UserCog,
 } from "lucide-react"
 
@@ -138,7 +141,15 @@ export default function SettingsPage() {
   const [employeeUsername, setEmployeeUsername] = useState("")
   const [employeePassword, setEmployeePassword] = useState("")
   const [employeeIsActive, setEmployeeIsActive] = useState(true)
+  const [employeeLoginLink, setEmployeeLoginLink] = useState<EmployeeLoginLinkStatus>({
+    exists: false,
+    isActive: false,
+  })
+  const [employeeLoginUrl, setEmployeeLoginUrl] = useState("")
+  const [isEmployeeQrSheetOpen, setIsEmployeeQrSheetOpen] = useState(false)
   const [isSavingEmployee, setIsSavingEmployee] = useState(false)
+  const [isGeneratingEmployeeLoginLink, setIsGeneratingEmployeeLoginLink] = useState(false)
+  const [isDisablingEmployeeLoginLink, setIsDisablingEmployeeLoginLink] = useState(false)
   const [employeeMessage, setEmployeeMessage] = useState("")
   const [employeeError, setEmployeeError] = useState("")
   const [isLoggingOutOtherSessions, setIsLoggingOutOtherSessions] = useState(false)
@@ -151,9 +162,10 @@ export default function SettingsPage() {
           return
         }
 
-        const [settings, employee] = await Promise.all([
+        const [settings, employee, employeeLoginLinkResponse] = await Promise.all([
           adminApi.getSettings(),
           adminApi.getEmployeeAccount(),
+          adminApi.getEmployeeLoginLink(),
         ])
 
         setLaundryName(settings.business.laundryName)
@@ -177,6 +189,7 @@ export default function SettingsPage() {
         setEmployeeExists(employee.exists)
         setEmployeeUsername(employee.username)
         setEmployeeIsActive(employee.exists ? employee.isActive : true)
+        setEmployeeLoginLink(employeeLoginLinkResponse.loginLink)
         setLoadError("")
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : "Gagal memuat pengaturan"))
@@ -361,11 +374,52 @@ export default function SettingsPage() {
       setEmployeeUsername(employee.username)
       setEmployeePassword("")
       setEmployeeIsActive(employee.isActive)
+      const employeeLoginLinkResponse = await adminApi.getEmployeeLoginLink()
+      setEmployeeLoginLink(employeeLoginLinkResponse.loginLink)
+      if (!employeeLoginLinkResponse.loginLink.isActive) {
+        setEmployeeLoginUrl("")
+      }
       setEmployeeMessage("Akun karyawan berhasil disimpan.")
     } catch (error) {
       setEmployeeError(error instanceof Error ? error.message : "Gagal menyimpan akun karyawan")
     } finally {
       setIsSavingEmployee(false)
+    }
+  }
+
+  const handleGenerateEmployeeLoginLink = async () => {
+    setIsGeneratingEmployeeLoginLink(true)
+    setEmployeeError("")
+    setEmployeeMessage("")
+
+    try {
+      const response = await adminApi.generateEmployeeLoginLink()
+      setEmployeeLoginLink(response.loginLink)
+      setEmployeeLoginUrl(response.reusableLogin?.url ?? "")
+      setIsEmployeeQrSheetOpen(Boolean(response.reusableLogin?.url))
+      setEmployeeMessage("QR login karyawan berhasil dibuat.")
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Gagal membuat QR login karyawan")
+    } finally {
+      setIsGeneratingEmployeeLoginLink(false)
+    }
+  }
+
+  const handleDisableEmployeeLoginLink = async () => {
+    setIsDisablingEmployeeLoginLink(true)
+    setEmployeeError("")
+    setEmployeeMessage("")
+
+    try {
+      const response = await adminApi.disableEmployeeLoginLink()
+      setEmployeeLoginLink(response.loginLink)
+      setEmployeeLoginUrl("")
+      setIsEmployeeQrSheetOpen(false)
+      setEmployeeMessage("Link QR login karyawan berhasil dinonaktifkan.")
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : "Gagal menonaktifkan QR login karyawan")
+    } finally {
+      setIsDisablingEmployeeLoginLink(false)
     }
   }
 
@@ -502,6 +556,65 @@ export default function SettingsPage() {
                   }}
                   data-testid="settings-employee-active"
                 />
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-line-base bg-bg-subtle px-4 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white">
+                      <QrCode className="h-4 w-4 text-rose-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-text-body">QR login karyawan</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-text-muted">
+                        Link bisa dipakai berkali-kali sampai dinonaktifkan, akun nonaktif, atau username/password diubah.
+                      </p>
+                      {employeeLoginLink.isActive && employeeLoginLink.tokenLast4 ? (
+                        <p className="mt-2 text-xs text-text-muted">
+                          Token aktif berakhir <span className="font-semibold text-text-body">{employeeLoginLink.tokenLast4}</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <Badge
+                    className={cn(
+                      "w-fit shrink-0 rounded-full border-0 px-2.5 py-0.5 text-xs",
+                      employeeLoginLink.isActive
+                        ? "bg-success-bg text-success"
+                        : "bg-bg-surface text-text-muted"
+                    )}
+                    data-testid="settings-employee-login-link-status"
+                  >
+                    {employeeLoginLink.isActive ? "QR aktif" : "QR nonaktif"}
+                  </Badge>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-lg bg-white"
+                    onClick={handleGenerateEmployeeLoginLink}
+                    disabled={!employeeExists || !employeeIsActive || isGeneratingEmployeeLoginLink}
+                    data-testid="settings-employee-login-link-generate"
+                  >
+                    {isGeneratingEmployeeLoginLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <QrCode className="mr-2 h-4 w-4" />}
+                    Generate QR Login
+                  </Button>
+                  {employeeLoginLink.isActive ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-lg bg-white text-danger hover:text-danger"
+                      onClick={handleDisableEmployeeLoginLink}
+                      disabled={isDisablingEmployeeLoginLink}
+                      data-testid="settings-employee-login-link-disable"
+                    >
+                      {isDisablingEmployeeLoginLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Unlink className="mr-2 h-4 w-4" />}
+                      Nonaktifkan Link
+                    </Button>
+                  ) : null}
+                </div>
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -745,6 +858,17 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      <CustomerLoginLinkSheet
+        open={isEmployeeQrSheetOpen}
+        onOpenChange={setIsEmployeeQrSheetOpen}
+        loginUrl={employeeLoginUrl}
+        title="QR Login Karyawan"
+        description="Karyawan bisa scan QR ini untuk langsung masuk ke admin dengan akses operasional."
+        linkLabel="Link Login Karyawan"
+        notice="Link ini reusable untuk banyak login. Membuka link di perangkat owner akan mengganti sesi aktif menjadi sesi karyawan."
+        qrAlt="QR login karyawan"
+      />
     </AdminShell>
   )
 }

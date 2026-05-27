@@ -14,6 +14,8 @@ import type {
   DashboardWindow,
   EmployeeAccount,
   EmployeeAccountInput,
+  EmployeeLoginLinkResponse,
+  EmployeeLoginLinkStatus,
   NotificationRecord,
   OrderPreviewResponse,
   SettingsResponse,
@@ -67,6 +69,7 @@ import {
 import { sendNotificationFallbackToWhatsapp } from "./whatsapp.js"
 
 const db = () => getDatabase()
+const EMPLOYEE_ADMIN_ID = "employee-primary"
 
 const windowBounds = (window: DashboardWindow) => {
   const reference = nowJakarta()
@@ -371,6 +374,11 @@ export const findAdminById = async (adminId: string) =>
 export const verifyAdminPassword = async (admin: AdminDocument, password: string) =>
   bcrypt.compare(password, admin.passwordHash)
 
+const resolveCredentialVersion = (admin: AdminDocument) => admin.credentialVersion ?? 1
+
+const buildEmployeeLoginLinkUrl = (token: string) =>
+  `${env.ADMIN_ORIGIN}/employee-login?token=${encodeURIComponent(token)}`
+
 export const mapEmployeeAccount = (employee: AdminDocument | null): EmployeeAccount => ({
   exists: Boolean(employee),
   username: employee?.username ?? "",
@@ -380,7 +388,126 @@ export const mapEmployeeAccount = (employee: AdminDocument | null): EmployeeAcco
 })
 
 export const getEmployeeAccount = async (): Promise<EmployeeAccount> =>
-  mapEmployeeAccount(await db().collection<AdminDocument>("admins").findOne({ _id: "employee-primary" }))
+  mapEmployeeAccount(await db().collection<AdminDocument>("admins").findOne({ _id: EMPLOYEE_ADMIN_ID }))
+
+const mapEmployeeLoginLinkStatus = (employee: AdminDocument | null): EmployeeLoginLinkStatus => {
+  const link = employee?.employeeLoginLink
+  const isVersionCurrent = Boolean(employee && link && link.credentialVersion === resolveCredentialVersion(employee))
+  const isActive = Boolean(employee?.isActive && link && !link.disabledAt && isVersionCurrent)
+
+  return {
+    exists: Boolean(link),
+    isActive,
+    ...(link?.tokenLast4 ? { tokenLast4: link.tokenLast4 } : {}),
+    ...(link?.createdAt ? { createdAt: link.createdAt } : {}),
+    ...(link?.disabledAt ? { disabledAt: link.disabledAt } : {}),
+  }
+}
+
+export const getEmployeeLoginLink = async (): Promise<EmployeeLoginLinkResponse> => ({
+  loginLink: mapEmployeeLoginLinkStatus(
+    await db().collection<AdminDocument>("admins").findOne({ _id: EMPLOYEE_ADMIN_ID })
+  ),
+})
+
+export const generateEmployeeLoginLink = async (): Promise<EmployeeLoginLinkResponse> => {
+  const adminCollection = db().collection<AdminDocument>("admins")
+  const employee = await adminCollection.findOne({ _id: EMPLOYEE_ADMIN_ID })
+  if (!employee || employee.role !== "employee") {
+    throw new NotFoundError("Akun karyawan belum dibuat")
+  }
+
+  if (!employee.isActive) {
+    throw new ValidationError("Aktifkan akun karyawan sebelum membuat QR login")
+  }
+
+  const token = createOpaqueToken()
+  const now = new Date().toISOString()
+  const credentialVersion = resolveCredentialVersion(employee)
+  await adminCollection.updateOne(
+    { _id: EMPLOYEE_ADMIN_ID },
+    {
+      $set: {
+        credentialVersion,
+        employeeLoginLink: {
+          tokenHash: hashOpaqueToken(token),
+          tokenLast4: tokenLast4(token),
+          credentialVersion,
+          createdAt: now,
+        },
+        updatedAt: now,
+      },
+    }
+  )
+
+  await saveAuditLog("admin.employee.login_link.generated", "admin", EMPLOYEE_ADMIN_ID, {
+    tokenLast4: tokenLast4(token),
+  })
+
+  return {
+    loginLink: {
+      exists: true,
+      isActive: true,
+      tokenLast4: tokenLast4(token),
+      createdAt: now,
+    },
+    reusableLogin: {
+      url: buildEmployeeLoginLinkUrl(token),
+    },
+  }
+}
+
+export const disableEmployeeLoginLink = async (
+  reason = "owner_disabled"
+): Promise<EmployeeLoginLinkResponse> => {
+  const adminCollection = db().collection<AdminDocument>("admins")
+  const employee = await adminCollection.findOne({ _id: EMPLOYEE_ADMIN_ID })
+  if (!employee || employee.role !== "employee") {
+    throw new NotFoundError("Akun karyawan belum dibuat")
+  }
+
+  const now = new Date().toISOString()
+  if (employee.employeeLoginLink && !employee.employeeLoginLink.disabledAt) {
+    await adminCollection.updateOne(
+      { _id: EMPLOYEE_ADMIN_ID },
+      {
+        $set: {
+          "employeeLoginLink.disabledAt": now,
+          "employeeLoginLink.disabledReason": reason,
+          updatedAt: now,
+        },
+      }
+    )
+    await saveAuditLog("admin.employee.login_link.disabled", "admin", EMPLOYEE_ADMIN_ID, { reason })
+  }
+
+  return getEmployeeLoginLink()
+}
+
+export const redeemEmployeeLoginLink = async (token: string): Promise<AdminDocument | null> => {
+  const tokenHash = hashOpaqueToken(token)
+  const employee = await db().collection<AdminDocument>("admins").findOne({
+    _id: EMPLOYEE_ADMIN_ID,
+    role: "employee",
+    isActive: true,
+    "employeeLoginLink.tokenHash": tokenHash,
+    "employeeLoginLink.disabledAt": { $exists: false },
+  })
+
+  if (!employee?.employeeLoginLink) {
+    return null
+  }
+
+  if (employee.employeeLoginLink.credentialVersion !== resolveCredentialVersion(employee)) {
+    return null
+  }
+
+  await saveAuditLog("admin.employee.login_link.redeemed", "admin", employee._id, {
+    tokenLast4: employee.employeeLoginLink.tokenLast4,
+  })
+
+  return employee
+}
 
 export const upsertEmployeeAccount = async (
   input: EmployeeAccountInput
@@ -389,8 +516,8 @@ export const upsertEmployeeAccount = async (
   const password = input.password?.trim() ?? ""
   const adminCollection = db().collection<AdminDocument>("admins")
   const [existingEmployee, duplicateUser] = await Promise.all([
-    adminCollection.findOne({ _id: "employee-primary" }),
-    adminCollection.findOne({ username, _id: { $ne: "employee-primary" } }),
+    adminCollection.findOne({ _id: EMPLOYEE_ADMIN_ID }),
+    adminCollection.findOne({ username, _id: { $ne: EMPLOYEE_ADMIN_ID } }),
   ])
 
   if (duplicateUser) {
@@ -403,15 +530,18 @@ export const upsertEmployeeAccount = async (
 
   const now = new Date().toISOString()
   const passwordChanged = Boolean(password)
+  const usernameChanged = Boolean(existingEmployee && existingEmployee.username !== username)
+  const credentialsChanged = passwordChanged || usernameChanged
   const disablingExistingEmployee = Boolean(existingEmployee?.isActive && !input.isActive)
 
   if (!existingEmployee) {
     const employee: AdminDocument = {
-      _id: "employee-primary",
+      _id: EMPLOYEE_ADMIN_ID,
       username,
       passwordHash: await bcrypt.hash(password, 10),
       role: "employee",
       isActive: input.isActive,
+      credentialVersion: 1,
       createdAt: now,
       updatedAt: now,
     }
@@ -421,28 +551,44 @@ export const upsertEmployeeAccount = async (
       isActive: input.isActive,
     })
   } else {
+    const credentialVersion = resolveCredentialVersion(existingEmployee) + (credentialsChanged ? 1 : 0)
+    const shouldDisableLoginLink = Boolean(
+      existingEmployee.employeeLoginLink &&
+      !existingEmployee.employeeLoginLink.disabledAt &&
+      (credentialsChanged || disablingExistingEmployee)
+    )
+    const linkDisabledReason = credentialsChanged ? "credentials_changed" : "employee_disabled"
     await adminCollection.updateOne(
-      { _id: "employee-primary" },
+      { _id: EMPLOYEE_ADMIN_ID },
       {
         $set: {
           username,
           role: "employee",
           isActive: input.isActive,
+          credentialVersion,
           updatedAt: now,
           ...(passwordChanged ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
+          ...(shouldDisableLoginLink
+            ? {
+                "employeeLoginLink.disabledAt": now,
+                "employeeLoginLink.disabledReason": linkDisabledReason,
+              }
+            : {}),
         },
       }
     )
-    await saveAuditLog("admin.employee.updated", "admin", "employee-primary", {
+    await saveAuditLog("admin.employee.updated", "admin", EMPLOYEE_ADMIN_ID, {
       username,
       isActive: input.isActive,
       passwordChanged,
+      usernameChanged,
+      loginLinkDisabled: shouldDisableLoginLink,
     })
   }
 
   return {
     account: await getEmployeeAccount(),
-    shouldRevokeSessions: passwordChanged || disablingExistingEmployee,
+    shouldRevokeSessions: credentialsChanged || disablingExistingEmployee,
   }
 }
 

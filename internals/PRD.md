@@ -464,6 +464,8 @@ Content goals:
 - Employee login uses the same admin login page and domain as owner login.
 - Employee account setup requires username and password on first creation; password can be changed later from Settings.
 - Employee account can be activated or deactivated by owner. Deactivated employee accounts cannot log in and existing employee sessions must stop working.
+- Owner can generate one active reusable QR/link for employee login from Settings. The link may be used for multiple employee logins until it is disabled, the employee username/password changes, or the employee account is deactivated.
+- Employee QR login tokens must be stored hash-only. The full URL is only shown immediately after generation, so owner must generate a new QR if the URL is no longer visible.
 - Owner can log out all other sessions for the currently logged-in owner account while keeping the current session active.
 - Password stored as secure one-way hash.
 - Session stored server-side or as signed secure HTTP-only cookie.
@@ -577,6 +579,7 @@ Settings must support:
 - WhatsApp message templates or configurable message blocks.
 - Welcome WA templates must support an `{{autoLoginUrl}}` placeholder.
 - Owner-only management of the single employee account.
+- Owner-only generation and disabling of the reusable employee QR login link.
 - Owner-only logout of other sessions for the active owner account.
 - Employee sessions must not access Settings.
 

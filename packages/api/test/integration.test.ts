@@ -575,6 +575,75 @@ test("admin role model supports one employee account and owner-only controls", a
   assert.equal(result.payload.username, "employee")
   assert.equal(result.payload.isActive, true)
 
+  result = await requestJson("/v1/admin/staff/employee/login-link", {
+    headers: { Cookie: ownerCookie }
+  })
+  assert.equal(result.payload.loginLink.exists, false)
+  assert.equal(result.payload.loginLink.isActive, false)
+
+  result = await requestJson("/v1/admin/staff/employee/login-link", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.loginLink.exists, true)
+  assert.equal(result.payload.loginLink.isActive, true)
+  assert.match(result.payload.reusableLogin.url, /\/employee-login\?token=/)
+  const firstEmployeeLoginToken = new URL(result.payload.reusableLogin.url).searchParams.get("token")
+  assert.ok(firstEmployeeLoginToken)
+
+  const employeeStoredForLink = await getDatabase().collection("admins").findOne({ _id: "employee-primary" })
+  assert.ok(employeeStoredForLink?.employeeLoginLink?.tokenHash)
+  assert.notEqual(employeeStoredForLink.employeeLoginLink.tokenHash, firstEmployeeLoginToken)
+  assert.equal(employeeStoredForLink.employeeLoginLink.token, undefined)
+
+  result = await requestJson("/v1/admin/auth/employee-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: firstEmployeeLoginToken })
+  })
+  assert.equal(result.payload.ok, true)
+  const firstEmployeeQrCookie = result.response.headers.get("set-cookie")
+  assert.ok(firstEmployeeQrCookie)
+
+  result = await requestJson("/v1/admin/auth/employee-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: firstEmployeeLoginToken })
+  })
+  assert.equal(result.payload.ok, true)
+  const secondEmployeeQrCookie = result.response.headers.get("set-cookie")
+  assert.ok(secondEmployeeQrCookie)
+
+  result = await requestJson("/v1/admin/auth/session", {
+    headers: { Cookie: secondEmployeeQrCookie }
+  })
+  assert.equal(result.payload.authenticated, true)
+  assert.equal(result.payload.role, "employee")
+
+  result = await requestJson("/v1/admin/staff/employee/login-link/disable", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({})
+  })
+  assert.equal(result.payload.loginLink.isActive, false)
+  await requestJson("/v1/admin/auth/employee-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: firstEmployeeLoginToken }),
+    expectedStatus: 401,
+  })
+  result = await requestJson("/v1/admin/dashboard?window=daily", {
+    headers: { Cookie: firstEmployeeQrCookie }
+  })
+  assert.equal(result.payload.chart.bucket, "hour")
+
   result = await requestJson("/v1/admin/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -646,6 +715,17 @@ test("admin role model supports one employee account and owner-only controls", a
   const secondEmployeeCookie = result.response.headers.get("set-cookie")
   assert.ok(secondEmployeeCookie)
 
+  result = await requestJson("/v1/admin/staff/employee/login-link", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: ownerCookie,
+    },
+    body: JSON.stringify({})
+  })
+  const passwordRotationEmployeeLoginToken = new URL(result.payload.reusableLogin.url).searchParams.get("token")
+  assert.ok(passwordRotationEmployeeLoginToken)
+
   result = await requestJson("/v1/admin/staff/employee", {
     method: "PUT",
     headers: {
@@ -658,6 +738,12 @@ test("admin role model supports one employee account and owner-only controls", a
 
   await requestJson("/v1/admin/dashboard?window=daily", {
     headers: { Cookie: secondEmployeeCookie },
+    expectedStatus: 401,
+  })
+  await requestJson("/v1/admin/auth/employee-link/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: passwordRotationEmployeeLoginToken }),
     expectedStatus: 401,
   })
   await requestJson("/v1/admin/auth/login", {

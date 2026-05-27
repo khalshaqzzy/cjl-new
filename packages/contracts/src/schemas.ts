@@ -129,6 +129,21 @@ export const employeeAccountSchema = z.object({
   updatedAt: z.string().optional(),
 })
 
+export const employeeLoginLinkStatusSchema = z.object({
+  exists: z.boolean(),
+  isActive: z.boolean(),
+  tokenLast4: z.string().optional(),
+  createdAt: z.string().optional(),
+  disabledAt: z.string().optional(),
+})
+
+export const employeeLoginLinkResponseSchema = z.object({
+  loginLink: employeeLoginLinkStatusSchema,
+  reusableLogin: z.object({
+    url: z.string().min(1),
+  }).optional(),
+})
+
 export const employeeAccountInputSchema = z.object({
   username: z.string().trim().min(1),
   password: z.string().optional(),
@@ -713,6 +728,10 @@ export const customerMagicLinkRedeemInputSchema = z.object({
   token: z.string().min(1),
 })
 
+export const employeeLoginLinkRedeemInputSchema = z.object({
+  token: z.string().min(1),
+})
+
 export const adminLoginInputSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
@@ -747,6 +766,8 @@ export type AdminWhatsappContact = z.infer<typeof adminWhatsappContactSchema>
 export type SettingsResponse = z.infer<typeof settingsResponseSchema>
 export type AdminSessionResponse = z.infer<typeof adminSessionResponseSchema>
 export type EmployeeAccount = z.infer<typeof employeeAccountSchema>
+export type EmployeeLoginLinkStatus = z.infer<typeof employeeLoginLinkStatusSchema>
+export type EmployeeLoginLinkResponse = z.infer<typeof employeeLoginLinkResponseSchema>
 export type EmployeeAccountInput = z.infer<typeof employeeAccountInputSchema>
 export type CustomerSearchResult = z.infer<typeof customerSearchResultSchema>
 export type CustomerProfile = z.infer<typeof customerProfileSchema>
@@ -790,6 +811,7 @@ export type ConfirmOrderInput = z.infer<typeof confirmOrderInputSchema>
 export type VoidOrderInput = z.infer<typeof voidOrderInputSchema>
 export type CustomerLoginInput = z.infer<typeof customerLoginInputSchema>
 export type CustomerMagicLinkRedeemInput = z.infer<typeof customerMagicLinkRedeemInputSchema>
+export type EmployeeLoginLinkRedeemInput = z.infer<typeof employeeLoginLinkRedeemInputSchema>
 export type AdminLoginInput = z.infer<typeof adminLoginInputSchema>
 export type CustomerNameVisibilityInput = z.infer<typeof customerNameVisibilityInputSchema>
 export type WhatsappInternalEvent = z.infer<typeof whatsappInternalEventSchema>

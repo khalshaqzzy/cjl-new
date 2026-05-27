@@ -14,6 +14,7 @@ import type {
   CustomerSearchResult,
   EmployeeAccount,
   EmployeeAccountInput,
+  EmployeeLoginLinkResponse,
   NotificationRecord,
   OkResponse,
   OrderHistoryItem,
@@ -254,6 +255,22 @@ export const adminApi = {
     apiFetch<EmployeeAccount>("/v1/admin/staff/employee", {
       method: "PUT",
       body: JSON.stringify(payload)
+    }),
+  getEmployeeLoginLink: () => apiFetch<EmployeeLoginLinkResponse>("/v1/admin/staff/employee/login-link"),
+  generateEmployeeLoginLink: () =>
+    apiFetch<EmployeeLoginLinkResponse>("/v1/admin/staff/employee/login-link", {
+      method: "POST",
+      body: JSON.stringify({})
+    }),
+  disableEmployeeLoginLink: () =>
+    apiFetch<EmployeeLoginLinkResponse>("/v1/admin/staff/employee/login-link/disable", {
+      method: "POST",
+      body: JSON.stringify({})
+    }),
+  redeemEmployeeLoginLink: (token: string) =>
+    apiFetch<OkResponse>("/v1/admin/auth/employee-link/redeem", {
+      method: "POST",
+      body: JSON.stringify({ token })
     }),
   getWhatsappStatus: () => apiFetch<WhatsappConnectionStatus>("/v1/admin/whatsapp/status"),
   listWhatsappChats: () => apiFetch<WhatsappChatSummary[]>("/v1/admin/whatsapp/chats"),

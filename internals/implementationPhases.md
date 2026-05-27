@@ -35,6 +35,7 @@ The repo now has:
 - failed-notification recovery through backend-owned resend with receipt download, `Mark as Done`, and `Ignore`
 - admin-only machine control for 5 dryers and 5 washers through backend-owned Firebase Realtime Database REST calls
 - owner/employee admin role model with one owner-managed employee account, owner-only Settings and machine control, daily-only employee dashboard, and employee laundry limited to `Aktif` plus `Hari Ini`
+- owner-managed reusable employee QR login with one active hash-only token that rotates on generate and is invalidated by disable, username/password change, or employee deactivation
 - startup seed/backfill that now also canonicalizes legacy WhatsApp data for Cloud-era reads while preserving legacy history
 - startup WhatsApp compatibility backfill now uses a runtime migration watermark and incremental cursor-based passes after the first baseline run
 - root CI that validates lint, typecheck, backend tests, E2E, build, compose, and Cloud runtime parity
@@ -61,6 +62,7 @@ Status: complete in repo terms
 - mobile WhatsApp list/detail now explicitly harden against right-edge overflow from long previews, badges, order codes, notification IDs, media labels, and scroll-wrapper width leaks
 - admin `Lainnya` now includes `Kontrol Mesin`, backed by `/v1/admin/machines` and `/v1/admin/machines/:id/command`
 - admin auth now supports a single owner-managed employee account; employee navigation hides Settings and Kontrol Mesin, and backend guards enforce the same role scope
+- owner Settings now includes reusable QR login generation for the employee account, backed by hash-only employee login-link tokens
 
 ### Phase 4: Public Surface Integration
 

@@ -685,19 +685,21 @@ export const ensureSeedData = async () => {
     await adminCollection.insertOne({
       _id: "admin-primary",
       username: configuredAdmin.username,
-      passwordHash,
-      role: "owner",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    })
+        passwordHash,
+        role: "owner",
+        isActive: true,
+        credentialVersion: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      })
   } else {
     const usernameChanged = currentAdmin.username !== configuredAdmin.username
     const passwordChanged = !(await bcrypt.compare(configuredAdmin.password, currentAdmin.passwordHash))
     const roleChanged = currentAdmin.role !== "owner"
     const activeChanged = currentAdmin.isActive !== true
+    const credentialVersionMissing = typeof currentAdmin.credentialVersion !== "number"
 
-    if (usernameChanged || passwordChanged || roleChanged || activeChanged) {
+    if (usernameChanged || passwordChanged || roleChanged || activeChanged || credentialVersionMissing) {
       await adminCollection.updateOne(
         { _id: "admin-primary" },
         {
@@ -705,6 +707,7 @@ export const ensureSeedData = async () => {
             username: configuredAdmin.username,
             role: "owner",
             isActive: true,
+            credentialVersion: currentAdmin.credentialVersion ?? 1,
             updatedAt: new Date().toISOString(),
             ...(passwordChanged
               ? { passwordHash: await bcrypt.hash(configuredAdmin.password, 10) }
@@ -718,6 +721,7 @@ export const ensureSeedData = async () => {
   await db.collection("customers").createIndex({ normalizedPhone: 1 }, { unique: true })
   await db.collection("customers").createIndex({ phoneDigits: 1 })
   await db.collection("customers").createIndex({ normalizedName: 1 })
+  await db.collection("admins").createIndex({ "employeeLoginLink.tokenHash": 1 }, { unique: true, sparse: true })
   await db.collection("customer_magic_links").createIndex({ tokenHash: 1 }, { unique: true })
   await db.collection("customer_magic_links").createIndex({ customerId: 1, createdAt: -1 })
   await db.collection("orders").createIndex({ orderCode: 1 }, { unique: true })

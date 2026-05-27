@@ -172,6 +172,37 @@ test("admin and public frontends stay fully integrated through the backend", asy
   await page.getByTestId("settings-employee-save").click()
   await expect(page.getByText("Akun karyawan berhasil disimpan.")).toBeVisible()
 
+  await page.getByTestId("settings-employee-login-link-generate").click()
+  await expect(page.getByRole("heading", { name: "QR Login Karyawan" })).toBeVisible()
+  const employeeQrLoginUrl = (await page.getByText(/\/employee-login\?token=/).first().innerText()).trim()
+  await expect(employeeQrLoginUrl).toContain("/employee-login?token=")
+
+  const employeeQrPage = await browser.newPage()
+  await employeeQrPage.goto(employeeQrLoginUrl)
+  await expect(employeeQrPage).toHaveURL(/\/admin$/)
+  await expect(employeeQrPage.getByText("Pengaturan")).not.toBeVisible()
+  await expect(employeeQrPage.getByText("Kontrol Mesin")).not.toBeVisible()
+  await employeeQrPage.close()
+
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("heading", { name: "QR Login Karyawan" })).not.toBeVisible()
+  await page.getByTestId("settings-employee-login-link-disable").click()
+  await expect(page.getByText("Link QR login karyawan berhasil dinonaktifkan.")).toBeVisible()
+
+  const disabledEmployeeQrPage = await browser.newPage()
+  await disabledEmployeeQrPage.goto(employeeQrLoginUrl)
+  await expect(disabledEmployeeQrPage.getByText("Link Tidak Valid")).toBeVisible()
+  await disabledEmployeeQrPage.close()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByTestId("settings-employee-login-link-generate")).toBeVisible()
+  await page.getByTestId("settings-employee-login-link-generate").click()
+  await expect(page.getByRole("heading", { name: "QR Login Karyawan" })).toBeVisible()
+  await expect(page.getByAltText("QR login karyawan")).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("heading", { name: "QR Login Karyawan" })).not.toBeVisible()
+  await page.setViewportSize({ width: 1280, height: 720 })
+
   const employeePage = await browser.newPage()
   await employeePage.goto("http://127.0.0.1:3101/")
   await employeePage.getByTestId("admin-login-username").fill(employeeUsername)

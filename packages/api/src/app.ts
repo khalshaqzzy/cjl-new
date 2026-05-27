@@ -19,6 +19,7 @@ import {
   customerLoginInputSchema,
   dashboardWindowSchema,
   employeeAccountInputSchema,
+  employeeLoginLinkRedeemInputSchema,
   manualPointAdjustmentInputSchema,
   settingsResponseSchema,
   updateCustomerInputSchema,
@@ -50,8 +51,10 @@ import {
   failIdempotencyRequest,
   findAdminById,
   findAdminByUsername,
+  generateEmployeeLoginLink,
   generateCustomerMagicLink,
   getEmployeeAccount,
+  getEmployeeLoginLink,
   getAdminDashboard,
   getCustomerDetail,
   getNotificationPreparedMessage,
@@ -68,9 +71,11 @@ import {
   markOrderDone,
   openManualWhatsappFallback,
   resendNotification,
+  redeemEmployeeLoginLink,
   updateCustomerIdentity,
   updateSettings,
   upsertEmployeeAccount,
+  disableEmployeeLoginLink,
   verifyAdminPassword,
   waitForCompletedIdempotencyRequest,
   voidOrder,
@@ -518,6 +523,11 @@ export const createApp = () => {
     10,
     "Terlalu banyak percobaan redeem link login"
   )
+  const employeeLoginLinkLimiter = buildLimiter(
+    "employee-login-link",
+    20,
+    "Terlalu banyak percobaan login QR karyawan"
+  )
   app.get("/health", (_req, res) => {
     res.json({ ok: true, releaseSha: env.RELEASE_SHA })
   })
@@ -622,6 +632,44 @@ export const createApp = () => {
     logger.info({
       event: "admin.auth.login.succeeded",
       actorId: admin._id,
+    })
+    res.json({ ok: true })
+  }))
+
+  app.post("/v1/admin/auth/employee-link/redeem", employeeLoginLinkLimiter, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
+    const body = employeeLoginLinkRedeemInputSchema.parse(req.body)
+    const employee = await redeemEmployeeLoginLink(body.token)
+    if (!employee) {
+      sendErrorResponse(res, 401, "Link login karyawan tidak valid", "authentication_failed")
+      return
+    }
+
+    req.session.adminUserId = employee._id
+    req.session.adminRole = employee.role
+    req.session.adminUsername = employee.username
+    req.session.customerUserId = undefined
+    req.session.customerProfile = undefined
+    applyAdminSessionLifetime(req)
+
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((error) => {
+        if (error) {
+          reject(error)
+          return
+        }
+
+        resolve()
+      })
+    })
+
+    updateRequestContext({
+      actorType: "admin",
+      actorId: employee._id,
+      actorSource: "session",
+    })
+    logger.info({
+      event: "admin.employee.login_link.redeemed",
+      actorId: employee._id,
     })
     res.json({ ok: true })
   }))
@@ -920,6 +968,28 @@ export const createApp = () => {
 
   app.get("/v1/admin/staff/employee", requireAdmin, requireOwner, asyncRoute(async (_req, res) => {
     res.json(await getEmployeeAccount())
+  }))
+
+  app.get("/v1/admin/staff/employee/login-link", requireAdmin, requireOwner, asyncRoute(async (_req, res) => {
+    res.json(await getEmployeeLoginLink())
+  }))
+
+  app.post("/v1/admin/staff/employee/login-link", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (_req, res) => {
+    const result = await generateEmployeeLoginLink()
+    logger.info({
+      event: "admin.employee.login_link.generated",
+      isActive: result.loginLink.isActive,
+    })
+    res.json(result)
+  }))
+
+  app.post("/v1/admin/staff/employee/login-link/disable", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (_req, res) => {
+    const result = await disableEmployeeLoginLink()
+    logger.info({
+      event: "admin.employee.login_link.disabled",
+      isActive: result.loginLink.isActive,
+    })
+    res.json(result)
   }))
 
   app.put("/v1/admin/staff/employee", requireAdmin, requireOwner, requireTrustedOrigin("admin"), asyncRoute(async (req, res) => {
