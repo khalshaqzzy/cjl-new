@@ -121,6 +121,7 @@ export const adminSessionResponseSchema = z.object({
   username: z.string().optional(),
 })
 
+export const employeeAccountSchema = z.object({
   exists: z.boolean(),
   username: z.string(),
   isActive: z.boolean(),
