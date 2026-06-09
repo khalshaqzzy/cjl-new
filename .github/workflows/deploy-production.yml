@@ -13,8 +13,8 @@ on:
         default: main
 
 concurrency:
-  group: deploy-production
-  cancel-in-progress: true
+  group: production-runtime
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -175,6 +175,7 @@ jobs:
           R2_ACCESS_KEY_ID=${{ secrets.PRODUCTION_R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY=${{ secrets.PRODUCTION_R2_SECRET_ACCESS_KEY }}
           R2_PREFIX=production/mongodb
+          BACKUP_MIN_CUSTOMERS=100
           EOF
 
       - name: Upload backup env

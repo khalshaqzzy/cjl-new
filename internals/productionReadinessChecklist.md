@@ -1,7 +1,7 @@
 # Production Readiness Checklist
 
 Document status: Active  
-Last updated: 2026-04-02  
+Last updated: 2026-06-09
 Purpose: final gate checklist before the first production push after Cloud-only WhatsApp cutover prep
 
 ## Build And Verification
@@ -50,7 +50,9 @@ Purpose: final gate checklist before the first production push after Cloud-only 
   - `PRODUCTION_R2_ACCESS_KEY_ID`
   - `PRODUCTION_R2_SECRET_ACCESS_KEY`
 - production deploy renders `/opt/cjl/production/shared/backup.env` with mode `0600`
+- production backup env includes `BACKUP_MIN_CUSTOMERS=100`
 - deploy workflows no longer require or reference `*_DEPLOY_RESET_TOKEN`
+- production deploy and `Use Backup` share the `production-runtime` concurrency group with cancellation disabled
 
 ## API And Observability
 
@@ -73,7 +75,9 @@ Purpose: final gate checklist before the first production push after Cloud-only 
 - production MongoDB R2 bucket is private and has no public `r2.dev` access
 - production MongoDB backups are unencrypted client-side by decision and stored only behind private R2 credentials
 - production backup automation uses a full-instance `mongodump --archive --gzip --oplog`
+- production backup automation skips daily, pre-deploy, post-deploy, and pre-restore backups when `${MONGO_DATABASE}.customers` has fewer than 100 documents
 - production backup retention keeps all backups newer than 72 hours, the newest daily, and the two most recent commit-boundary dailies
+- production `Use Backup` restores only the latest successful R2 backup and prints the backup name, archive key, UTC timestamp, and GMT+7 timestamp
 - `deploy/scripts/remote-deploy.sh` has no path that deletes `shared/mongo-data`
 - staging runs CSP in report-only mode
 - session-authenticated write routes enforce trusted origin checks
@@ -118,6 +122,7 @@ Purpose: final gate checklist before the first production push after Cloud-only 
 - production workflow `Ensure MongoDB backup timers` step succeeds
 - production backup timers are installed automatically and visible in `systemctl list-timers 'cjl-mongo-r2-*'`
 - isolated restore drill from an R2 backup has succeeded with `mongorestore --gzip --oplogReplay`
+- the `Use Backup` workflow has been dry-reviewed for the intended production VM target and destructive restore approval path
 - staging proved the baseline startup backfill does not cause unacceptable startup degradation on realistic data volume
 - staging proved subsequent restarts run the incremental path rather than rescanning full WhatsApp history
 - previous healthy release SHA is known before deploy

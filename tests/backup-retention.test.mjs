@@ -94,3 +94,20 @@ test("deletes old commit and delayed backups that are outside preserved windows"
     key("20260420T060000Z", "post-deploy"),
   ])
 })
+
+test("deletes old pre-restore safety backups outside preserved windows", () => {
+  const oldPreRestore = key("20260420T030000Z", "pre-restore")
+  const recentPreRestore = key("20260424T030000Z", "pre-restore")
+  const newestDaily = key("20260424T020000Z", "daily")
+
+  const result = planBackupRetention({
+    archiveKeys: [oldPreRestore, recentPreRestore, newestDaily],
+    nowIso: "2026-04-26T02:00:00.000Z",
+  })
+
+  assert.deepEqual(result.keepArchiveKeys, [
+    newestDaily,
+    recentPreRestore,
+  ])
+  assert.deepEqual(result.deleteArchiveKeys, [oldPreRestore])
+})

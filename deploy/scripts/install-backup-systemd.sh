@@ -42,6 +42,7 @@ SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${BASE_DIR}/shared/bin"
 BACKUP_SCRIPT="${BIN_DIR}/cjl-mongo-r2-backup"
 RETENTION_SCRIPT="${BIN_DIR}/backup-retention.mjs"
+CATALOG_SCRIPT="${BIN_DIR}/backup-catalog.mjs"
 
 if [[ ! -f "${SOURCE_DIR}/backup-mongo-r2.sh" ]]; then
   echo "Backup script not found beside installer: ${SOURCE_DIR}/backup-mongo-r2.sh" >&2
@@ -50,6 +51,11 @@ fi
 
 if [[ ! -f "${SOURCE_DIR}/backup-retention.mjs" ]]; then
   echo "Retention script not found beside installer: ${SOURCE_DIR}/backup-retention.mjs" >&2
+  exit 1
+fi
+
+if [[ ! -f "${SOURCE_DIR}/backup-catalog.mjs" ]]; then
+  echo "Backup catalog script not found beside installer: ${SOURCE_DIR}/backup-catalog.mjs" >&2
   exit 1
 fi
 
@@ -66,6 +72,10 @@ install -m 755 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" \
 install -m 644 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" \
   "${SOURCE_DIR}/backup-retention.mjs" \
   "${RETENTION_SCRIPT}"
+
+install -m 644 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" \
+  "${SOURCE_DIR}/backup-catalog.mjs" \
+  "${CATALOG_SCRIPT}"
 
 cat > /etc/systemd/system/cjl-mongo-r2-backup@.service <<EOF
 [Unit]
@@ -135,6 +145,7 @@ Required before the first run:
 Installed stable backup scripts:
   - ${BACKUP_SCRIPT}
   - ${RETENTION_SCRIPT}
+  - ${CATALOG_SCRIPT}
 
 Check timers with:
   systemctl list-timers 'cjl-mongo-r2-*'

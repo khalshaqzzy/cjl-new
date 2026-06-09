@@ -1,8 +1,8 @@
 # Environment Matrix
 
 Document status: Active  
-Last updated: 2026-04-02  
-Purpose: runtime and validation topology snapshot after WhatsApp Cloud-only cutover prep
+Last updated: 2026-06-09
+Purpose: runtime, validation, deploy, backup, and restore topology snapshot after production Use Backup restore support
 
 | Environment | Public web | Admin web | API | Runtime target | Build location | Data store |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -80,8 +80,10 @@ Purpose: runtime and validation topology snapshot after WhatsApp Cloud-only cuto
 
 - CI runs on GitHub Actions
 - deploy workflows run on GitHub Actions
+- production `Use Backup` restore workflow runs manually from GitHub Actions and restores MongoDB from the latest successful R2 backup
 - GitHub streams a release archive over SSH to the target VM
 - the target VM runs `docker compose up -d --build`
+- production deploy and `Use Backup` share the `production-runtime` concurrency group with cancellation disabled
 - hosted runtime env is rendered by the workflow and must include Cloud API secrets:
   - `*_WHATSAPP_BUSINESS_ID`
   - `*_WHATSAPP_WABA_ID`
@@ -89,3 +91,4 @@ Purpose: runtime and validation topology snapshot after WhatsApp Cloud-only cuto
   - `*_WHATSAPP_ACCESS_TOKEN`
   - `*_WHATSAPP_APP_SECRET`
   - `*_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+- production MongoDB R2 backups are skipped when `${MONGO_DATABASE}.customers` has fewer than 100 documents

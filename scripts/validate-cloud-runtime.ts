@@ -79,6 +79,8 @@ for (const file of [
 {
   const productionWorkflow = readFile(".github/workflows/deploy-production.yml")
   for (const required of [
+    "group: production-runtime",
+    "cancel-in-progress: false",
     "Validate R2 backup secrets",
     "Render backup env",
     "Upload backup env",
@@ -102,6 +104,41 @@ for (const file of [
     "DEPLOY_RESET_FINGERPRINT",
   ]) {
     assertExcludes(productionWorkflow, forbidden, ".github/workflows/deploy-production.yml")
+  }
+}
+
+{
+  const useBackupWorkflow = readFile(".github/workflows/use-backup.yml")
+  for (const required of [
+    "name: Use Backup",
+    "workflow_dispatch:",
+    "environment: production",
+    "USE_LATEST_PRODUCTION_R2_BACKUP",
+    "group: production-runtime",
+    "cancel-in-progress: false",
+    "PRODUCTION_VM_HOST",
+    "PRODUCTION_VM_USER",
+    "PRODUCTION_VM_SSH_PRIVATE_KEY",
+    "PRODUCTION_VM_SSH_KNOWN_HOSTS",
+    "PRODUCTION_R2_ACCOUNT_ID",
+    "PRODUCTION_R2_BUCKET",
+    "PRODUCTION_R2_ACCESS_KEY_ID",
+    "PRODUCTION_R2_SECRET_ACCESS_KEY",
+    "BACKUP_MIN_CUSTOMERS=100",
+    "restore-latest",
+    "smoke-check.sh",
+    "assert-ready-cloud.sh",
+  ]) {
+    assertIncludes(useBackupWorkflow, required, ".github/workflows/use-backup.yml")
+  }
+
+  for (const forbidden of [
+    "STAGING_",
+    "PRODUCTION_DEPLOY_RESET_TOKEN",
+    "DEPLOY_RESET_FINGERPRINT",
+    "workflow_run",
+  ]) {
+    assertExcludes(useBackupWorkflow, forbidden, ".github/workflows/use-backup.yml")
   }
 }
 
@@ -132,6 +169,24 @@ for (const file of [
     "--volumes",
   ]) {
     assertExcludes(remoteDeploy, forbidden, "deploy/scripts/remote-deploy.sh")
+  }
+}
+
+{
+  const backupScript = readFile("deploy/scripts/backup-mongo-r2.sh")
+  for (const required of [
+    "BACKUP_MIN_CUSTOMERS",
+    "mongo_customer_count",
+    "Skipping ${REASON} backup",
+    "restore-latest",
+    "select_latest_restore_backup",
+    "selectLatestRestorableBackup",
+    "pre-restore",
+    "mongorestore",
+    "--oplogReplay",
+    "--drop",
+  ]) {
+    assertIncludes(backupScript, required, "deploy/scripts/backup-mongo-r2.sh")
   }
 }
 
