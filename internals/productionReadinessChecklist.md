@@ -77,7 +77,7 @@ Purpose: final gate checklist before the first production push after Cloud-only 
 - production backup automation uses a full-instance `mongodump --archive --gzip --oplog`
 - production backup automation skips daily, pre-deploy, post-deploy, and pre-restore backups when `${MONGO_DATABASE}.customers` has fewer than 100 documents
 - production backup retention keeps all backups newer than 72 hours, the newest daily, and the two most recent commit-boundary dailies
-- production `Use Backup` restores only the latest successful R2 backup and prints the backup name, archive key, UTC timestamp, and GMT+7 timestamp
+- production `Use Backup` restores only the latest successful R2 backup, scopes live restore to `${MONGO_DATABASE}.*`, and prints the backup name, archive key, UTC timestamp, and GMT+7 timestamp
 - `deploy/scripts/remote-deploy.sh` has no path that deletes `shared/mongo-data`
 - staging runs CSP in report-only mode
 - session-authenticated write routes enforce trusted origin checks

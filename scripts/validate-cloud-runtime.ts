@@ -183,6 +183,8 @@ for (const file of [
     "selectLatestRestorableBackup",
     "pre-restore",
     "mongorestore",
+    "--nsInclude",
+    "${MONGO_DATABASE}.*",
     "--oplogReplay",
     "--drop",
   ]) {
