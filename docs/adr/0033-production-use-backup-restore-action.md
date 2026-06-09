@@ -41,17 +41,20 @@ Restore behavior:
 4. verify archive size and manifest SHA-256 when the manifest exists
 5. create a `pre-restore` safety backup only when the live database has at least 100 customers
 6. stop write-capable app services
-7. run `mongorestore --archive --gzip --nsInclude="${MONGO_DATABASE}.*" --oplogReplay --drop`
+7. run `mongorestore --archive --gzip --nsInclude="${MONGO_DATABASE}.*" --drop`
 8. restart the Compose stack and wait for service health
 
 Production backups now default to `BACKUP_MIN_CUSTOMERS=100`. If `${MONGO_DATABASE}.customers` contains fewer than 100 documents, `daily`, `pre-deploy`, `post-deploy`, and `pre-restore` backups log a skip reason and do not upload R2 objects.
 
-Backups remain full-instance `mongodump --archive --gzip --oplog` artifacts, but the live `Use Backup` restore intentionally scopes `mongorestore` to `${MONGO_DATABASE}.*`. This restores application data and GridFS collections while preserving the current VM's MongoDB auth metadata, so the existing `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD` secrets remain valid during `--oplogReplay` and after the restore.
+Backups remain full-instance `mongodump --archive --gzip --oplog` artifacts, but the live `Use Backup` restore intentionally scopes `mongorestore` to `${MONGO_DATABASE}.*`. This restores application data and GridFS collections while preserving the current VM's MongoDB auth metadata, so the existing `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD` secrets remain valid during and after the restore.
+
+`mongorestore --oplogReplay` is intentionally not used in the live scoped restore because MongoDB tools reject oplog replay when namespace includes are specified. Isolated full-instance restore drills should still use `--oplogReplay`.
 
 ## Rationale
 
 - Selecting the restore source before the pre-restore safety backup prevents an empty new-VM safety backup from becoming the restore target.
 - Scoping live restore to `${MONGO_DATABASE}.*` avoids replacing `admin.system.users` from the archive during a running authenticated restore.
+- Omitting `--oplogReplay` in the live scoped restore avoids MongoDB tools' invalid `--oplogReplay` plus `--nsInclude` combination.
 - Reusing existing secret names keeps the GCP VM replacement path simple: operators update the existing production VM host and known-host values when the target server changes.
 - The 100-customer threshold avoids treating an empty or incomplete VM as a valid latest recovery point.
 - A manual workflow with production environment approval is safer than adding restore behavior to the normal deploy workflow.

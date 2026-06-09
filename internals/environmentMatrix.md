@@ -80,7 +80,7 @@ Purpose: runtime, validation, deploy, backup, and restore topology snapshot afte
 
 - CI runs on GitHub Actions
 - deploy workflows run on GitHub Actions
-- production `Use Backup` restore workflow runs manually from GitHub Actions and restores `${MONGO_DATABASE}.*` from the latest successful R2 backup while preserving current MongoDB auth metadata
+- production `Use Backup` restore workflow runs manually from GitHub Actions and restores `${MONGO_DATABASE}.*` from the latest successful R2 backup without `--oplogReplay` while preserving current MongoDB auth metadata
 - GitHub streams a release archive over SSH to the target VM
 - the target VM runs `docker compose up -d --build`
 - production deploy and `Use Backup` share the `production-runtime` concurrency group with cancellation disabled

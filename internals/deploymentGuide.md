@@ -689,10 +689,12 @@ Restore behavior:
 - validates the manifest SHA-256 when the manifest exists
 - creates a `pre-restore` safety backup only when the live customer count is at least 100
 - stops API/admin/public services before `mongorestore`
-- restores the app database namespace with `mongorestore --archive --gzip --nsInclude="${MONGO_DATABASE}.*" --oplogReplay --drop`
+- restores the app database namespace with `mongorestore --archive --gzip --nsInclude="${MONGO_DATABASE}.*" --drop`
 - restarts the Compose stack and waits for Mongo/API/admin/public/Caddy health
 
-The R2 artifact is still a full-instance backup, but the live production restore preserves the current VM MongoDB auth metadata. This keeps the existing `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD` secrets valid throughout `--oplogReplay` and after restart.
+The R2 artifact is still a full-instance backup, but the live production restore preserves the current VM MongoDB auth metadata. This keeps the existing `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD` secrets valid during restore and after restart.
+
+Do not add `--oplogReplay` to the live `Use Backup` restore command. MongoDB tools reject `--oplogReplay` when namespace includes are specified. Use `--oplogReplay` only for isolated full-instance restore drills.
 
 Production deploy and `Use Backup` share the `production-runtime` concurrency group with cancellation disabled, so a restore and deploy cannot run at the same time.
 

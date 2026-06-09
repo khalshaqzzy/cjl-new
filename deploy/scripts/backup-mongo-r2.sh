@@ -19,7 +19,7 @@ Usage:
   backup-mongo-r2.sh run-due-delayed <production> <base-dir> <runtime-env> <backup-env>
 
 Production backups are unencrypted mongodump archive+gzip+oplog artifacts uploaded to Cloudflare R2.
-Production restore downloads the latest successful R2 backup and restores the app database namespace with mongorestore --oplogReplay --drop.
+Production restore downloads the latest successful R2 backup and restores the app database namespace with mongorestore --drop.
 EOF
 }
 
@@ -708,7 +708,6 @@ run_restore_latest() {
     --archive \
     --gzip \
     --nsInclude="${MONGO_DATABASE}.*" \
-    --oplogReplay \
     --drop \
     < "${RESTORE_ARCHIVE_PATH}"
 

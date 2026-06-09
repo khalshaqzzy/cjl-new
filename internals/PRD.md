@@ -1204,7 +1204,7 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - Backup tooling must run through containers on the VM, not require host-level MongoDB or rclone installs.
 - Backup uploads must write archive and JSON manifest objects under the production MongoDB R2 prefix.
 - Backup jobs and production restore jobs must use locking so daily, pre-deploy, delayed post-deploy, pre-restore, and restore operations cannot overlap.
-- Production live restore from full-instance R2 artifacts must restore `${MONGO_DATABASE}.*` only, preserving the current VM's MongoDB auth metadata and existing Mongo secret compatibility.
+- Production live restore from full-instance R2 artifacts must restore `${MONGO_DATABASE}.*` only, preserving the current VM's MongoDB auth metadata and existing Mongo secret compatibility. Because MongoDB tools reject `--oplogReplay` with namespace includes, live scoped restore must not use `--oplogReplay`; isolated full-instance restore drills must still use it.
 - Temporary compressed backup archives on the VM must be deleted after the backup script exits, including successful upload paths.
 - Daily backup retention must run only after a successful daily backup. It must keep every successful backup newer than 72 hours, the newest daily backup, and the two most recent commit-boundary daily backups. It must never prune from failed daily backups and must never delete in-progress objects.
 - Backup restore must be drilled into an isolated MongoDB instance with `mongorestore --archive --gzip --oplogReplay` before relying on backups operationally.

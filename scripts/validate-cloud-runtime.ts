@@ -185,11 +185,19 @@ for (const file of [
     "mongorestore",
     "--nsInclude",
     "${MONGO_DATABASE}.*",
-    "--oplogReplay",
     "--drop",
   ]) {
     assertIncludes(backupScript, required, "deploy/scripts/backup-mongo-r2.sh")
   }
+
+  const liveRestoreStart = backupScript.indexOf("Restoring production MongoDB from R2 backup")
+  const liveRestoreEnd = backupScript.indexOf("Restarting production services after restore")
+  if (liveRestoreStart === -1 || liveRestoreEnd === -1 || liveRestoreEnd <= liveRestoreStart) {
+    throw new Error("deploy/scripts/backup-mongo-r2.sh must include the production live restore block")
+  }
+
+  const liveRestoreBlock = backupScript.slice(liveRestoreStart, liveRestoreEnd)
+  assertExcludes(liveRestoreBlock, "--oplogReplay", "deploy/scripts/backup-mongo-r2.sh live restore block")
 }
 
 for (const file of [
