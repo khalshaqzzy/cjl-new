@@ -1,8 +1,8 @@
 # CJ Laundry Deployment Guide
 
 Document status: Active  
-Last updated: 2026-04-02  
-Scope: local setup, hosted rollout, and rollback for the Cloud-only WhatsApp runtime
+Last updated: 2026-06-09
+Scope: local setup, hosted rollout, rollback, backup, and restore for the Cloud-only WhatsApp runtime
 
 This is the canonical deployment guide after the WhatsApp migration phases were closed in repo terms. The application runtime is now:
 
@@ -313,6 +313,7 @@ The production deploy workflow renders `/opt/cjl/production/shared/backup.env` f
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
 - `R2_PREFIX=production/mongodb`
+- `BACKUP_MIN_CUSTOMERS=100`
 
 This file must be mode `0600` or equivalent and must not be committed.
 
@@ -616,7 +617,7 @@ Both deploy workflows:
 5. upload the release archive over SSH
 6. render and upload `runtime.env`
 7. production only: render and upload `backup.env`
-8. production only: run a blocking pre-deploy MongoDB R2 backup before VM image build
+8. production only: run a blocking pre-deploy MongoDB R2 backup before VM image build, unless `${MONGO_DATABASE}.customers` has fewer than 100 documents
 9. run `deploy/scripts/remote-deploy.sh`
 10. run smoke checks against:
    - API `/health`
@@ -635,10 +636,13 @@ Production backups are handled by `deploy/scripts/backup-mongo-r2.sh`.
 
 - backup artifact: full MongoDB instance `mongodump --archive --gzip --oplog`
 - upload target: private Cloudflare R2 bucket, prefix `production/mongodb`
+- minimum customer gate: `BACKUP_MIN_CUSTOMERS=100`
 - encryption: no client-side encryption layer
 - daily schedule: systemd timer at `02:00 Asia/Jakarta`
 - pre-deploy schedule: blocking backup before production `remote-deploy.sh`
 - delayed schedule: state file recorded after successful production smoke/readiness checks; systemd polling runs it 3 hours later only if the SHA remains current
+
+If the live production database has fewer than 100 documents in `${MONGO_DATABASE}.customers`, daily, pre-deploy, post-deploy, and pre-restore safety backups log the customer count and skip R2 upload. This prevents empty or incomplete replacement-VM databases from becoming the latest recovery point.
 
 Production deploy automatically checks and installs backup timers after `remote-deploy.sh` succeeds:
 
@@ -652,6 +656,43 @@ bash /opt/cjl/production/releases/<sha>/deploy/scripts/ensure-backup-systemd.sh 
 The ensure script uses the deploy user's bootstrap-granted Docker access when root/sudo is unavailable, then verifies both timers are enabled and active. The installer copies stable scripts into `/opt/cjl/production/shared/bin`, so recurring timers do not depend on `/current` after installation.
 
 Retention runs only after a successful daily backup. It keeps all successful backups newer than 72 hours, the newest daily backup, and the two most recent daily backups that precede at least one pre-deploy backup before the next daily backup.
+
+## 6.2 Production Use Backup Restore
+
+`Use Backup` is a production-only manual GitHub Actions workflow for restoring MongoDB from the latest successful R2 backup.
+
+Operator prerequisites:
+
+- the normal production deploy workflow has already established `/opt/cjl/production/current` on the target VM
+- existing `PRODUCTION_VM_HOST` and `PRODUCTION_VM_SSH_KNOWN_HOSTS` point to the intended GCP VM
+- existing production R2 secrets still point to the private backup bucket
+- the operator has approval to run a destructive production database restore
+
+Run sequence:
+
+1. open GitHub Actions
+2. choose `Use Backup`
+3. trigger it manually and type `USE_LATEST_PRODUCTION_R2_BACKUP`
+4. monitor the `Restore production MongoDB from latest R2 backup` step
+5. record the selected backup metadata printed by the workflow:
+   - `backupName`
+   - `archiveKey`
+   - `backupTimestampUtc`
+   - `backupTimestampAsiaJakarta`
+   - `currentReleaseSha`
+6. wait for production smoke checks and `/ready` semantic validation to pass
+
+Restore behavior:
+
+- selects the restore source before any safety backup is created
+- downloads the latest archive under `production/mongodb/success`
+- validates the manifest SHA-256 when the manifest exists
+- creates a `pre-restore` safety backup only when the live customer count is at least 100
+- stops API/admin/public services before `mongorestore`
+- restores with `mongorestore --archive --gzip --oplogReplay --drop`
+- restarts the Compose stack and waits for Mongo/API/admin/public/Caddy health
+
+Production deploy and `Use Backup` share the `production-runtime` concurrency group with cancellation disabled, so a restore and deploy cannot run at the same time.
 
 ## 7. Staging Validation
 
@@ -753,7 +794,7 @@ Emergency rollback:
 - use `deploy/scripts/remote-rollback.sh` on the target VM
 
 Rollback restores code/runtime, not business data mutations already committed to MongoDB.
-Use MongoDB R2 backups for data restore drills or production data recovery; do not rely on deploy rollback for data recovery.
+Use the production-only `Use Backup` workflow for latest-backup production MongoDB recovery, or use manual isolated restore drills for non-live validation. Do not rely on deploy rollback for data recovery.
 
 ## 11. Troubleshooting
 

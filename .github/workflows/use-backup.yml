@@ -1,0 +1,128 @@
+name: Use Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type USE_LATEST_PRODUCTION_R2_BACKUP to restore production MongoDB from the latest successful R2 backup
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-runtime
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 60
+    env:
+      APP_ENV: production
+      REMOTE_BASE_DIR: /opt/cjl/production
+      REMOTE_RUNTIME_ENV: /opt/cjl/production/shared/runtime.env
+      REMOTE_BACKUP_ENV: /opt/cjl/production/shared/backup.env
+      REMOTE_HOST: ${{ secrets.PRODUCTION_VM_HOST }}
+      REMOTE_USER: ${{ secrets.PRODUCTION_VM_USER }}
+      REMOTE_PORT: ${{ secrets.PRODUCTION_VM_SSH_PORT != '' && secrets.PRODUCTION_VM_SSH_PORT || '22' }}
+      ADMIN_DOMAIN: admin.cjlaundry.com
+      PUBLIC_DOMAIN: cjlaundry.com
+      API_DOMAIN: api.cjlaundry.com
+
+    steps:
+      - name: Validate confirmation
+        shell: bash
+        run: |
+          if [[ "${{ inputs.confirmation }}" != "USE_LATEST_PRODUCTION_R2_BACKUP" ]]; then
+            echo "Confirmation must exactly equal USE_LATEST_PRODUCTION_R2_BACKUP." >&2
+            exit 1
+          fi
+
+      - name: Checkout restore tooling
+        uses: actions/checkout@v4
+
+      - name: Resolve restore tooling SHA
+        run: echo "RESTORE_TOOL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Validate R2 backup secrets
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.PRODUCTION_R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.PRODUCTION_R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.PRODUCTION_R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.PRODUCTION_R2_SECRET_ACCESS_KEY }}
+        run: |
+          for name in \
+            R2_ACCOUNT_ID \
+            R2_BUCKET \
+            R2_ACCESS_KEY_ID \
+            R2_SECRET_ACCESS_KEY; do
+            value="${!name}"
+            if [[ -z "${value// }" ]]; then
+              echo "Missing required secret: PRODUCTION_${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_VM_SSH_PRIVATE_KEY }}
+
+      - name: Configure known hosts
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.PRODUCTION_VM_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Prepare remote restore tooling directory
+        run: |
+          ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "mkdir -p '$REMOTE_BASE_DIR/releases/$RESTORE_TOOL_SHA' '$REMOTE_BASE_DIR/shared'"
+
+      - name: Upload restore tooling archive over SSH
+        run: |
+          git archive --format=tar "$RESTORE_TOOL_SHA" \
+            | ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+              "tar -xf - -C '$REMOTE_BASE_DIR/releases/$RESTORE_TOOL_SHA'"
+
+      - name: Render backup env
+        run: |
+          cat > backup.env <<EOF
+          R2_ACCOUNT_ID=${{ secrets.PRODUCTION_R2_ACCOUNT_ID }}
+          R2_BUCKET=${{ secrets.PRODUCTION_R2_BUCKET }}
+          R2_ACCESS_KEY_ID=${{ secrets.PRODUCTION_R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY=${{ secrets.PRODUCTION_R2_SECRET_ACCESS_KEY }}
+          R2_PREFIX=production/mongodb
+          BACKUP_MIN_CUSTOMERS=100
+          EOF
+
+      - name: Upload backup env
+        run: |
+          cat backup.env | ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "umask 077 && cat > '$REMOTE_BACKUP_ENV'"
+
+      - name: Restore production MongoDB from latest R2 backup
+        run: |
+          echo "::group::Use latest production MongoDB R2 backup"
+          trap 'echo "::endgroup::"' EXIT
+          echo "restoreToolSha=$RESTORE_TOOL_SHA"
+          echo "remoteBaseDir=$REMOTE_BASE_DIR"
+          ssh -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" \
+            "bash '$REMOTE_BASE_DIR/releases/$RESTORE_TOOL_SHA/deploy/scripts/backup-mongo-r2.sh' \
+             restore-latest '$APP_ENV' '$REMOTE_BASE_DIR' '$REMOTE_RUNTIME_ENV' '$REMOTE_BACKUP_ENV'"
+
+      - name: Smoke-check production after restore
+        run: |
+          bash deploy/scripts/smoke-check.sh \
+            "https://$API_DOMAIN/health" \
+            "https://$API_DOMAIN/ready" \
+            "https://$ADMIN_DOMAIN" \
+            "https://$PUBLIC_DOMAIN"
+
+      - name: Validate Cloud readiness payload after restore
+        run: |
+          bash deploy/scripts/assert-ready-cloud.sh "https://$API_DOMAIN/ready" "cloud_api"
+

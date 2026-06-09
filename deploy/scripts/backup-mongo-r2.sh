@@ -5,17 +5,21 @@ MONGO_IMAGE="${MONGO_IMAGE:-mongo:7}"
 RCLONE_IMAGE="${RCLONE_IMAGE:-rclone/rclone:1.68}"
 NODE_IMAGE="${NODE_IMAGE:-node:22-bookworm-slim}"
 BACKUP_PREFIX_DEFAULT="production/mongodb"
+BACKUP_MIN_CUSTOMERS="${BACKUP_MIN_CUSTOMERS:-100}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RETENTION_SCRIPT="${RETENTION_SCRIPT:-${SCRIPT_DIR}/backup-retention.mjs}"
+CATALOG_SCRIPT="${CATALOG_SCRIPT:-${SCRIPT_DIR}/backup-catalog.mjs}"
 
 usage() {
   cat <<'EOF'
 Usage:
-  backup-mongo-r2.sh backup <production> <base-dir> <runtime-env> <backup-env> <daily|pre-deploy|post-deploy> [incoming-sha] [expected-current-sha]
+  backup-mongo-r2.sh backup <production> <base-dir> <runtime-env> <backup-env> <daily|pre-deploy|post-deploy|pre-restore> [incoming-sha] [expected-current-sha]
+  backup-mongo-r2.sh restore-latest <production> <base-dir> <runtime-env> <backup-env>
   backup-mongo-r2.sh record-delayed <base-dir> <release-sha>
   backup-mongo-r2.sh run-due-delayed <production> <base-dir> <runtime-env> <backup-env>
 
 Production backups are unencrypted mongodump archive+gzip+oplog artifacts uploaded to Cloudflare R2.
+Production restore downloads the latest successful R2 backup and restores it with mongorestore --oplogReplay --drop.
 EOF
 }
 
@@ -74,6 +78,57 @@ compose() {
     --env-file "${RUNTIME_ENV_FILE}" \
     -f "${COMPOSE_FILE}" \
     "$@"
+}
+
+wait_for_service() {
+  local service="$1"
+  local timeout_seconds="${2:-180}"
+  local started_at
+  local container_id
+  local status
+
+  started_at="$(date +%s)"
+
+  while true; do
+    container_id="$(compose ps -q "${service}" 2>/dev/null || true)"
+
+    if [[ -n "${container_id}" ]]; then
+      status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_id}" 2>/dev/null || true)"
+
+      case "${status}" in
+        healthy|running)
+          echo "Service ${service} is ${status}."
+          return 0
+          ;;
+        unhealthy|exited|dead)
+          echo "Service ${service} entered bad state: ${status}" >&2
+          docker logs "${container_id}" --tail 100 >&2 || true
+          return 1
+          ;;
+      esac
+    fi
+
+    if (( "$(date +%s)" - started_at >= timeout_seconds )); then
+      echo "Timed out waiting for ${service} to become ready." >&2
+      if [[ -n "${container_id}" ]]; then
+        docker logs "${container_id}" --tail 100 >&2 || true
+      fi
+      return 1
+    fi
+
+    sleep 5
+  done
+}
+
+acquire_backup_lock() {
+  local lock_file="${BASE_DIR}/shared/backup-state/mongo-r2-backup.lock"
+  mkdir -p "${BASE_DIR}/shared/backup-state"
+
+  exec 9>"${lock_file}"
+  if ! flock -n 9; then
+    echo "Another production MongoDB backup or restore is already running." >&2
+    exit 1
+  fi
 }
 
 rclone_env_args() {
@@ -258,11 +313,18 @@ prepare_runtime() {
 
   require_var MONGO_ROOT_USERNAME
   require_var MONGO_ROOT_PASSWORD
+  require_var MONGO_DATABASE
   require_var R2_ACCOUNT_ID
   require_var R2_BUCKET
   require_var R2_ACCESS_KEY_ID
   require_var R2_SECRET_ACCESS_KEY
+  require_file "${CATALOG_SCRIPT}" "Backup catalog script"
   validate_r2_config
+
+  if [[ ! "${BACKUP_MIN_CUSTOMERS}" =~ ^[0-9]+$ ]]; then
+    echo "BACKUP_MIN_CUSTOMERS must be a non-negative integer." >&2
+    exit 1
+  fi
 
   R2_PREFIX="${R2_PREFIX:-${BACKUP_PREFIX_DEFAULT}}"
   RELEASE_DIR="${BASE_DIR}/current"
@@ -327,6 +389,35 @@ for (const name of names) {
   print(`${name}: collections=${stats.collections} objects=${stats.objects} dataSizeMiB=${stats.dataSize.toFixed(2)} storageSizeMiB=${stats.storageSize.toFixed(2)} indexSizeMiB=${stats.indexSize.toFixed(2)}`);
 }
 ' || true
+}
+
+mongo_customer_count() {
+  compose exec -T \
+    -e "TARGET_MONGO_DATABASE=${MONGO_DATABASE}" \
+    mongo mongosh \
+    --quiet \
+    "mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@127.0.0.1:27017/admin?authSource=admin&replicaSet=rs0" \
+    --eval 'print(db.getSiblingDB(process.env.TARGET_MONGO_DATABASE).getCollection("customers").countDocuments({}))' \
+    | tail -n 1 \
+    | tr -d '[:space:]'
+}
+
+backup_threshold_allows_upload() {
+  local customer_count
+  customer_count="$(mongo_customer_count)"
+
+  if [[ ! "${customer_count}" =~ ^[0-9]+$ ]]; then
+    echo "Unable to read MongoDB customer count for ${MONGO_DATABASE}.customers: ${customer_count}" >&2
+    exit 1
+  fi
+
+  echo "Backup customer threshold: customerCount=${customer_count} minimum=${BACKUP_MIN_CUSTOMERS}."
+  if (( customer_count < BACKUP_MIN_CUSTOMERS )); then
+    echo "Skipping ${REASON} backup because ${MONGO_DATABASE}.customers has ${customer_count} customers, below BACKUP_MIN_CUSTOMERS=${BACKUP_MIN_CUSTOMERS}."
+    return 1
+  fi
+
+  return 0
 }
 
 log_backup_inputs() {
@@ -431,6 +522,7 @@ run_retention_after_daily() {
 
   docker run --rm \
     -v "${RETENTION_SCRIPT}:/backup-retention.mjs:ro" \
+    -v "${CATALOG_SCRIPT}:/backup-catalog.mjs:ro" \
     -v "${TMP_DIR}:/data" \
     "${NODE_IMAGE}" \
     node /backup-retention.mjs /data/retention-input.json \
@@ -454,13 +546,190 @@ run_retention_after_daily() {
   done < "${delete_manifests_file}"
 }
 
+select_latest_restore_backup() {
+  local list_file="${TMP_DIR}/restore-archive-list.txt"
+  local values_file="${TMP_DIR}/restore-selection.values"
+
+  if ! rclone lsf --recursive --files-only "r2:${R2_BUCKET}/${R2_PREFIX}/success" > "${list_file}"; then
+    echo "Unable to list successful production backups in r2:${R2_BUCKET}/${R2_PREFIX}/success." >&2
+    exit 1
+  fi
+
+  if [[ ! -s "${list_file}" ]]; then
+    echo "No successful production MongoDB backups found in R2 prefix ${R2_PREFIX}/success." >&2
+    exit 1
+  fi
+
+  docker run --rm \
+    -e "R2_PREFIX=${R2_PREFIX}" \
+    -v "${CATALOG_SCRIPT}:/backup-catalog.mjs:ro" \
+    -v "${TMP_DIR}:/data" \
+    "${NODE_IMAGE}" \
+    node --input-type=module -e '
+import fs from "node:fs"
+import { archiveToManifestKey, selectLatestRestorableBackup } from "/backup-catalog.mjs"
+
+const relativeKeys = fs.readFileSync("/data/restore-archive-list.txt", "utf8")
+  .split(/\r?\n/)
+  .filter(Boolean)
+const archiveKeys = relativeKeys.map((key) => `${process.env.R2_PREFIX}/success/${key}`)
+const backup = selectLatestRestorableBackup(archiveKeys)
+
+if (!backup) {
+  process.exit(2)
+}
+
+fs.writeFileSync("/data/restore-selection.values", [
+  backup.key,
+  archiveToManifestKey(backup.key),
+  backup.key.split("/").at(-1),
+  backup.createdAtUtc,
+  backup.createdAtAsiaJakarta,
+].join("\n"))
+'
+
+  mapfile -t restore_selection < "${values_file}"
+  RESTORE_ARCHIVE_KEY="${restore_selection[0]:-}"
+  RESTORE_MANIFEST_KEY="${restore_selection[1]:-}"
+  RESTORE_BACKUP_NAME="${restore_selection[2]:-}"
+  RESTORE_TIMESTAMP_UTC="${restore_selection[3]:-}"
+  RESTORE_TIMESTAMP_ASIA_JAKARTA="${restore_selection[4]:-}"
+
+  if [[ -z "${RESTORE_ARCHIVE_KEY}" || -z "${RESTORE_MANIFEST_KEY}" ]]; then
+    echo "Unable to select the latest successful production backup." >&2
+    exit 1
+  fi
+}
+
+download_restore_artifacts() {
+  RESTORE_ARCHIVE_PATH="${TMP_DIR}/restore.archive.gz"
+  RESTORE_MANIFEST_PATH="${TMP_DIR}/restore-manifest.json"
+  RESTORE_MANIFEST_AVAILABLE=0
+
+  if rclone copyto "r2:${R2_BUCKET}/${RESTORE_MANIFEST_KEY}" "/data/restore-manifest.json"; then
+    RESTORE_MANIFEST_AVAILABLE=1
+  else
+    echo "Restore manifest not available at ${RESTORE_MANIFEST_KEY}; continuing with archive size validation only."
+  fi
+
+  rclone copyto "r2:${R2_BUCKET}/${RESTORE_ARCHIVE_KEY}" "/data/restore.archive.gz"
+
+  RESTORE_ARCHIVE_SIZE="$(wc -c < "${RESTORE_ARCHIVE_PATH}" | tr -d ' ')"
+  if [[ "${RESTORE_ARCHIVE_SIZE}" == "0" ]]; then
+    echo "Restore archive is empty: ${RESTORE_ARCHIVE_KEY}" >&2
+    exit 1
+  fi
+
+  RESTORE_ARCHIVE_SHA256="$(sha256sum "${RESTORE_ARCHIVE_PATH}" | awk '{print $1}')"
+}
+
+verify_restore_manifest() {
+  if [[ "${RESTORE_MANIFEST_AVAILABLE}" != "1" ]]; then
+    return 0
+  fi
+
+  local manifest_values_file="${TMP_DIR}/restore-manifest.values"
+  docker run --rm \
+    -v "${TMP_DIR}:/data" \
+    "${NODE_IMAGE}" \
+    node -e '
+const fs = require("fs")
+const manifest = JSON.parse(fs.readFileSync("/data/restore-manifest.json", "utf8"))
+console.log(manifest.archive?.sha256 || "")
+console.log(manifest.r2?.archiveKey || "")
+' > "${manifest_values_file}"
+
+  local expected_sha expected_archive_key
+  expected_sha="$(sed -n '1p' "${manifest_values_file}")"
+  expected_archive_key="$(sed -n '2p' "${manifest_values_file}")"
+
+  if [[ -z "${expected_sha}" ]]; then
+    echo "Restore manifest is missing archive.sha256: ${RESTORE_MANIFEST_KEY}" >&2
+    exit 1
+  fi
+
+  if [[ -n "${expected_archive_key}" && "${expected_archive_key}" != "${RESTORE_ARCHIVE_KEY}" ]]; then
+    echo "Restore manifest archive key mismatch: expected ${RESTORE_ARCHIVE_KEY}, manifest has ${expected_archive_key}." >&2
+    exit 1
+  fi
+
+  if [[ "${expected_sha}" != "${RESTORE_ARCHIVE_SHA256}" ]]; then
+    echo "Restore archive SHA-256 mismatch for ${RESTORE_ARCHIVE_KEY}." >&2
+    echo "expected=${expected_sha}" >&2
+    echo "actual=${RESTORE_ARCHIVE_SHA256}" >&2
+    exit 1
+  fi
+}
+
+log_restore_selection() {
+  log_section "Selected R2 restore backup"
+  echo "backupName=${RESTORE_BACKUP_NAME}"
+  echo "archiveKey=${RESTORE_ARCHIVE_KEY}"
+  echo "manifestKey=${RESTORE_MANIFEST_KEY}"
+  echo "backupTimestampUtc=${RESTORE_TIMESTAMP_UTC}"
+  echo "backupTimestampAsiaJakarta=${RESTORE_TIMESTAMP_ASIA_JAKARTA}"
+  echo "archiveSizeBytes=${RESTORE_ARCHIVE_SIZE}"
+  echo "archiveSha256=${RESTORE_ARCHIVE_SHA256}"
+  echo "currentReleaseSha=${CURRENT_SHA:-none}"
+}
+
+run_restore_latest() {
+  prepare_runtime
+  ensure_production
+  r2_preflight
+
+  CURRENT_SHA="$(current_release_sha)"
+  mkdir -p "${BASE_DIR}/shared/backup-state" "${BASE_DIR}/shared/backups/tmp"
+  acquire_backup_lock
+
+  TMP_DIR="$(mktemp -d "${BASE_DIR}/shared/backups/tmp/mongo-r2-restore-latest.XXXXXX")"
+  RESTORE_SERVICES_STOPPED=0
+  trap 'restore_exit=$?; if [[ "${RESTORE_SERVICES_STOPPED:-0}" == "1" && "${restore_exit}" -ne 0 ]]; then echo "Restore failed; attempting to restart production services." >&2; compose up -d --build --remove-orphans || true; fi; rm -rf "${TMP_DIR}"; exit "${restore_exit}"' EXIT
+
+  select_latest_restore_backup
+  download_restore_artifacts
+  verify_restore_manifest
+  log_restore_selection
+
+  log_section "Creating pre-restore safety backup when threshold allows"
+  (
+    BACKUP_LOCK_HELD=1
+    run_backup "pre-restore" "none" ""
+  )
+
+  log_section "Stopping write-capable production services"
+  compose stop api admin-web public-web || true
+  RESTORE_SERVICES_STOPPED=1
+
+  log_section "Restoring production MongoDB from R2 backup"
+  compose exec -T mongo mongorestore \
+    --uri="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@127.0.0.1:27017/?authSource=admin&replicaSet=rs0" \
+    --archive \
+    --gzip \
+    --oplogReplay \
+    --drop \
+    < "${RESTORE_ARCHIVE_PATH}"
+
+  log_section "Restarting production services after restore"
+  compose up -d --build --remove-orphans
+  wait_for_service mongo 120
+  wait_for_service api 240
+  wait_for_service admin-web 240
+  wait_for_service public-web 240
+  wait_for_service caddy 120
+  RESTORE_SERVICES_STOPPED=0
+
+  echo "Production MongoDB restore completed from backup: ${RESTORE_ARCHIVE_KEY}"
+  echo "Restored backup timestamp GMT+7: ${RESTORE_TIMESTAMP_ASIA_JAKARTA}"
+}
+
 run_backup() {
   REASON="${1:?reason is required}"
   INCOMING_SHA="${2:-none}"
   EXPECTED_CURRENT_SHA="${3:-}"
 
   case "${REASON}" in
-    daily|pre-deploy|post-deploy) ;;
+    daily|pre-deploy|post-deploy|pre-restore) ;;
     *)
       echo "Unsupported backup reason: ${REASON}" >&2
       exit 1
@@ -474,7 +743,6 @@ run_backup() {
 
   prepare_runtime
   ensure_production
-  r2_preflight
 
   CURRENT_SHA="$(current_release_sha)"
   if [[ -n "${EXPECTED_CURRENT_SHA}" && "${CURRENT_SHA}" != "${EXPECTED_CURRENT_SHA}" ]]; then
@@ -482,14 +750,30 @@ run_backup() {
     return 0
   fi
 
-  local lock_file="${BASE_DIR}/shared/backup-state/mongo-r2-backup.lock"
   mkdir -p "${BASE_DIR}/shared/backup-state" "${BASE_DIR}/shared/backups/tmp"
 
-  exec 9>"${lock_file}"
-  if ! flock -n 9; then
-    echo "Another production MongoDB backup is already running." >&2
+  if [[ "${BACKUP_LOCK_HELD:-0}" != "1" ]]; then
+    acquire_backup_lock
+  fi
+
+  local mongo_container
+  mongo_container="$(compose ps -q mongo 2>/dev/null || true)"
+  if [[ -z "${mongo_container}" ]]; then
+    echo "Mongo service is not available through compose." >&2
     exit 1
   fi
+
+  log_backup_inputs
+  log_compose_status
+  log_mongo_container_status "${mongo_container}"
+  log_mongo_storage_usage "${mongo_container}"
+  log_mongo_database_stats
+
+  if ! backup_threshold_allows_upload; then
+    return 0
+  fi
+
+  r2_preflight
 
   TMP_DIR="$(mktemp -d "${BASE_DIR}/shared/backups/tmp/mongo-r2-${REASON}.XXXXXX")"
   trap 'rm -rf "${TMP_DIR}"' EXIT
@@ -506,19 +790,6 @@ run_backup() {
   local in_progress_key="${R2_PREFIX}/in-progress/${year}/${month}/${ARCHIVE_NAME}"
   local archive_key="${R2_PREFIX}/success/${year}/${month}/${ARCHIVE_NAME}"
   local manifest_key="${R2_PREFIX}/manifests/${year}/${month}/${manifest_name}"
-
-  local mongo_container
-  mongo_container="$(compose ps -q mongo 2>/dev/null || true)"
-  if [[ -z "${mongo_container}" ]]; then
-    echo "Mongo service is not available through compose." >&2
-    exit 1
-  fi
-
-  log_backup_inputs
-  log_compose_status
-  log_mongo_container_status "${mongo_container}"
-  log_mongo_storage_usage "${mongo_container}"
-  log_mongo_database_stats
 
   log_section "Creating production MongoDB backup archive"
   echo "reason=${REASON}"
@@ -565,6 +836,17 @@ case "${MODE}" in
     RUNTIME_ENV_FILE="$4"
     BACKUP_ENV_FILE="$5"
     run_backup "$6" "${7:-none}" "${8:-}"
+    ;;
+  restore-latest)
+    if [[ $# -ne 5 ]]; then
+      usage
+      exit 1
+    fi
+    APP_ENV="$2"
+    BASE_DIR="$3"
+    RUNTIME_ENV_FILE="$4"
+    BACKUP_ENV_FILE="$5"
+    run_restore_latest
     ;;
   record-delayed)
     if [[ $# -ne 3 ]]; then

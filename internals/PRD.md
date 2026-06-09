@@ -1199,10 +1199,11 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
   - daily at `02:00 Asia/Jakarta`,
   - before every production deploy image build after CI succeeds and after release/runtime env upload,
   - 3 hours after a successful production deploy, only if that deployed SHA is still current.
+- Production daily, pre-deploy, delayed post-deploy, and pre-restore safety backups must skip R2 upload when the live `${MONGO_DATABASE}.customers` count is below 100, to avoid treating empty or incomplete replacement-VM data as the latest recovery point.
 - The pre-deploy production backup is deployment-blocking. If it fails, production deploy must stop before replacing the running app image/release.
 - Backup tooling must run through containers on the VM, not require host-level MongoDB or rclone installs.
 - Backup uploads must write archive and JSON manifest objects under the production MongoDB R2 prefix.
-- Backup jobs must use locking so daily, pre-deploy, and delayed post-deploy backups cannot overlap.
+- Backup jobs and production restore jobs must use locking so daily, pre-deploy, delayed post-deploy, pre-restore, and restore operations cannot overlap.
 - Temporary compressed backup archives on the VM must be deleted after the backup script exits, including successful upload paths.
 - Daily backup retention must run only after a successful daily backup. It must keep every successful backup newer than 72 hours, the newest daily backup, and the two most recent commit-boundary daily backups. It must never prune from failed daily backups and must never delete in-progress objects.
 - Backup restore must be drilled into an isolated MongoDB instance with `mongorestore --archive --gzip --oplogReplay` before relying on backups operationally.
@@ -1332,6 +1333,7 @@ Authenticated portal order detail may still present itemized prices, subtotal, d
 - A successful production backup creates a non-empty `.archive.gz` object and matching JSON manifest in the private R2 bucket under `production/mongodb`.
 - Production backup object naming records timestamp, environment, reason, current release SHA, and incoming release SHA when applicable.
 - Manual restore drill into an isolated MongoDB instance succeeds with `mongorestore --archive --gzip --oplogReplay`.
+- Production-only `Use Backup` workflow restores live MongoDB from the latest successful R2 backup, prints the selected backup name and timestamp in UTC and GMT+7, and passes production smoke checks after restore.
 - Daily retention preserves all backups younger than 72 hours, the newest daily backup, and the two most recent commit-boundary daily backups.
 - Failed or in-progress backups do not trigger retention and are not treated as successful recovery points.
 - Backup failure before production deploy blocks the deploy without deleting or replacing MongoDB data.
@@ -1359,11 +1361,12 @@ The implementation must explicitly cover at minimum:
 17. Welcome WA one-time auto-login link succeeds once and rejects token reuse.
 18. Additional QR/login links generated from customer detail do not revoke older unused one-time links.
 19. Landing page and portal contact CTA follow the primary configured admin WhatsApp contact with fallback `087780563875`.
-20. Production pre-deploy backup blocks deploy when R2 is unreachable or credentials are invalid, before replacing the running release.
+20. Production pre-deploy backup blocks deploy when R2 is unreachable or credentials are invalid, before replacing the running release, unless it intentionally skips because the live customer count is below 100.
 21. Production daily backup retention keeps the newest daily, the two most recent commit-boundary dailies, and all successful backups younger than 72 hours.
 22. Delayed post-deploy backup runs only when the scheduled release SHA is still current.
 23. Deployment/runtime env changes do not reset MongoDB or delete MongoDB volumes under any circumstances.
 24. Isolated MongoDB restore drill from an R2 `.archive.gz` backup succeeds with `mongorestore --oplogReplay`.
+25. Production-only `Use Backup` restores from the latest successful R2 backup and reports the selected backup name plus UTC and GMT+7 timestamps.
 
 ## 24. Suggested Implementation Notes
 

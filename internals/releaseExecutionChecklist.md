@@ -1,8 +1,8 @@
 # Release Execution Checklist
 
 Document status: Active  
-Last updated: 2026-04-02  
-Purpose: operator-facing execution checklist for staging rollout, production rollout, rollback decision points, and first-hour monitoring after the Cloud-only WhatsApp cutover prep
+Last updated: 2026-06-09
+Purpose: operator-facing execution checklist for staging rollout, production rollout, restore, rollback decision points, and first-hour monitoring after the Cloud-only WhatsApp cutover prep
 
 ## 1. Rollout Metadata
 
@@ -137,7 +137,9 @@ Production is blocked unless all are true:
 - production workflow should fail before deploy if any Cloud WhatsApp secret is blank
 - production deploy has no reset-token path; runtime env changes must not wipe persistent data
 - production R2 backup secrets are present before deploying a backup-capable release
-- production pre-deploy MongoDB backup is expected to block deploy if it fails
+- production pre-deploy MongoDB backup is expected to block deploy if it fails, except when it intentionally skips because `${MONGO_DATABASE}.customers` has fewer than 100 documents
+- production backup env renders `BACKUP_MIN_CUSTOMERS=100`
+- production deploy and `Use Backup` use shared `production-runtime` workflow concurrency
 - first-hour monitoring owner is assigned
 - backup rollback operator is assigned
 
@@ -177,6 +179,27 @@ Production is blocked unless all are true:
 - check Cloud delivery failures
 - check admin inbox/manual-send regressions
 - check customer login or magic-link complaints
+
+## 10.1 Use Backup Restore Execution
+
+Use only for approved production database recovery:
+
+1. confirm `PRODUCTION_VM_HOST` and `PRODUCTION_VM_SSH_KNOWN_HOSTS` target the intended GCP VM
+2. confirm the normal production deploy has established `/opt/cjl/production/current`
+3. open GitHub Actions and run `Use Backup`
+4. type `USE_LATEST_PRODUCTION_R2_BACKUP`
+5. record workflow output:
+   - backup name:
+   - archive key:
+   - backup timestamp UTC:
+   - backup timestamp GMT+7:
+   - restored/current release SHA:
+6. confirm post-restore smoke checks passed:
+   - `https://api.cjlaundry.com/health`
+   - `https://api.cjlaundry.com/ready`
+   - `https://admin.cjlaundry.com`
+   - `https://cjlaundry.com`
+7. perform one customer-safe admin/public validation after restore
 
 ## 11. Rollback Trigger Conditions
 

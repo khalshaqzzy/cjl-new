@@ -1,45 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs"
 
-const BACKUP_KEY_PATTERN =
-  /(?:^|\/)(\d{8}T\d{6}Z)_production_(daily|pre-deploy|post-deploy)_[^/]+\.archive\.gz$/
+import { archiveToManifestKey, parseBackupKey, sortByTimeThenKey } from "./backup-catalog.mjs"
 
 const HOURS_72_MS = 72 * 60 * 60 * 1000
-
-const parseBackupKey = (key) => {
-  if (!key.includes("/success/")) {
-    return null
-  }
-
-  const match = key.match(BACKUP_KEY_PATTERN)
-  if (!match) {
-    return null
-  }
-
-  const timestamp = match[1]
-  const reason = match[2]
-  const iso = `${timestamp.slice(0, 4)}-${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)}T${timestamp.slice(9, 11)}:${timestamp.slice(11, 13)}:${timestamp.slice(13, 15)}.000Z`
-  const timeMs = Date.parse(iso)
-
-  if (!Number.isFinite(timeMs)) {
-    return null
-  }
-
-  return {
-    key,
-    timestamp,
-    reason,
-    timeMs,
-  }
-}
-
-const sortByTimeThenKey = (left, right) =>
-  left.timeMs - right.timeMs || left.key.localeCompare(right.key)
-
-const archiveToManifestKey = (archiveKey) =>
-  archiveKey
-    .replace("/success/", "/manifests/")
-    .replace(/\.archive\.gz$/, ".json")
 
 export const planBackupRetention = ({ archiveKeys, nowIso }) => {
   const nowMs = Date.parse(nowIso)

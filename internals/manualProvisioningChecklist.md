@@ -1,7 +1,7 @@
 # Manual Provisioning Checklist
 
 Document status: Active  
-Last updated: 2026-05-06  
+Last updated: 2026-06-09
 Purpose: short external checklist for provisioning staging and production before the first Cloud-era deploy
 
 ## Local Preparation
@@ -46,6 +46,7 @@ Purpose: short external checklist for provisioning staging and production before
 - add production deploy-user SSH private key
 - add staging `known_hosts`
 - add production `known_hosts`
+- for a replacement production GCP VM, update the existing `PRODUCTION_VM_HOST` and `PRODUCTION_VM_SSH_KNOWN_HOSTS` secrets to the new target; do not create new secret names
 - add all staging Mongo, `MONGO_REPLICA_KEY`, session, bootstrap admin, and Caddy secrets
 - add staging Firebase machine control secret:
   - `STAGING_FIREBASE_DATABASE_URL`
@@ -71,6 +72,7 @@ Purpose: short external checklist for provisioning staging and production before
   - `PRODUCTION_R2_BUCKET`
   - `PRODUCTION_R2_ACCESS_KEY_ID`
   - `PRODUCTION_R2_SECRET_ACCESS_KEY`
+- keep production backup threshold at `BACKUP_MIN_CUSTOMERS=100` in rendered `backup.env`
 
 ## Validation
 
@@ -89,3 +91,5 @@ Purpose: short external checklist for provisioning staging and production before
 - confirm timers are visible:
   - `systemctl list-timers 'cjl-mongo-r2-*'`
 - run one manual production MongoDB R2 backup and one isolated restore drill before relying on production backups
+- after a replacement VM deploy establishes `/opt/cjl/production/current`, run `Use Backup` only after confirming the workflow will target the intended production VM
+- confirm `Use Backup` prints `backupName`, `archiveKey`, `backupTimestampUtc`, and `backupTimestampAsiaJakarta`, then passes production smoke checks
