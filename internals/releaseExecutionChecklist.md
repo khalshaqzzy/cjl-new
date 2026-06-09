@@ -193,6 +193,7 @@ Use only for approved production database recovery:
    - archive key:
    - backup timestamp UTC:
    - backup timestamp GMT+7:
+   - restore namespace:
    - restored/current release SHA:
 6. confirm post-restore smoke checks passed:
    - `https://api.cjlaundry.com/health`

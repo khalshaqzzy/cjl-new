@@ -6,7 +6,7 @@ Purpose: repo snapshot after production Use Backup restore workflow and backup t
 ## Current State
 
 - Added production-only manual GitHub Actions workflow `Use Backup`.
-- `Use Backup` restores MongoDB from the latest successful Cloudflare R2 backup under `production/mongodb/success`.
+- `Use Backup` restores `${MONGO_DATABASE}.*` from the latest successful Cloudflare R2 backup under `production/mongodb/success` while preserving current MongoDB auth metadata.
 - The workflow reuses existing production secret names and requires the operator confirmation text `USE_LATEST_PRODUCTION_R2_BACKUP`.
 - Production deploy and `Use Backup` share the `production-runtime` concurrency group with `cancel-in-progress: false`.
 - `deploy/scripts/backup-mongo-r2.sh` now supports `restore-latest` and `pre-restore` safety backups.
