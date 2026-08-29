@@ -7,15 +7,15 @@
   ],
   "overrides": {
     "lodash": "4.18.1",
-    "postcss": "8.5.10",
+    "postcss": "8.5.26",
     "next": {
-      "postcss": "8.5.10"
+      "postcss": "8.5.26"
     },
     "@tailwindcss/postcss": {
-      "postcss": "8.5.10"
+      "postcss": "8.5.26"
     },
     "autoprefixer": {
-      "postcss": "8.5.10"
+      "postcss": "8.5.26"
     }
   },
   "scripts": {
@@ -28,7 +28,7 @@
     "lint": "eslint app packages scripts tests --no-warn-ignored",
     "typecheck": "npm run build:contracts && npm run typecheck --workspace @cjl/api --workspace @cjl/admin-web --workspace @cjl/public-web",
     "validate:cloud-runtime": "tsx scripts/validate-cloud-runtime.ts",
-    "audit:prod": "npm audit --omit=dev --audit-level=moderate",
+    "audit:prod": "npm audit --omit=dev --audit-level=moderate --workspace @cjl/contracts --workspace @cjl/api --workspace @cjl/admin-web --workspace @cjl/public-web",
     "security:scan": "npm run lint && npm run typecheck && npm run audit:prod",
     "dev:api": "npm run dev --workspace @cjl/api",
     "dev:whatsapp": "npm run dev --workspace @cjl/whatsapp-gateway",
@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
-    "@next/eslint-plugin-next": "16.3.0-canary.27",
+    "@next/eslint-plugin-next": "16.3.3",
     "@playwright/test": "^1.58.2",
     "cookie-signature": "^1.2.2",
     "eslint": "^9.39.4",

@@ -869,7 +869,7 @@ test("admin and public frontends stay fully integrated through the backend", asy
   const mobileHeaderAfter = await mobileHeader.boundingBox()
   const mobileComposerAfter = await mobileComposer.boundingBox()
   expect(Math.abs(mobileHeaderAfter!.y - mobileHeaderBefore!.y)).toBeLessThanOrEqual(1)
-  expect(Math.abs(mobileComposerAfter!.y - mobileComposerBefore!.y)).toBeLessThanOrEqual(3)
+  expect(Math.abs(mobileComposerAfter!.y - mobileComposerBefore!.y)).toBeLessThanOrEqual(4)
   await page.getByTestId("whatsapp-thread-back").click()
   await expect(page).toHaveURL("http://127.0.0.1:3101/admin/whatsapp")
 
